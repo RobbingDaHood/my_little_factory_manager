@@ -12,42 +12,19 @@ Build, test, and lint commands
 - Pre-commit hooks auto-run `cargo fmt` (auto-fix) and `cargo clippy` on every commit. Tests are validated via `make check`.
 - **All tests and coverage must pass before pushing code.** Never accept or commit known test failures. If a test fails, fix the test or the production code before committing. CI enforces ≥80% line coverage — ensure `make check` passes locally before pushing. If in doubt, ask the repository owner.
 
-Key files and types (quick reference)
-
-> Note: Many of these files will be created in Phase 0-1 of the roadmap. This section is a forward reference for when they exist.
-
-- `src/library/types.rs` — all core types: TokenType enum, ToolCardKind, ContractConstraintKind, CostTier, CardLocation, ContractTier
-- `src/library/game_state.rs` — GameState struct, initialization, token balances, contract phase management
-- `src/library/config.rs` — config struct definitions
-- `src/library/config_loader.rs` — JSON embedding via include_str!() and deserialization
-- `src/action/mod.rs` — action handler dispatch
-- `src/library/endpoints.rs` — HTTP route handlers for library cards, possible actions
-- `src/docs/` — self-documenting API endpoints: tutorial.rs, hints.rs, designer.rs
-- `src/lib.rs` — library entry point, route mounting
-- `src/main.rs` — binary entry, Rocket launch
-- `tests/` — integration tests exercising full gameplay loops
-- `configurations/` — JSON config files (game_rules, contracts, tool cards)
-
 High-level architecture
 
-- Project is a Rust web API built with Rocket exposing REST endpoints for tool cards, contracts, and factory management.
-- Core crates and layout:
-  - `src/library/` — core domain module: types, game state, contract resolution, token registry, action log, metrics, and HTTP endpoints.
-  - `src/docs/` — self-documenting API endpoints: tutorial walkthrough, strategy hints, designer reference.
-  - `src/action/` — player action handling and request processing.
-  - `src/player_data.rs` — player state and persistence logic.
-  - `src/player_tokens.rs` — player token balance endpoint.
-  - `src/status_messages.rs` — standardized API response messages.
+- Project is a Rust web API built with Rocket exposing REST endpoints for player action cards, contracts, and factory management.
 - All runtime behaviour is exposed via HTTP endpoints; most internal functionality is tested with integration tests that drive the API.
 
 Key conventions and repository-specific notes
 
-- "Everything is a deck" design: core game state is modelled as decks of tool cards and cards move between Deck, Hand, Discard, and Library states.
+- "Everything is a deck" design: core game state is modelled as decks of player action cards and cards move between Deck, Hand, Discard, and Library states.
 - Tests: place tests in separate files under the top-level `tests/` directory (do not put tests inline in `src` files). Prefer integration tests that exercise the public HTTP API. Do not make items `pub` solely to enable unit testing — keep as much of the program private as possible and test through integration tests instead. Aim for at least 90% test coverage before committing; ensure coverage is measured and enforced in CI.
 - OpenAPI/Swagger is enabled using `rocket_okapi`; when the server is running, view Swagger UI at `/swagger/`.
 - No unwraps and zero Clippy warnings policy: avoid adding unwrap() in production code; prefer Result propagation and explicit error handling.
 - Breaking changes are allowed: do not hold back from making breaking changes (API, data format, struct layout, etc.) when they improve the codebase. When a commit includes breaking changes, clearly state "BREAKING:" in the commit summary and list what changed.
-- Features and dependencies: Rocket is built with `json` feature disabled by default — follow existing Cargo.toml features when adding dependencies.
+- Features and dependencies: follow existing Cargo.toml features when adding dependencies.
 - Prefer simpler code wrapped in well-named wrapper methods instead of relying on long explanatory comments; remove obvious comments that merely restate what clear function/variable names communicate. Favor expressive names and small helper functions over comment-heavy implementations.
 - Consider using Rust enums for discrete states or variant data; prefer enums over ad-hoc strings or booleans when it improves clarity, type-safety, and enables exhaustive matching.
 
@@ -77,24 +54,15 @@ Key conventions and repository-specific notes
 
 Files to check for agent config
 
-- Existing repo files inspected: README.md, Cargo.toml, src/.
-- If present, include and merge guidance from: CLAUDE.md, AGENTS.md, CONVENTIONS.md, AIDER_CONVENTIONS.md, .cursorrules, .cursor/, .windsurfrules, .clinerules, .cline_rules.
-- Always respect everything written in the files in the docs/ folder; treat those files as authoritative guidance for the repository and follow them without contradiction.
-
-Notes for Copilot sessions
-
-- Prefer reading `README.md` and `src/` modules before making changes; the README contains useful usage and testing commands.
-- When adding or changing endpoints, update both `src/lib.rs` and `src/main.rs` and add an integration test under `tests/`.
-- Keep changes minimal.
-- Before every commit, run `make check` to validate all checks pass. Pre-commit hooks provide a fast safety net (fmt + clippy) on commit.
-- When printing a URL to the console, never wrap it in parentheses or brackets — bare URLs are clickable in the terminal, wrapped ones are not.
+- Always respect everything written in the files in the `docs/design` folder; treat those files as authoritative guidance for the repository and follow them without contradiction.
 
 Suggest changes to vision.md and roadmap.md
 
-- vision.md and roadmap.md is the authoritative.
-- At the end of any plan suggest improvement to both files and save that in a file. Do not place the file in docs/design.
-- The suggestions should be based on new information given or found during planning and execution of the plan.
-- The goal is to keep vision.md and roadmap.md up to date and in high quality.
+- At the end of every change, review `docs/design/vision.md` and `docs/design/roadmap.md` and directly suggest improvements based on new information learned during planning and execution.
+
+Post-plan instruction review
+
+- After completing a plan, review this instruction file (`.github/copilot-instructions.md`) and suggest updates if anything is out of date — for example, adding newly created key files, removing stale references, or other optimizations.
 
 Documentation maintenance
 
@@ -131,7 +99,6 @@ If your current working directory is inside `my_little_factory_manager/` (the ma
 
 **Continuing existing work:**
 - If instructed to continue work on an existing branch, that work must still happen in a worktree — either use an existing worktree already on that branch, or create a new one pointing at it.
-- **Before making any changes**, rebase the branch onto the latest remote main: `git fetch origin && git rebase origin/main`. This ensures the branch is up to date and avoids merge conflicts later.
 
 **Verification:**
 - Before making any change, confirm your working directory is inside `my_little_factory_managers/`, not `my_little_factory_manager/`.

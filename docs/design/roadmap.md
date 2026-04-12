@@ -40,16 +40,16 @@ The existing [my_little_card_game](https://github.com/RobbingDaHood/my_little_ca
 - `scripts/check_clippy.sh` — clippy runner
 - `scripts/install-hooks.sh` — pre-commit hook installer
 - `.pre-commit-config.yaml` — cargo fmt + clippy hooks
-- `toolchain.toml` — nightly Rust toolchain
+- `rust-toolchain.toml` — nightly Rust toolchain
 - `.github/workflows/ci.yml` — GitHub Actions CI pipeline
 - `tests/` directory with at least one smoke test
-- `GET /version` endpoint returning `{"version": "<semver>-<hash>"}` to verify the server runs
+- `GET /version` endpoint returning `{"version": "<semver>"}` to verify the server runs (config hash added in Phase 1)
 
 **Reference files from card game**:
 - `Cargo.toml` — dependency list and feature flags
 - `src/main.rs`, `src/lib.rs` — entry point pattern
 - `Makefile`, `scripts/*` — build tooling
-- `.pre-commit-config.yaml`, `toolchain.toml` — Rust toolchain config
+- `.pre-commit-config.yaml`, `rust-toolchain.toml` — Rust toolchain config
 - `.github/workflows/ci.yml` — CI pipeline
 
 ---

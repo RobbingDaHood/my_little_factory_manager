@@ -1,0 +1,16 @@
+# Rust / IDE
+debug/
+target/
+**/*.rs.bk
+*.pdb
+
+# IDE
+/.idea/
+*.iml
+
+# Environment (secrets — NEVER commit)
+.env
+
+# OS
+.DS_Store
+Thumbs.db

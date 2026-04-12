@@ -1,0 +1,23 @@
+[package]
+name = "my-little-factory-manager"
+version = "0.0.1"
+edition = "2021"
+authors = ["RobbingDaHood"]
+description = "A deterministic, turn-based deckbuilding factory management game API"
+license = "Apache-2.0"
+repository = "https://github.com/RobbingDaHood/my_little_factory_manager"
+
+[dependencies]
+rocket = { version = "0.5.1", default-features = false, features = ["json"] }
+schemars = "0.8"
+okapi = "0.7.0"
+rocket_okapi = { version = "0.9.0", features = ["swagger"] }
+serde = "1.0"
+serde_json = "1.0"
+rand = "0.8"
+rand_pcg = { version = "0.3", features = ["serde1"] }
+log = "0.4"
+env_logger = "0.10"
+
+[features]
+simulation = []

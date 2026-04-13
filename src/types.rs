@@ -58,22 +58,16 @@ pub enum TokenTag {
 }
 
 impl TokenType {
-    /// Returns the classification tags for this token type.
-    pub fn tags(&self) -> Vec<TokenTag> {
+    /// Returns the classification tags for this token type (compile-time known).
+    pub fn tags(&self) -> &'static [TokenTag] {
         match self {
-            Self::ProductionUnit | Self::Energy | Self::RawMaterial => {
-                vec![TokenTag::Beneficial]
-            }
-            Self::Heat | Self::CO2 | Self::Waste | Self::Pollution => {
-                vec![TokenTag::Harmful]
-            }
+            Self::ProductionUnit | Self::Energy | Self::RawMaterial => &[TokenTag::Beneficial],
+            Self::Heat | Self::CO2 | Self::Waste | Self::Pollution => &[TokenTag::Harmful],
             Self::ContractsTier1Completed
             | Self::ContractsTier2Completed
             | Self::ContractsTier3Completed
             | Self::ContractsTier4Completed
-            | Self::ContractsTier5Completed => {
-                vec![TokenTag::Progression]
-            }
+            | Self::ContractsTier5Completed => &[TokenTag::Progression],
         }
     }
 }

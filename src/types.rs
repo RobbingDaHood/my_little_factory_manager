@@ -148,32 +148,13 @@ pub struct PlayerActionCard {
 // Contract system
 // ---------------------------------------------------------------------------
 
-/// Contract difficulty tiers representing increasing structural complexity.
+/// Contract difficulty tier (1-based) representing increasing structural complexity.
 ///
 /// Higher tiers introduce new requirement types, more complex combinations,
-/// and access to stronger player action cards.
+/// and access to stronger player action cards. Tiers are unbounded.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
-#[serde(crate = "rocket::serde")]
-pub enum ContractTier {
-    Tier1,
-    Tier2,
-    Tier3,
-    Tier4,
-    Tier5,
-}
-
-impl ContractTier {
-    /// Returns the numeric tier value (1-based).
-    pub fn tier_number(&self) -> u32 {
-        match self {
-            Self::Tier1 => 1,
-            Self::Tier2 => 2,
-            Self::Tier3 => 3,
-            Self::Tier4 => 4,
-            Self::Tier5 => 5,
-        }
-    }
-}
+#[serde(transparent, crate = "rocket::serde")]
+pub struct ContractTier(pub u32);
 
 /// Kinds of requirements a contract can impose.
 ///

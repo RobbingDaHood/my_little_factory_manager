@@ -196,11 +196,10 @@ fn card_tag_restriction_serialization_roundtrip() {
 #[test]
 fn contract_tier_serialization_roundtrip() {
     let tiers = vec![
-        ContractTier::Tier1,
-        ContractTier::Tier2,
-        ContractTier::Tier3,
-        ContractTier::Tier4,
-        ContractTier::Tier5,
+        ContractTier(1),
+        ContractTier(2),
+        ContractTier(3),
+        ContractTier(10),
     ];
     for tier in &tiers {
         let json = serde_json::to_string(tier).expect("serialize ContractTier");
@@ -208,15 +207,6 @@ fn contract_tier_serialization_roundtrip() {
             serde_json::from_str(&json).expect("deserialize ContractTier");
         assert_eq!(tier, &roundtrip, "roundtrip failed for {json}");
     }
-}
-
-#[test]
-fn contract_tier_numbers_are_sequential() {
-    assert_eq!(ContractTier::Tier1.tier_number(), 1);
-    assert_eq!(ContractTier::Tier2.tier_number(), 2);
-    assert_eq!(ContractTier::Tier3.tier_number(), 3);
-    assert_eq!(ContractTier::Tier4.tier_number(), 4);
-    assert_eq!(ContractTier::Tier5.tier_number(), 5);
 }
 
 // ---------------------------------------------------------------------------
@@ -294,7 +284,7 @@ fn player_action_card_serialization_roundtrip() {
 #[test]
 fn contract_serialization_roundtrip() {
     let contract = Contract {
-        tier: ContractTier::Tier2,
+        tier: ContractTier(2),
         requirements: vec![
             ContractRequirement {
                 kind: ContractRequirementKind::OutputThreshold {

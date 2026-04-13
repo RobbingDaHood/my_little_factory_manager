@@ -189,6 +189,18 @@ fn card_tag_restriction_serialization_roundtrip() {
     assert_eq!(req, roundtrip);
 }
 
+#[test]
+fn turn_window_serialization_roundtrip() {
+    let req = ContractRequirementKind::TurnWindow {
+        min_turn: 3,
+        max_turn: 8,
+    };
+    let json = serde_json::to_string(&req).expect("serialize TurnWindow");
+    let roundtrip: ContractRequirementKind =
+        serde_json::from_str(&json).expect("deserialize TurnWindow");
+    assert_eq!(req, roundtrip);
+}
+
 // ---------------------------------------------------------------------------
 // ContractTier tests
 // ---------------------------------------------------------------------------

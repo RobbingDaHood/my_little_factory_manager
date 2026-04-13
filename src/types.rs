@@ -175,6 +175,8 @@ pub enum ContractRequirementKind {
     },
     /// Certain card tags are unavailable during this contract.
     CardTagRestriction { restricted_tag: CardTag },
+    /// Contract must be completed between turn `min_turn` and `max_turn` (inclusive).
+    TurnWindow { min_turn: u32, max_turn: u32 },
 }
 
 /// A concrete contract with requirements and a visible reward card.

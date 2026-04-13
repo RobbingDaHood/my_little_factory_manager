@@ -359,7 +359,7 @@ fn load_embedded_game_rules() {
     assert_eq!(config.general.starting_hand_size, 5);
     assert_eq!(config.general.starting_deck_size, 10);
     assert_eq!(config.general.contracts_per_tier_to_advance, 10);
-    assert_eq!(config.general.contract_market_size, 3);
+    assert_eq!(config.general.contract_market_size_per_tier, 3);
     assert_eq!(config.general.discard_production_unit_bonus, 1);
 }
 
@@ -370,7 +370,7 @@ fn load_custom_game_rules_json() {
             "starting_hand_size": 7,
             "starting_deck_size": 15,
             "contracts_per_tier_to_advance": 5,
-            "contract_market_size": 4,
+            "contract_market_size_per_tier": 4,
             "discard_production_unit_bonus": 2
         }
     }"#;
@@ -378,7 +378,7 @@ fn load_custom_game_rules_json() {
     assert_eq!(config.general.starting_hand_size, 7);
     assert_eq!(config.general.starting_deck_size, 15);
     assert_eq!(config.general.contracts_per_tier_to_advance, 5);
-    assert_eq!(config.general.contract_market_size, 4);
+    assert_eq!(config.general.contract_market_size_per_tier, 4);
     assert_eq!(config.general.discard_production_unit_bonus, 2);
 }
 

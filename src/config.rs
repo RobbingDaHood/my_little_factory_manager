@@ -22,8 +22,8 @@ pub struct GeneralRules {
     pub starting_deck_size: u32,
     /// Contracts completed in a tier before the next tier unlocks.
     pub contracts_per_tier_to_advance: u32,
-    /// Number of contracts offered in the market at once.
-    pub contract_market_size: u32,
+    /// Number of contracts offered in the market per unlocked tier.
+    pub contract_market_size_per_tier: u32,
     /// Production units gained when discarding a card for baseline benefit.
     pub discard_production_unit_bonus: u32,
 }

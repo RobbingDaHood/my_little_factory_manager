@@ -118,9 +118,6 @@ pub enum CardEffect {
     },
     /// Consumes harmful tokens with no output — removing waste is its own reward.
     WasteRemoval { inputs: Vec<TokenAmount> },
-    /// Produces both beneficial and harmful tokens — large output with harmful
-    /// byproducts as a tradeoff.
-    BoostedProduction { outputs: Vec<TokenAmount> },
 }
 
 /// Where card copies reside during gameplay.

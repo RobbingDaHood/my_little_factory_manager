@@ -150,25 +150,6 @@ fn waste_removal_serialization_roundtrip() {
     assert_eq!(effect, roundtrip);
 }
 
-#[test]
-fn boosted_production_serialization_roundtrip() {
-    let effect = CardEffect::BoostedProduction {
-        outputs: vec![
-            TokenAmount {
-                token_type: TokenType::ProductionUnit,
-                amount: 10,
-            },
-            TokenAmount {
-                token_type: TokenType::CO2,
-                amount: 3,
-            },
-        ],
-    };
-    let json = serde_json::to_string(&effect).expect("serialize BoostedProduction");
-    let roundtrip: CardEffect = serde_json::from_str(&json).expect("deserialize BoostedProduction");
-    assert_eq!(effect, roundtrip);
-}
-
 // ---------------------------------------------------------------------------
 // ContractRequirementKind tests
 // ---------------------------------------------------------------------------
@@ -330,7 +311,7 @@ fn contract_serialization_roundtrip() {
         ],
         reward_card: PlayerActionCard {
             tags: vec![CardTag::Production],
-            effects: vec![CardEffect::BoostedProduction {
+            effects: vec![CardEffect::PureProduction {
                 outputs: vec![
                     TokenAmount {
                         token_type: TokenType::ProductionUnit,

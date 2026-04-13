@@ -177,13 +177,6 @@ pub enum ContractRequirementKind {
     CardTagRestriction { restricted_tag: CardTag },
 }
 
-/// A single contract requirement with its kind.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(crate = "rocket::serde")]
-pub struct ContractRequirement {
-    pub kind: ContractRequirementKind,
-}
-
 /// A concrete contract with requirements and a visible reward card.
 ///
 /// The reward card is generated when the contract is generated — the player
@@ -192,6 +185,6 @@ pub struct ContractRequirement {
 #[serde(crate = "rocket::serde")]
 pub struct Contract {
     pub tier: ContractTier,
-    pub requirements: Vec<ContractRequirement>,
+    pub requirements: Vec<ContractRequirementKind>,
     pub reward_card: PlayerActionCard,
 }

@@ -1,7 +1,7 @@
 use my_little_factory_manager::config_loader::{load_game_rules, load_game_rules_from_json};
 use my_little_factory_manager::types::{
-    CardEffect, CardLocation, CardTag, Contract, ContractRequirement, ContractRequirementKind,
-    ContractTier, PlayerActionCard, TokenAmount, TokenTag, TokenType,
+    CardEffect, CardLocation, CardTag, Contract, ContractRequirementKind, ContractTier,
+    PlayerActionCard, TokenAmount, TokenTag, TokenType,
 };
 
 // ---------------------------------------------------------------------------
@@ -286,17 +286,13 @@ fn contract_serialization_roundtrip() {
     let contract = Contract {
         tier: ContractTier(2),
         requirements: vec![
-            ContractRequirement {
-                kind: ContractRequirementKind::OutputThreshold {
-                    token_type: TokenType::ProductionUnit,
-                    min_amount: 15,
-                },
+            ContractRequirementKind::OutputThreshold {
+                token_type: TokenType::ProductionUnit,
+                min_amount: 15,
             },
-            ContractRequirement {
-                kind: ContractRequirementKind::HarmfulTokenLimit {
-                    token_type: TokenType::CO2,
-                    max_amount: 10,
-                },
+            ContractRequirementKind::HarmfulTokenLimit {
+                token_type: TokenType::CO2,
+                max_amount: 10,
             },
         ],
         reward_card: PlayerActionCard {

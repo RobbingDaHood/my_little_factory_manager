@@ -59,7 +59,7 @@ The existing [my_little_card_game](https://github.com/RobbingDaHood/my_little_ca
 **Goal**: Define the foundational type system. No gameplay yet — just the data model that all future phases build on.
 
 **Deliverables**:
-- `src/library/types.rs` — core enums and structs:
+- `src/types.rs` — core enums and structs:
   - `TokenType` enum — resource/waste types (ProductionUnit, Energy, RawMaterial, Heat, CO2, Waste, Pollution) plus progression tracking (ContractsTierXCompleted)
   - `TokenTag` enum — Beneficial, Harmful, Progression (each token type has a list of tags)
   - `CardTag` enum — card type tags (Production, Transformation, QualityControl, SystemAdjustment, etc.)
@@ -67,9 +67,8 @@ The existing [my_little_card_game](https://github.com/RobbingDaHood/my_little_ca
   - `ContractRequirementKind` enum — OutputThreshold, HarmfulTokenLimit, CardTagRestriction
   - `ContractTier` enum — Tier1, Tier2, Tier3, etc.
   - `CardLocation` enum — Library, Deck, Hand, Discard
-- `src/library/mod.rs` — module exports
-- `src/library/config.rs` — config struct definitions
-- `src/library/config_loader.rs` — JSON embedding via `include_str!()`
+- `src/config.rs` — config struct definitions
+- `src/config_loader.rs` — JSON embedding via `include_str!()`
 - `configurations/general/game_rules.json` — initial game constants
 - Integration tests verifying type serialization roundtrips
 
@@ -85,7 +84,7 @@ The existing [my_little_card_game](https://github.com/RobbingDaHood/my_little_ca
 **Goal**: A playable (but minimal) game loop: pick contract → play cards one at a time → auto-complete when requirements met. Fully deterministic from the start.
 
 **Deliverables**:
-- `src/library/game_state.rs` — `GameState` struct with:
+- `src/game_state.rs` — `GameState` struct with:
   - Player action card library
   - Player token balances (persisted between contracts)
   - Active contract state
@@ -205,7 +204,7 @@ The existing [my_little_card_game](https://github.com/RobbingDaHood/my_little_ca
 **Goal**: Comprehensive gameplay statistics tracking and reporting.
 
 **Deliverables**:
-- `src/library/metrics.rs` — metrics computation
+- `src/metrics.rs` — metrics computation
 - `GET /metrics` endpoint with:
   - Total contracts completed/failed (per tier)
   - Completion rates

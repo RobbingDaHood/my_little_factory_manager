@@ -1,7 +1,5 @@
-use my_little_factory_manager::library::config_loader::{
-    load_game_rules, load_game_rules_from_json,
-};
-use my_little_factory_manager::library::types::{
+use my_little_factory_manager::config_loader::{load_game_rules, load_game_rules_from_json};
+use my_little_factory_manager::types::{
     CardEffect, CardLocation, CardTag, Contract, ContractRequirement, ContractRequirementKind,
     ContractTier, PlayerActionCard, TokenAmount, TokenTag, TokenType,
 };

@@ -62,10 +62,9 @@ Key project files
 - `src/main.rs` — binary entry point
 - `src/lib.rs` — library root, route mounting, `rocket_initialize()`
 - `src/version.rs` — `GET /version` endpoint
-- `src/library/mod.rs` — library module root (types, config, config_loader)
-- `src/library/types.rs` — core enums and structs (TokenType, CardEffect, Contract, etc.)
-- `src/library/config.rs` — config struct definitions (GameRulesConfig)
-- `src/library/config_loader.rs` — JSON config embedding and loading
+- `src/types.rs` — core enums and structs (TokenType, CardEffect, Contract, etc.)
+- `src/config.rs` — config struct definitions (GameRulesConfig)
+- `src/config_loader.rs` — JSON config embedding and loading
 - `configurations/general/game_rules.json` — externalized game constants
 - `Makefile` — `check`, `coverage`, `install-hooks` targets
 - `scripts/check_all.sh` — unified validation script (fmt, clippy, build, test, coverage)

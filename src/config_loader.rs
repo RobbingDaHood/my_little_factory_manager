@@ -5,7 +5,7 @@
 
 use super::config::GameRulesConfig;
 
-static GAME_RULES_JSON: &str = include_str!("../../configurations/general/game_rules.json");
+static GAME_RULES_JSON: &str = include_str!("../configurations/general/game_rules.json");
 
 /// Load game rules from the embedded configuration.
 ///

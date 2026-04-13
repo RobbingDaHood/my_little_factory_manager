@@ -11,7 +11,9 @@ extern crate rocket;
 use rocket_okapi::openapi_get_routes;
 use rocket_okapi::swagger_ui::{make_swagger_ui, SwaggerUIConfig};
 
-pub mod library;
+pub mod config;
+pub mod config_loader;
+pub mod types;
 pub mod version;
 
 use crate::version::get_version;

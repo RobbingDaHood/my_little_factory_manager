@@ -61,10 +61,9 @@ Tokens are the universal currency of the game:
 
 Card effects come in many variants, including:
 
-* **Pure production** — requires no input, produces beneficial tokens in a moderate amount.
+* **Pure production** — requires no input, produces tokens (may include harmful byproducts for higher output).
 * **Conversion** — takes a beneficial token as input, produces beneficial tokens in a larger amount.
 * **Waste removal** — takes a harmful token as input, produces nothing (cleans up pollution/waste).
-* **Boosted production** — produces harmful tokens as a side effect, but generates more beneficial tokens than a clean variant.
 * **Mixed variants** — combinations of the above with varying input/output ratios.
 
 There are many possible variations. The key design principle: **more powerful beneficial output comes with tradeoffs** — either consuming valuable inputs or producing harmful byproducts.
@@ -95,6 +94,7 @@ Each contract has a **list of contract requirements**. Each requirement is an en
 * **Output threshold** (mandatory on every contract) — produce at least N production units.
 * **Harmful token limits** — complete without exceeding a maximum amount of specific harmful tokens.
 * **Card tag restrictions** — certain card tags are unavailable or penalized during this contract.
+* **Turn window** — the contract must be completed between turn X and turn Y (inclusive).
 
 ### Possible Future Requirements
 

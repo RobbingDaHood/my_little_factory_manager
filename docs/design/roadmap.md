@@ -63,9 +63,9 @@ The existing [my_little_card_game](https://github.com/RobbingDaHood/my_little_ca
   - `TokenType` enum — resource/waste types (ProductionUnit, Energy, RawMaterial, Heat, CO2, Waste, Pollution) plus progression tracking (ContractsTierXCompleted)
   - `TokenTag` enum — Beneficial, Harmful, Progression (each token type has a list of tags)
   - `CardTag` enum — card type tags (Production, Transformation, QualityControl, SystemAdjustment, etc.)
-  - `CardEffect` enum — effect variants with input/output token lists (PureProduction, Conversion, WasteRemoval, BoostedProduction, etc.)
-  - `ContractRequirementKind` enum — OutputThreshold, HarmfulTokenLimit, CardTagRestriction
-  - `ContractTier` enum — Tier1, Tier2, Tier3, etc.
+  - `CardEffect` enum — effect variants with input/output token lists (PureProduction, Conversion, WasteRemoval, etc.)
+  - `ContractRequirementKind` enum — OutputThreshold, HarmfulTokenLimit, CardTagRestriction, TurnWindow
+  - `ContractTier` newtype — `ContractTier(pub u32)`, unbounded tier numbering
   - `CardLocation` enum — Library, Deck, Hand, Discard
 - `src/config.rs` — config struct definitions
 - `src/config_loader.rs` — JSON embedding via `include_str!()`

@@ -29,8 +29,8 @@ Key conventions and repository-specific notes
 - Consider using Rust enums for discrete states or variant data; prefer enums over ad-hoc strings or booleans when it improves clarity, type-safety, and enables exhaustive matching.
 
   - When to use enums vs newtypes vs strings:
-    - Use enums for closed sets of variants (ToolCardKind, CardLocation, ContractTier).
-    - Use newtype wrappers (e.g., struct TokenId(String)) when the value is opaque but needs stronger typing.
+    - Use enums for closed sets of variants (CardTag, CardLocation, CardEffect).
+    - Use newtype wrappers (e.g., `struct ContractTier(pub u32)`) when the value is unbounded but needs stronger typing.
     - Use plain strings only for truly dynamic, designer-driven values.
 
   - Examples:

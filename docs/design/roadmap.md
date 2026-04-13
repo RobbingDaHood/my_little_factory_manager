@@ -60,8 +60,8 @@ The existing [my_little_card_game](https://github.com/RobbingDaHood/my_little_ca
 
 **Deliverables**:
 - `src/library/types.rs` — core enums and structs:
-  - `TokenType` enum — resource/waste types (ProductionUnit, Energy, Heat, CO2, Waste, etc.)
-  - `TokenTag` enum — Beneficial, Harmful (each token type has a list of tags)
+  - `TokenType` enum — resource/waste types (ProductionUnit, Energy, RawMaterial, Heat, CO2, Waste, Pollution) plus progression tracking (ContractsTierXCompleted)
+  - `TokenTag` enum — Beneficial, Harmful, Progression (each token type has a list of tags)
   - `CardTag` enum — card type tags (Production, Transformation, QualityControl, SystemAdjustment, etc.)
   - `CardEffect` enum — effect variants with input/output token lists (PureProduction, Conversion, WasteRemoval, BoostedProduction, etc.)
   - `ContractRequirementKind` enum — OutputThreshold, HarmfulTokenLimit, CardTagRestriction

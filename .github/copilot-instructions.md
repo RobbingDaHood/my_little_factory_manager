@@ -34,11 +34,11 @@ Key conventions and repository-specific notes
     - Use plain strings only for truly dynamic, designer-driven values.
 
   - Examples:
-    - ToolCardKind: derive Serialize/Deserialize/JsonSchema and use in API structs:
+    - CardTag: derive Serialize/Deserialize/JsonSchema and use in API structs:
       ```rust
       #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
       #[serde(crate = "rocket::serde")]
-      pub enum ToolCardKind { Production, QualityControl, Transformation, SystemAdjustment }
+      pub enum CardTag { Production, QualityControl, Transformation, SystemAdjustment }
       ```
     - TokenId/newtype:
       ```rust
@@ -62,11 +62,17 @@ Key project files
 - `src/main.rs` — binary entry point
 - `src/lib.rs` — library root, route mounting, `rocket_initialize()`
 - `src/version.rs` — `GET /version` endpoint
+- `src/library/mod.rs` — library module root (types, config, config_loader)
+- `src/library/types.rs` — core enums and structs (TokenType, CardEffect, Contract, etc.)
+- `src/library/config.rs` — config struct definitions (GameRulesConfig)
+- `src/library/config_loader.rs` — JSON config embedding and loading
+- `configurations/general/game_rules.json` — externalized game constants
 - `Makefile` — `check`, `coverage`, `install-hooks` targets
 - `scripts/check_all.sh` — unified validation script (fmt, clippy, build, test, coverage)
 - `rust-toolchain.toml` — nightly Rust toolchain config
 - `.github/workflows/ci.yml` — GitHub Actions CI pipeline
 - `tests/smoke_test.rs` — smoke tests for server endpoints
+- `tests/types_serialization_test.rs` — serialization roundtrip tests for core types
 
 Suggest changes to vision.md and roadmap.md
 

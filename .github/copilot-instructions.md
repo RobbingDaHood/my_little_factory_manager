@@ -56,6 +56,18 @@ Files to check for agent config
 
 - Always respect everything written in the files in the `docs/design` folder; treat those files as authoritative guidance for the repository and follow them without contradiction.
 
+Key project files
+
+- `Cargo.toml` — project dependencies and features
+- `src/main.rs` — binary entry point
+- `src/lib.rs` — library root, route mounting, `rocket_initialize()`
+- `src/version.rs` — `GET /version` endpoint
+- `Makefile` — `check`, `coverage`, `install-hooks` targets
+- `scripts/check_all.sh` — unified validation script (fmt, clippy, build, test, coverage)
+- `rust-toolchain.toml` — nightly Rust toolchain config
+- `.github/workflows/ci.yml` — GitHub Actions CI pipeline
+- `tests/smoke_test.rs` — smoke tests for server endpoints
+
 Suggest changes to vision.md and roadmap.md
 
 - At the end of every change, review `docs/design/vision.md` and `docs/design/roadmap.md` and directly suggest improvements based on new information learned during planning and execution.

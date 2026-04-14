@@ -29,16 +29,16 @@ Key conventions and repository-specific notes
 - Consider using Rust enums for discrete states or variant data; prefer enums over ad-hoc strings or booleans when it improves clarity, type-safety, and enables exhaustive matching.
 
   - When to use enums vs newtypes vs strings:
-    - Use enums for closed sets of variants (ToolCardKind, CardLocation, ContractTier).
-    - Use newtype wrappers (e.g., struct TokenId(String)) when the value is opaque but needs stronger typing.
+    - Use enums for closed sets of variants (CardTag, CardLocation, CardEffect).
+    - Use newtype wrappers (e.g., `struct ContractTier(pub u32)`) when the value is unbounded but needs stronger typing.
     - Use plain strings only for truly dynamic, designer-driven values.
 
   - Examples:
-    - ToolCardKind: derive Serialize/Deserialize/JsonSchema and use in API structs:
+    - CardTag: derive Serialize/Deserialize/JsonSchema and use in API structs:
       ```rust
       #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
       #[serde(crate = "rocket::serde")]
-      pub enum ToolCardKind { Production, QualityControl, Transformation, SystemAdjustment }
+      pub enum CardTag { Production, QualityControl, Transformation, SystemAdjustment }
       ```
     - TokenId/newtype:
       ```rust
@@ -62,11 +62,16 @@ Key project files
 - `src/main.rs` — binary entry point
 - `src/lib.rs` — library root, route mounting, `rocket_initialize()`
 - `src/version.rs` — `GET /version` endpoint
+- `src/types.rs` — core enums and structs (TokenType, CardEffect, Contract, etc.)
+- `src/config.rs` — config struct definitions (GameRulesConfig)
+- `src/config_loader.rs` — JSON config embedding and loading
+- `configurations/general/game_rules.json` — externalized game constants
 - `Makefile` — `check`, `coverage`, `install-hooks` targets
 - `scripts/check_all.sh` — unified validation script (fmt, clippy, build, test, coverage)
 - `rust-toolchain.toml` — nightly Rust toolchain config
 - `.github/workflows/ci.yml` — GitHub Actions CI pipeline
 - `tests/smoke_test.rs` — smoke tests for server endpoints
+- `tests/types_serialization_test.rs` — serialization roundtrip tests for core types
 
 Suggest changes to vision.md and roadmap.md
 

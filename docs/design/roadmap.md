@@ -89,7 +89,10 @@ The existing [my_little_card_game](https://github.com/RobbingDaHood/my_little_ca
   - Player token balances (persisted between contracts)
   - Active contract state
   - Seeded RNG (`rand_pcg::Pcg64`)
-  - Ordered action log for reproducibility
+  - Action dispatch and all game mechanics
+- `src/action_log.rs` — `PlayerAction` enum, `ActionEntry`, `ActionLog` for deterministic replay
+- `src/endpoints.rs` — HTTP handlers: `POST /action`, `GET /state`, `GET /actions/history`
+- `src/starter_cards.rs` — starter deck card definitions (pure production cards with varying output)
 - Card playing: play one card from hand → apply its card effects (add/remove tokens) → draw a replacement card → move played card to discard
 - Discard for baseline benefit: discard any card for small fixed progress
 - Contract auto-completion: after each card play, check if all requirements are met; if so, subtract relevant tokens and conclude the contract

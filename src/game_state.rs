@@ -26,15 +26,36 @@ use schemars::JsonSchema;
 // Action result types
 // ---------------------------------------------------------------------------
 
-/// Outcome of processing a player action.
+/// Typed outcome of processing a player action.
+///
+/// Each `PlayerAction` has dedicated success and error variants, making the
+/// API response self-describing and exhaustive.
 #[derive(Debug, Clone, Serialize, JsonSchema)]
-#[serde(crate = "rocket::serde")]
-pub struct ActionResult {
-    pub success: bool,
-    pub message: String,
-    /// If a contract was just completed, its details.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub contract_completed: Option<Contract>,
+#[serde(tag = "result_type", crate = "rocket::serde")]
+pub enum ActionResult {
+    // -- success variants --------------------------------------------------
+    NewGameStarted {
+        seed: u64,
+    },
+    ContractAccepted,
+    CardPlayed {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        contract_completed: Option<Contract>,
+    },
+    CardDiscarded {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        contract_completed: Option<Contract>,
+    },
+
+    // -- error variants ----------------------------------------------------
+    ContractAlreadyActive,
+    NoContractOffered,
+    NoActiveContract,
+    InvalidHandIndex {
+        index: usize,
+        hand_size: usize,
+    },
+    InsufficientTokens,
 }
 
 // ---------------------------------------------------------------------------
@@ -202,125 +223,79 @@ impl GameState {
         let log = self.action_log.clone();
         *self = new_state;
         self.action_log = log;
-        ActionResult {
-            success: true,
-            message: format!("New game started with seed {}", self.seed),
-            contract_completed: None,
-        }
+        ActionResult::NewGameStarted { seed: self.seed }
     }
 
     fn handle_accept_contract(&mut self) -> ActionResult {
         if self.active_contract.is_some() {
-            return ActionResult {
-                success: false,
-                message: "A contract is already active. Complete it first.".into(),
-                contract_completed: None,
-            };
+            return ActionResult::ContractAlreadyActive;
         }
 
         match self.offered_contract.take() {
             Some(contract) => {
                 self.active_contract = Some(contract);
                 self.turn_count = 0;
-                ActionResult {
-                    success: true,
-                    message: "Contract accepted.".into(),
-                    contract_completed: None,
-                }
+                ActionResult::ContractAccepted
             }
-            None => ActionResult {
-                success: false,
-                message: "No contract is currently offered.".into(),
-                contract_completed: None,
-            },
+            None => ActionResult::NoContractOffered,
         }
     }
 
     fn handle_play_card(&mut self, hand_index: usize) -> ActionResult {
         if self.active_contract.is_none() {
-            return ActionResult {
-                success: false,
-                message: "No active contract. Accept a contract first.".into(),
-                contract_completed: None,
-            };
+            return ActionResult::NoActiveContract;
         }
 
         if hand_index >= self.hand.len() {
-            return ActionResult {
-                success: false,
-                message: format!(
-                    "Invalid hand index {}. Hand has {} cards.",
-                    hand_index,
-                    self.hand.len()
-                ),
-                contract_completed: None,
+            return ActionResult::InvalidHandIndex {
+                index: hand_index,
+                hand_size: self.hand.len(),
             };
         }
 
         let card_idx = self.hand[hand_index];
         let card = &self.card_library[card_idx];
 
-        // Check if the player can afford all input costs
         if !self.can_afford_effects(&card.effects) {
-            return ActionResult {
-                success: false,
-                message: "Insufficient tokens for card input costs.".into(),
-                contract_completed: None,
-            };
+            return ActionResult::InsufficientTokens;
         }
 
-        // Apply all card effects
         let card_clone = card.clone();
         self.apply_effects(&card_clone.effects);
 
-        // Move card from hand to discard
         self.hand.remove(hand_index);
         self.discard.push(card_idx);
 
-        // Draw replacement
         self.draw_card();
-
         self.turn_count += 1;
 
-        // Check contract auto-completion
-        self.check_and_complete_contract()
+        let contract_completed = self.try_complete_contract();
+        ActionResult::CardPlayed { contract_completed }
     }
 
     fn handle_discard_card(&mut self, hand_index: usize) -> ActionResult {
         if self.active_contract.is_none() {
-            return ActionResult {
-                success: false,
-                message: "No active contract. Accept a contract first.".into(),
-                contract_completed: None,
-            };
+            return ActionResult::NoActiveContract;
         }
 
         if hand_index >= self.hand.len() {
-            return ActionResult {
-                success: false,
-                message: format!(
-                    "Invalid hand index {}. Hand has {} cards.",
-                    hand_index,
-                    self.hand.len()
-                ),
-                contract_completed: None,
+            return ActionResult::InvalidHandIndex {
+                index: hand_index,
+                hand_size: self.hand.len(),
             };
         }
 
         let card_idx = self.hand.remove(hand_index);
         self.discard.push(card_idx);
 
-        // Baseline production bonus
         let bonus = self.rules.general.discard_production_unit_bonus;
         *self.tokens.entry(TokenType::ProductionUnit).or_insert(0) += bonus;
 
-        // Draw replacement
         self.draw_card();
-
         self.turn_count += 1;
 
-        // Check contract auto-completion
-        self.check_and_complete_contract()
+        let contract_completed = self.try_complete_contract();
+        ActionResult::CardDiscarded { contract_completed }
     }
 
     // -------------------------------------------------------------------
@@ -419,41 +394,20 @@ impl GameState {
         self.offered_contract = Some(contract);
     }
 
-    fn check_and_complete_contract(&mut self) -> ActionResult {
-        let contract = match &self.active_contract {
-            Some(c) => c.clone(),
-            None => {
-                return ActionResult {
-                    success: true,
-                    message: "Card played.".into(),
-                    contract_completed: None,
-                }
-            }
-        };
+    fn try_complete_contract(&mut self) -> Option<Contract> {
+        let contract = self.active_contract.as_ref()?.clone();
 
-        if self.all_requirements_met(&contract) {
-            // Subtract required tokens
-            self.subtract_contract_tokens(&contract);
-            self.contracts_completed += 1;
-            self.active_contract = None;
-            self.turn_count = 0;
-            self.generate_offered_contract();
-
-            ActionResult {
-                success: true,
-                message: format!(
-                    "Contract completed! ({} total). A new contract has been offered.",
-                    self.contracts_completed
-                ),
-                contract_completed: Some(contract),
-            }
-        } else {
-            ActionResult {
-                success: true,
-                message: "Card played.".into(),
-                contract_completed: None,
-            }
+        if !self.all_requirements_met(&contract) {
+            return None;
         }
+
+        self.subtract_contract_tokens(&contract);
+        self.contracts_completed += 1;
+        self.active_contract = None;
+        self.turn_count = 0;
+        self.generate_offered_contract();
+
+        Some(contract)
     }
 
     fn all_requirements_met(&self, contract: &Contract) -> bool {

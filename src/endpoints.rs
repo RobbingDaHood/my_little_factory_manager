@@ -14,8 +14,8 @@ use crate::game_state::{ActionResult, GameState, GameStateView};
 /// Dispatch a player action.
 ///
 /// Accepts a JSON payload describing the action (NewGame, AcceptContract,
-/// PlayCard, DiscardCard) and returns the result including
-/// whether the action succeeded and any contract completion details.
+/// PlayCard, DiscardCard) and returns a typed result variant matching the
+/// action on success, or a specific error variant on failure.
 #[openapi]
 #[post("/action", format = "json", data = "<action>")]
 pub fn post_action(

@@ -46,7 +46,8 @@ fn new_game_initializes_state() {
     let client = client();
     let (status, result) = post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
     assert_eq!(status, Status::Ok);
-    assert_eq!(result["success"], true);
+    assert_eq!(result["result_type"], "NewGameStarted");
+    assert_eq!(result["seed"], 42);
 
     let state = get_state(&client);
     assert_eq!(state["seed"], 42);
@@ -65,7 +66,7 @@ fn new_game_without_seed_generates_random_seed() {
     let client = client();
     let (status, result) = post_action(&client, r#"{"action_type":"NewGame","seed":null}"#);
     assert_eq!(status, Status::Ok);
-    assert_eq!(result["success"], true);
+    assert_eq!(result["result_type"], "NewGameStarted");
 
     let state = get_state(&client);
     assert!(state["seed"].is_u64(), "should have a seed");
@@ -86,7 +87,7 @@ fn accept_contract_activates_offered_contract() {
 
     let (status, result) = post_action(&client, r#"{"action_type":"AcceptContract"}"#);
     assert_eq!(status, Status::Ok);
-    assert_eq!(result["success"], true);
+    assert_eq!(result["result_type"], "ContractAccepted");
 
     let state_after = get_state(&client);
     assert!(state_after["active_contract"].is_object());
@@ -102,7 +103,7 @@ fn accept_contract_fails_when_already_active() {
 
     let (status, result) = post_action(&client, r#"{"action_type":"AcceptContract"}"#);
     assert_eq!(status, Status::Ok);
-    assert_eq!(result["success"], false);
+    assert_eq!(result["result_type"], "ContractAlreadyActive");
 }
 
 // ---------------------------------------------------------------------------
@@ -123,7 +124,7 @@ fn play_card_adds_tokens_and_moves_card() {
 
     let (status, result) = post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
     assert_eq!(status, Status::Ok);
-    assert_eq!(result["success"], true);
+    assert_eq!(result["result_type"], "CardPlayed");
 
     let state_after = get_state(&client);
     let pu_after = state_after["tokens"]["ProductionUnit"]
@@ -145,7 +146,7 @@ fn play_card_fails_without_active_contract() {
 
     let (status, result) = post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
     assert_eq!(status, Status::Ok);
-    assert_eq!(result["success"], false);
+    assert_eq!(result["result_type"], "NoActiveContract");
 }
 
 #[test]
@@ -156,7 +157,8 @@ fn play_card_fails_with_invalid_index() {
 
     let (status, result) = post_action(&client, r#"{"action_type":"PlayCard","hand_index":99}"#);
     assert_eq!(status, Status::Ok);
-    assert_eq!(result["success"], false);
+    assert_eq!(result["result_type"], "InvalidHandIndex");
+    assert_eq!(result["index"], 99);
 }
 
 // ---------------------------------------------------------------------------
@@ -171,7 +173,7 @@ fn discard_card_gives_baseline_bonus() {
 
     let (status, result) = post_action(&client, r#"{"action_type":"DiscardCard","hand_index":0}"#);
     assert_eq!(status, Status::Ok);
-    assert_eq!(result["success"], true);
+    assert_eq!(result["result_type"], "CardDiscarded");
 
     let state = get_state(&client);
     let pu = state["tokens"]["ProductionUnit"]
@@ -189,7 +191,7 @@ fn discard_card_fails_without_active_contract() {
 
     let (status, result) = post_action(&client, r#"{"action_type":"DiscardCard","hand_index":0}"#);
     assert_eq!(status, Status::Ok);
-    assert_eq!(result["success"], false);
+    assert_eq!(result["result_type"], "NoActiveContract");
 }
 
 // ---------------------------------------------------------------------------
@@ -294,7 +296,7 @@ fn tokens_persist_between_contracts() {
 
     // Accept the new contract
     let (_, accept_result) = post_action(&client, r#"{"action_type":"AcceptContract"}"#);
-    assert_eq!(accept_result["success"], true);
+    assert_eq!(accept_result["result_type"], "ContractAccepted");
 
     // Verify tokens persist into the new contract
     let state_new_contract = get_state(&client);

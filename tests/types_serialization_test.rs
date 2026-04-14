@@ -18,8 +18,8 @@ fn token_type_serialization_roundtrip() {
         TokenType::CO2,
         TokenType::Waste,
         TokenType::Pollution,
-        TokenType::ContractsTier1Completed,
-        TokenType::ContractsTier5Completed,
+        TokenType::ContractsTierCompleted(1),
+        TokenType::ContractsTierCompleted(5),
     ];
     for token in &tokens {
         let json = serde_json::to_string(token).expect("serialize TokenType");
@@ -64,11 +64,11 @@ fn harmful_tokens_have_harmful_tag() {
 #[test]
 fn progression_tokens_have_progression_tag() {
     let progression = vec![
-        TokenType::ContractsTier1Completed,
-        TokenType::ContractsTier2Completed,
-        TokenType::ContractsTier3Completed,
-        TokenType::ContractsTier4Completed,
-        TokenType::ContractsTier5Completed,
+        TokenType::ContractsTierCompleted(1),
+        TokenType::ContractsTierCompleted(2),
+        TokenType::ContractsTierCompleted(3),
+        TokenType::ContractsTierCompleted(10),
+        TokenType::ContractsTierCompleted(100),
     ];
     for token in &progression {
         let tags = token.tags();
@@ -89,11 +89,9 @@ fn every_token_type_has_at_least_one_tag() {
         TokenType::CO2,
         TokenType::Waste,
         TokenType::Pollution,
-        TokenType::ContractsTier1Completed,
-        TokenType::ContractsTier2Completed,
-        TokenType::ContractsTier3Completed,
-        TokenType::ContractsTier4Completed,
-        TokenType::ContractsTier5Completed,
+        TokenType::ContractsTierCompleted(1),
+        TokenType::ContractsTierCompleted(2),
+        TokenType::ContractsTierCompleted(99),
     ];
     for token in &all_tokens {
         assert!(

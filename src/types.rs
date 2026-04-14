@@ -33,16 +33,8 @@ pub enum TokenType {
     Pollution,
 
     // Progression tracking
-    /// Number of Tier 1 contracts completed.
-    ContractsTier1Completed,
-    /// Number of Tier 2 contracts completed.
-    ContractsTier2Completed,
-    /// Number of Tier 3 contracts completed.
-    ContractsTier3Completed,
-    /// Number of Tier 4 contracts completed.
-    ContractsTier4Completed,
-    /// Number of Tier 5 contracts completed.
-    ContractsTier5Completed,
+    /// Number of contracts completed for a given tier (1-based, unbounded).
+    ContractsTierCompleted(u32),
 }
 
 /// Classification tags for token types.
@@ -63,11 +55,7 @@ impl TokenType {
         match self {
             Self::ProductionUnit | Self::Energy | Self::RawMaterial => &[TokenTag::Beneficial],
             Self::Heat | Self::CO2 | Self::Waste | Self::Pollution => &[TokenTag::Harmful],
-            Self::ContractsTier1Completed
-            | Self::ContractsTier2Completed
-            | Self::ContractsTier3Completed
-            | Self::ContractsTier4Completed
-            | Self::ContractsTier5Completed => &[TokenTag::Progression],
+            Self::ContractsTierCompleted(_) => &[TokenTag::Progression],
         }
     }
 }

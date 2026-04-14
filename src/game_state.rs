@@ -6,7 +6,6 @@
 
 use std::collections::HashMap;
 
-use rand::seq::SliceRandom;
 use rand::RngCore;
 use rand_pcg::Pcg64;
 
@@ -15,8 +14,8 @@ use crate::config::GameRulesConfig;
 use crate::config_loader::load_game_rules;
 use crate::starter_cards::create_starter_deck;
 use crate::types::{
-    CardEffect, CardTag, Contract, ContractRequirementKind, ContractTier, PlayerActionCard,
-    TierContracts, TokenAmount, TokenType,
+    CardCounts, CardEffect, CardEntry, CardTag, Contract, ContractRequirementKind, ContractTier,
+    PlayerActionCard, TierContracts, TokenAmount, TokenType,
 };
 
 use rocket::serde::Serialize;
@@ -71,9 +70,7 @@ pub enum ActionResult {
 pub struct GameStateView {
     pub seed: u64,
     pub turn_count: u32,
-    pub hand: Vec<PlayerActionCard>,
-    pub deck_size: usize,
-    pub discard_size: usize,
+    pub cards: Vec<CardEntry>,
     pub tokens: Vec<TokenAmount>,
     pub active_contract: Option<Contract>,
     pub offered_contracts: Vec<TierContracts>,
@@ -84,11 +81,8 @@ pub struct GameStateView {
 // ---------------------------------------------------------------------------
 
 pub struct GameState {
-    // Card management
-    card_library: Vec<PlayerActionCard>,
-    deck: Vec<usize>,
-    hand: Vec<usize>,
-    discard: Vec<usize>,
+    // Card management (count-based)
+    cards: Vec<CardEntry>,
 
     // Token balances
     tokens: HashMap<TokenType, u32>,
@@ -135,22 +129,16 @@ impl GameState {
             0xa02b_dbf7_bb3c_0a7a_c28f_5c28_f5c2_8f5c,
         );
 
-        let (library, mut deck_indices) = create_starter_deck();
-
-        // Shuffle the deck
-        deck_indices.shuffle(&mut rng);
+        let mut cards = create_starter_deck();
 
         // Deal starting hand
-        let hand_size = rules.general.starting_hand_size as usize;
-        let hand: Vec<usize> = deck_indices
-            .drain(deck_indices.len().saturating_sub(hand_size)..)
-            .collect();
+        let hand_size = rules.general.starting_hand_size;
+        for _ in 0..hand_size {
+            draw_from_deck(&mut cards, &mut rng);
+        }
 
         let mut state = Self {
-            card_library: library,
-            deck: deck_indices,
-            hand,
-            discard: Vec::new(),
+            cards,
             tokens: HashMap::new(),
             active_contract: None,
             offered_contracts: Vec::new(),
@@ -175,13 +163,7 @@ impl GameState {
         GameStateView {
             seed: self.seed,
             turn_count: self.turn_count,
-            hand: self
-                .hand
-                .iter()
-                .map(|&i| self.card_library[i].clone())
-                .collect(),
-            deck_size: self.deck.len(),
-            discard_size: self.discard.len(),
+            cards: self.cards.clone(),
             tokens: {
                 let mut t: Vec<_> = self
                     .tokens
@@ -232,7 +214,6 @@ impl GameState {
 
     fn handle_new_game(&mut self, seed: Option<u64>) -> ActionResult {
         let new_state = Self::new_with_rules(seed, self.rules.clone());
-        // Preserve the action log entry we just appended
         let log = self.action_log.clone();
         *self = new_state;
         self.action_log = log;
@@ -255,7 +236,6 @@ impl GameState {
                 self.offered_contracts[tier_index]
                     .contracts
                     .remove(contract_index);
-                // Remove the tier group if no contracts remain
                 if self.offered_contracts[tier_index].contracts.is_empty() {
                     self.offered_contracts.remove(tier_index);
                 }
@@ -275,27 +255,27 @@ impl GameState {
             return ActionResult::NoActiveContract;
         }
 
-        if hand_index >= self.hand.len() {
+        let hand_size = hand_total(&self.cards);
+        if hand_index >= hand_size {
             return ActionResult::InvalidHandIndex {
                 index: hand_index,
-                hand_size: self.hand.len(),
+                hand_size,
             };
         }
 
-        let card_idx = self.hand[hand_index];
-        let card = &self.card_library[card_idx];
+        let entry_idx = resolve_hand_index(&self.cards, hand_index);
+        let card = self.cards[entry_idx].card.clone();
 
         if !self.can_afford_effects(&card.effects) {
             return ActionResult::InsufficientTokens;
         }
 
-        let card_clone = card.clone();
-        self.apply_effects(&card_clone.effects);
+        self.apply_effects(&card.effects);
 
-        self.hand.remove(hand_index);
-        self.discard.push(card_idx);
+        self.cards[entry_idx].counts.hand -= 1;
+        self.cards[entry_idx].counts.discard += 1;
 
-        self.draw_card();
+        draw_from_deck(&mut self.cards, &mut self.rng);
         self.turn_count += 1;
 
         let contract_completed = self.try_complete_contract();
@@ -307,20 +287,22 @@ impl GameState {
             return ActionResult::NoActiveContract;
         }
 
-        if hand_index >= self.hand.len() {
+        let hand_size = hand_total(&self.cards);
+        if hand_index >= hand_size {
             return ActionResult::InvalidHandIndex {
                 index: hand_index,
-                hand_size: self.hand.len(),
+                hand_size,
             };
         }
 
-        let card_idx = self.hand.remove(hand_index);
-        self.discard.push(card_idx);
+        let entry_idx = resolve_hand_index(&self.cards, hand_index);
+        self.cards[entry_idx].counts.hand -= 1;
+        self.cards[entry_idx].counts.discard += 1;
 
         let bonus = self.rules.general.discard_production_unit_bonus;
         *self.tokens.entry(TokenType::ProductionUnit).or_insert(0) += bonus;
 
-        self.draw_card();
+        draw_from_deck(&mut self.cards, &mut self.rng);
         self.turn_count += 1;
 
         let contract_completed = self.try_complete_contract();
@@ -328,38 +310,16 @@ impl GameState {
     }
 
     // -------------------------------------------------------------------
-    // Card mechanics
-    // -------------------------------------------------------------------
-
-    /// Draw one card from the deck into the hand. If the deck is empty,
-    /// shuffles the discard pile back into the deck first.
-    fn draw_card(&mut self) {
-        if self.deck.is_empty() && !self.discard.is_empty() {
-            self.shuffle_discard_into_deck();
-        }
-        if let Some(card_idx) = self.deck.pop() {
-            self.hand.push(card_idx);
-        }
-    }
-
-    fn shuffle_discard_into_deck(&mut self) {
-        self.deck.append(&mut self.discard);
-        self.deck.shuffle(&mut self.rng);
-    }
-
-    // -------------------------------------------------------------------
     // Token mechanics
     // -------------------------------------------------------------------
 
     fn can_afford_effects(&self, effects: &[CardEffect]) -> bool {
-        // Accumulate all required inputs
         let mut required: HashMap<TokenType, u32> = HashMap::new();
         for effect in effects {
             for input in &effect.inputs {
                 *required.entry(input.token_type.clone()).or_insert(0) += input.amount;
             }
         }
-        // Check availability
         for (token_type, needed) in &required {
             let available = self.tokens.get(token_type).copied().unwrap_or(0);
             if available < *needed {
@@ -436,11 +396,33 @@ impl GameState {
 
         self.subtract_contract_tokens(&contract);
         self.add_tokens(&TokenType::ContractsTierCompleted(contract.tier.0), 1);
+
+        // Add reward card to library and deck
+        self.add_reward_card(&contract.reward_card);
+
         self.active_contract = None;
         self.turn_count = 0;
         self.generate_offered_contracts();
 
         Some(contract)
+    }
+
+    fn add_reward_card(&mut self, card: &PlayerActionCard) {
+        // Check if an identical card already exists in the library
+        if let Some(entry) = self.cards.iter_mut().find(|e| e.card == *card) {
+            entry.counts.library += 1;
+            entry.counts.deck += 1;
+        } else {
+            self.cards.push(CardEntry {
+                card: card.clone(),
+                counts: CardCounts {
+                    library: 1,
+                    deck: 1,
+                    hand: 0,
+                    discard: 0,
+                },
+            });
+        }
     }
 
     fn all_requirements_met(&self, contract: &Contract) -> bool {
@@ -472,6 +454,67 @@ impl GameState {
             {
                 self.remove_tokens(token_type, *min_amount);
             }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Card helper functions (free functions operating on Vec<CardEntry>)
+// ---------------------------------------------------------------------------
+
+/// Total number of cards currently in hand.
+fn hand_total(cards: &[CardEntry]) -> usize {
+    cards.iter().map(|e| e.counts.hand as usize).sum()
+}
+
+/// Given a hand_index (position in the expanded hand), return the
+/// index into the cards Vec for the corresponding entry.
+fn resolve_hand_index(cards: &[CardEntry], hand_index: usize) -> usize {
+    let mut remaining = hand_index;
+    for (i, entry) in cards.iter().enumerate() {
+        let count = entry.counts.hand as usize;
+        if remaining < count {
+            return i;
+        }
+        remaining -= count;
+    }
+    unreachable!("hand_index validated before calling resolve_hand_index")
+}
+
+/// Draw one card from deck to hand using weighted random selection.
+/// If deck is empty, shuffles discard back into deck first.
+fn draw_from_deck(cards: &mut [CardEntry], rng: &mut Pcg64) {
+    let deck_total: u32 = cards.iter().map(|e| e.counts.deck).sum();
+
+    if deck_total == 0 {
+        // Shuffle discard into deck
+        let discard_total: u32 = cards.iter().map(|e| e.counts.discard).sum();
+        if discard_total == 0 {
+            return;
+        }
+        for entry in cards.iter_mut() {
+            entry.counts.deck += entry.counts.discard;
+            entry.counts.discard = 0;
+        }
+        // Now draw from the freshly reshuffled deck
+        let new_deck_total: u32 = cards.iter().map(|e| e.counts.deck).sum();
+        draw_weighted(cards, rng, new_deck_total);
+    } else {
+        draw_weighted(cards, rng, deck_total);
+    }
+}
+
+/// Pick a random card from the deck (weighted by deck counts) and move one
+/// copy from deck to hand.
+fn draw_weighted(cards: &mut [CardEntry], rng: &mut Pcg64, deck_total: u32) {
+    let roll = rng.next_u32() % deck_total;
+    let mut cumulative = 0u32;
+    for entry in cards.iter_mut() {
+        cumulative += entry.counts.deck;
+        if roll < cumulative {
+            entry.counts.deck -= 1;
+            entry.counts.hand += 1;
+            return;
         }
     }
 }

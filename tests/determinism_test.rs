@@ -83,15 +83,14 @@ fn different_seeds_produce_different_state() {
     let state1 = run_game_sequence(&client, 111);
     let state2 = run_game_sequence(&client, 222);
 
-    // The states should differ (different seeds → different shuffle → different hands)
-    // We check tokens or hand as the distinguishing factor
-    let hand1 = &state1["hand"];
-    let hand2 = &state2["hand"];
+    // The states should differ (different seeds → different draws → different cards)
+    let cards1 = &state1["cards"];
+    let cards2 = &state2["cards"];
     let tokens1 = &state1["tokens"];
     let tokens2 = &state2["tokens"];
 
     assert!(
-        hand1 != hand2 || tokens1 != tokens2,
+        cards1 != cards2 || tokens1 != tokens2,
         "different seeds should produce different game states"
     );
 }
@@ -187,11 +186,14 @@ fn same_seed_deals_same_hand() {
 
     post_action(&client, r#"{"action_type":"NewGame","seed":555}"#);
     let state1 = get_state(&client);
-    let hand1 = state1["hand"].clone();
+    let cards1 = state1["cards"].clone();
 
     post_action(&client, r#"{"action_type":"NewGame","seed":555}"#);
     let state2 = get_state(&client);
-    let hand2 = state2["hand"].clone();
+    let cards2 = state2["cards"].clone();
 
-    assert_eq!(hand1, hand2, "same seed should deal the same starting hand");
+    assert_eq!(
+        cards1, cards2,
+        "same seed should deal the same starting hand"
+    );
 }

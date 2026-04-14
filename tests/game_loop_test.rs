@@ -50,6 +50,16 @@ fn token_amount(state: &serde_json::Value, token_type_json: &str) -> u64 {
         .unwrap_or(0)
 }
 
+/// Sum a specific count field across all card entries.
+fn card_count_total(state: &serde_json::Value, field: &str) -> u64 {
+    state["cards"]
+        .as_array()
+        .expect("cards array")
+        .iter()
+        .map(|entry| entry["counts"][field].as_u64().unwrap_or(0))
+        .sum()
+}
+
 // ---------------------------------------------------------------------------
 // New game
 // ---------------------------------------------------------------------------
@@ -65,7 +75,7 @@ fn new_game_initializes_state() {
     let state = get_state(&client);
     assert_eq!(state["seed"], 42);
     assert_eq!(state["turn_count"], 0);
-    assert_eq!(state["hand"].as_array().expect("hand array").len(), 5);
+    assert_eq!(card_count_total(&state, "hand"), 5);
     assert!(
         !state["offered_contracts"]
             .as_array()
@@ -161,7 +171,7 @@ fn play_card_adds_tokens_and_moves_card() {
     );
     assert_eq!(state_after["turn_count"], 1);
     // Hand should still have 5 cards (drew a replacement)
-    assert_eq!(state_after["hand"].as_array().expect("hand").len(), 5);
+    assert_eq!(card_count_total(&state_after, "hand"), 5);
 }
 
 #[test]
@@ -370,7 +380,7 @@ fn hand_persists_between_contracts() {
     assert!(completed, "first contract should complete");
 
     let state = get_state(&client);
-    let hand_size = state["hand"].as_array().expect("hand").len();
+    let hand_size = card_count_total(&state, "hand");
     assert!(
         hand_size > 0,
         "hand should persist after contract completion"
@@ -405,7 +415,7 @@ fn deck_recycles_discard_when_empty() {
     // After playing 15 cards from a 10-card deck, at least one reshuffle must have occurred.
     // The hand should still have cards.
     let state = get_state(&client);
-    let hand_size = state["hand"].as_array().expect("hand").len();
+    let hand_size = card_count_total(&state, "hand");
     assert!(hand_size > 0, "hand should have cards after deck recycling");
 }
 
@@ -458,9 +468,7 @@ fn state_endpoint_returns_complete_view() {
     let state = get_state(&client);
     assert!(state.get("seed").is_some());
     assert!(state.get("turn_count").is_some());
-    assert!(state.get("hand").is_some());
-    assert!(state.get("deck_size").is_some());
-    assert!(state.get("discard_size").is_some());
+    assert!(state.get("cards").is_some());
     assert!(state.get("tokens").is_some());
     assert!(state.get("offered_contracts").is_some());
 }

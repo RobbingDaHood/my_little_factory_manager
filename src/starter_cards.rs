@@ -3,11 +3,13 @@
 //! All starter cards are pure production (no inputs). They vary only
 //! in the amount of ProductionUnit they produce.
 
-use crate::types::{CardEffect, CardTag, PlayerActionCard, TokenAmount, TokenType};
+use crate::types::{
+    CardCounts, CardEffect, CardEntry, CardTag, PlayerActionCard, TokenAmount, TokenType,
+};
 
 /// A starter card definition: how many copies and the card template.
 struct StarterCardDef {
-    copies: usize,
+    copies: u32,
     card: PlayerActionCard,
 }
 
@@ -42,25 +44,22 @@ fn starter_card_defs() -> Vec<StarterCardDef> {
     ]
 }
 
-/// Build the starter card library and return (library, deck_indices).
+/// Build the starter card library as a list of `CardEntry` values.
 ///
-/// The library contains one entry per unique card template.
-/// The deck indices list references into the library, with the correct
-/// number of copies for each template.
-pub fn create_starter_deck() -> (Vec<PlayerActionCard>, Vec<usize>) {
-    let defs = starter_card_defs();
-    let mut library = Vec::new();
-    let mut deck_indices = Vec::new();
-
-    for def in defs {
-        let library_index = library.len();
-        library.push(def.card);
-        for _ in 0..def.copies {
-            deck_indices.push(library_index);
-        }
-    }
-
-    (library, deck_indices)
+/// Each entry starts with all copies in `deck` (and `library` set to match).
+pub fn create_starter_deck() -> Vec<CardEntry> {
+    starter_card_defs()
+        .into_iter()
+        .map(|def| CardEntry {
+            card: def.card,
+            counts: CardCounts {
+                library: def.copies,
+                deck: def.copies,
+                hand: 0,
+                discard: 0,
+            },
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -69,29 +68,32 @@ mod tests {
 
     #[test]
     fn starter_deck_has_correct_size() {
-        let (library, deck) = create_starter_deck();
-        assert_eq!(deck.len(), 10, "starter deck should have 10 cards");
-        assert_eq!(library.len(), 3, "starter library should have 3 card types");
+        let entries = create_starter_deck();
+        let total_cards: u32 = entries.iter().map(|e| e.counts.library).sum();
+        assert_eq!(total_cards, 10, "starter deck should have 10 total cards");
+        assert_eq!(entries.len(), 3, "starter library should have 3 card types");
     }
 
     #[test]
-    fn all_deck_indices_valid() {
-        let (library, deck) = create_starter_deck();
-        for &idx in &deck {
-            assert!(idx < library.len(), "deck index {idx} out of bounds");
+    fn all_copies_start_in_deck() {
+        let entries = create_starter_deck();
+        for entry in &entries {
+            assert_eq!(entry.counts.deck, entry.counts.library);
+            assert_eq!(entry.counts.hand, 0);
+            assert_eq!(entry.counts.discard, 0);
         }
     }
 
     #[test]
     fn all_starter_cards_are_pure_production() {
-        let (library, _) = create_starter_deck();
-        for card in &library {
-            assert_eq!(card.tags, vec![CardTag::Production]);
-            assert_eq!(card.effects.len(), 1);
-            assert!(card.effects[0].inputs.is_empty());
-            assert_eq!(card.effects[0].outputs.len(), 1);
+        let entries = create_starter_deck();
+        for entry in &entries {
+            assert_eq!(entry.card.tags, vec![CardTag::Production]);
+            assert_eq!(entry.card.effects.len(), 1);
+            assert!(entry.card.effects[0].inputs.is_empty());
+            assert_eq!(entry.card.effects[0].outputs.len(), 1);
             assert_eq!(
-                card.effects[0].outputs[0].token_type,
+                entry.card.effects[0].outputs[0].token_type,
                 TokenType::ProductionUnit
             );
         }

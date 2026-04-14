@@ -65,6 +65,10 @@ Key project files
 - `src/types.rs` — core enums and structs (TokenType, CardEffect, Contract, etc.)
 - `src/config.rs` — config struct definitions (GameRulesConfig)
 - `src/config_loader.rs` — JSON config embedding and loading
+- `src/game_state.rs` — `GameState` struct, game mechanics (card/token/contract operations), action dispatch
+- `src/action_log.rs` — `PlayerAction` enum, `ActionEntry`, `ActionLog` for deterministic replay
+- `src/endpoints.rs` — HTTP handlers: `POST /action`, `GET /state`, `GET /actions/history`
+- `src/starter_cards.rs` — starter deck card definitions (3 pure production types)
 - `configurations/general/game_rules.json` — externalized game constants
 - `Makefile` — `check`, `coverage`, `install-hooks` targets
 - `scripts/check_all.sh` — unified validation script (fmt, clippy, build, test, coverage)
@@ -72,6 +76,8 @@ Key project files
 - `.github/workflows/ci.yml` — GitHub Actions CI pipeline
 - `tests/smoke_test.rs` — smoke tests for server endpoints
 - `tests/types_serialization_test.rs` — serialization roundtrip tests for core types
+- `tests/game_loop_test.rs` — integration tests for the basic game loop (full cycle, errors, persistence)
+- `tests/determinism_test.rs` — deterministic replay and seed reproducibility tests
 
 Suggest changes to vision.md and roadmap.md
 

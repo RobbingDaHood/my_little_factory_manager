@@ -1,0 +1,435 @@
+//! Integration tests for the basic game loop.
+//!
+//! Exercises the full cycle: new game → accept contract → play cards →
+//! auto-complete → new contract, plus edge cases and error handling.
+
+use my_little_factory_manager::rocket_initialize;
+use rocket::http::{ContentType, Status};
+use rocket::local::blocking::Client;
+
+fn client() -> Client {
+    Client::tracked(rocket_initialize()).expect("valid rocket instance")
+}
+
+fn post_action(client: &Client, json: &str) -> (Status, serde_json::Value) {
+    let response = client
+        .post("/action")
+        .header(ContentType::JSON)
+        .body(json)
+        .dispatch();
+    let status = response.status();
+    let body = response.into_string().expect("response body");
+    let value: serde_json::Value = serde_json::from_str(&body).expect("valid json");
+    (status, value)
+}
+
+fn get_state(client: &Client) -> serde_json::Value {
+    let response = client.get("/state").dispatch();
+    assert_eq!(response.status(), Status::Ok);
+    let body = response.into_string().expect("response body");
+    serde_json::from_str(&body).expect("valid json")
+}
+
+fn get_history(client: &Client) -> serde_json::Value {
+    let response = client.get("/actions/history").dispatch();
+    assert_eq!(response.status(), Status::Ok);
+    let body = response.into_string().expect("response body");
+    serde_json::from_str(&body).expect("valid json")
+}
+
+// ---------------------------------------------------------------------------
+// New game
+// ---------------------------------------------------------------------------
+
+#[test]
+fn new_game_initializes_state() {
+    let client = client();
+    let (status, result) = post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
+    assert_eq!(status, Status::Ok);
+    assert_eq!(result["success"], true);
+
+    let state = get_state(&client);
+    assert_eq!(state["seed"], 42);
+    assert_eq!(state["turn_count"], 0);
+    assert_eq!(state["contracts_completed"], 0);
+    assert_eq!(state["hand"].as_array().expect("hand array").len(), 5);
+    assert!(
+        state["offered_contract"].is_object(),
+        "should have an offered contract"
+    );
+    assert!(state["active_contract"].is_null(), "no active contract yet");
+}
+
+#[test]
+fn new_game_without_seed_generates_random_seed() {
+    let client = client();
+    let (status, result) = post_action(&client, r#"{"action_type":"NewGame","seed":null}"#);
+    assert_eq!(status, Status::Ok);
+    assert_eq!(result["success"], true);
+
+    let state = get_state(&client);
+    assert!(state["seed"].is_u64(), "should have a seed");
+}
+
+// ---------------------------------------------------------------------------
+// Accept contract
+// ---------------------------------------------------------------------------
+
+#[test]
+fn accept_contract_activates_offered_contract() {
+    let client = client();
+    post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
+
+    let state_before = get_state(&client);
+    let offered = state_before["offered_contract"].clone();
+    assert!(offered.is_object());
+
+    let (status, result) = post_action(&client, r#"{"action_type":"AcceptContract"}"#);
+    assert_eq!(status, Status::Ok);
+    assert_eq!(result["success"], true);
+
+    let state_after = get_state(&client);
+    assert!(state_after["active_contract"].is_object());
+    assert!(state_after["offered_contract"].is_null());
+    assert_eq!(state_after["active_contract"], offered);
+}
+
+#[test]
+fn accept_contract_fails_when_already_active() {
+    let client = client();
+    post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
+    post_action(&client, r#"{"action_type":"AcceptContract"}"#);
+
+    let (status, result) = post_action(&client, r#"{"action_type":"AcceptContract"}"#);
+    assert_eq!(status, Status::Ok);
+    assert_eq!(result["success"], false);
+}
+
+// ---------------------------------------------------------------------------
+// Play card
+// ---------------------------------------------------------------------------
+
+#[test]
+fn play_card_adds_tokens_and_moves_card() {
+    let client = client();
+    post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
+    post_action(&client, r#"{"action_type":"AcceptContract"}"#);
+
+    let state_before = get_state(&client);
+    let pu_before = state_before["tokens"]
+        .get("ProductionUnit")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+
+    let (status, result) = post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
+    assert_eq!(status, Status::Ok);
+    assert_eq!(result["success"], true);
+
+    let state_after = get_state(&client);
+    let pu_after = state_after["tokens"]["ProductionUnit"]
+        .as_u64()
+        .expect("should have ProductionUnit");
+    assert!(
+        pu_after > pu_before,
+        "playing a production card should increase ProductionUnit"
+    );
+    assert_eq!(state_after["turn_count"], 1);
+    // Hand should still have 5 cards (drew a replacement)
+    assert_eq!(state_after["hand"].as_array().expect("hand").len(), 5);
+}
+
+#[test]
+fn play_card_fails_without_active_contract() {
+    let client = client();
+    post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
+
+    let (status, result) = post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
+    assert_eq!(status, Status::Ok);
+    assert_eq!(result["success"], false);
+}
+
+#[test]
+fn play_card_fails_with_invalid_index() {
+    let client = client();
+    post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
+    post_action(&client, r#"{"action_type":"AcceptContract"}"#);
+
+    let (status, result) = post_action(&client, r#"{"action_type":"PlayCard","hand_index":99}"#);
+    assert_eq!(status, Status::Ok);
+    assert_eq!(result["success"], false);
+}
+
+// ---------------------------------------------------------------------------
+// Discard card
+// ---------------------------------------------------------------------------
+
+#[test]
+fn discard_card_gives_baseline_bonus() {
+    let client = client();
+    post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
+    post_action(&client, r#"{"action_type":"AcceptContract"}"#);
+
+    let (status, result) = post_action(&client, r#"{"action_type":"DiscardCard","hand_index":0}"#);
+    assert_eq!(status, Status::Ok);
+    assert_eq!(result["success"], true);
+
+    let state = get_state(&client);
+    let pu = state["tokens"]["ProductionUnit"]
+        .as_u64()
+        .expect("should have ProductionUnit");
+    // Discard bonus is 1 PU (from config)
+    assert_eq!(pu, 1);
+    assert_eq!(state["turn_count"], 1);
+}
+
+#[test]
+fn discard_card_fails_without_active_contract() {
+    let client = client();
+    post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
+
+    let (status, result) = post_action(&client, r#"{"action_type":"DiscardCard","hand_index":0}"#);
+    assert_eq!(status, Status::Ok);
+    assert_eq!(result["success"], false);
+}
+
+// ---------------------------------------------------------------------------
+// Contract auto-completion
+// ---------------------------------------------------------------------------
+
+#[test]
+fn contract_auto_completes_when_threshold_met() {
+    let client = client();
+    post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
+    post_action(&client, r#"{"action_type":"AcceptContract"}"#);
+
+    // Get the required threshold from the active contract
+    let state = get_state(&client);
+    let min_amount = state["active_contract"]["requirements"][0]["min_amount"]
+        .as_u64()
+        .expect("min_amount");
+
+    // Play cards until we accumulate enough production units
+    let mut total_pu: u64 = 0;
+    let mut completed = false;
+    for _ in 0..50 {
+        let (_, result) = post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
+        if result["contract_completed"].is_object() {
+            completed = true;
+            break;
+        }
+        let st = get_state(&client);
+        total_pu = st["tokens"]
+            .get("ProductionUnit")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+    }
+
+    assert!(
+        completed || total_pu >= min_amount,
+        "contract should have auto-completed after enough cards played"
+    );
+
+    if completed {
+        let state = get_state(&client);
+        assert_eq!(state["contracts_completed"], 1);
+        assert!(state["active_contract"].is_null());
+        assert!(
+            state["offered_contract"].is_object(),
+            "new contract should be offered"
+        );
+    }
+}
+
+#[test]
+fn full_game_loop_two_contracts() {
+    let client = client();
+    post_action(&client, r#"{"action_type":"NewGame","seed":100}"#);
+
+    for contract_num in 1..=2 {
+        post_action(&client, r#"{"action_type":"AcceptContract"}"#);
+
+        let mut completed = false;
+        for _ in 0..100 {
+            let (_, result) = post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
+            if result["contract_completed"].is_object() {
+                completed = true;
+                break;
+            }
+        }
+
+        assert!(completed, "contract {} should have completed", contract_num);
+    }
+
+    let state = get_state(&client);
+    assert_eq!(state["contracts_completed"], 2);
+}
+
+// ---------------------------------------------------------------------------
+// Abandon contract
+// ---------------------------------------------------------------------------
+
+#[test]
+fn abandon_contract_offers_new_one() {
+    let client = client();
+    post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
+    post_action(&client, r#"{"action_type":"AcceptContract"}"#);
+
+    let (status, result) = post_action(&client, r#"{"action_type":"AbandonContract"}"#);
+    assert_eq!(status, Status::Ok);
+    assert_eq!(result["success"], true);
+
+    let state = get_state(&client);
+    assert!(state["active_contract"].is_null());
+    assert!(state["offered_contract"].is_object());
+}
+
+#[test]
+fn abandon_contract_fails_when_none_active() {
+    let client = client();
+    post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
+
+    let (status, result) = post_action(&client, r#"{"action_type":"AbandonContract"}"#);
+    assert_eq!(status, Status::Ok);
+    assert_eq!(result["success"], false);
+}
+
+// ---------------------------------------------------------------------------
+// Token persistence between contracts
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tokens_persist_between_contracts() {
+    let client = client();
+    post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
+    post_action(&client, r#"{"action_type":"AcceptContract"}"#);
+
+    // Play a card to get some tokens
+    post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
+
+    let state_during = get_state(&client);
+    let pu_during = state_during["tokens"]["ProductionUnit"]
+        .as_u64()
+        .expect("PU tokens");
+    assert!(pu_during > 0);
+
+    // Abandon contract (tokens should persist)
+    post_action(&client, r#"{"action_type":"AbandonContract"}"#);
+
+    let state_after = get_state(&client);
+    let pu_after = state_after["tokens"]["ProductionUnit"]
+        .as_u64()
+        .expect("PU tokens after abandon");
+    assert_eq!(
+        pu_during, pu_after,
+        "tokens should persist after abandoning a contract"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Hand persistence between contracts
+// ---------------------------------------------------------------------------
+
+#[test]
+fn hand_persists_between_contracts() {
+    let client = client();
+    post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
+    post_action(&client, r#"{"action_type":"AcceptContract"}"#);
+
+    // Complete a contract by playing enough cards
+    let mut completed = false;
+    for _ in 0..100 {
+        let (_, result) = post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
+        if result["contract_completed"].is_object() {
+            completed = true;
+            break;
+        }
+    }
+    assert!(completed, "first contract should complete");
+
+    let state = get_state(&client);
+    let hand_size = state["hand"].as_array().expect("hand").len();
+    assert!(
+        hand_size > 0,
+        "hand should persist after contract completion"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Deck cycling
+// ---------------------------------------------------------------------------
+
+#[test]
+fn deck_recycles_discard_when_empty() {
+    let client = client();
+    post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
+    post_action(&client, r#"{"action_type":"AcceptContract"}"#);
+
+    // Play more cards than the deck size to force a reshuffle
+    for _ in 0..15 {
+        let (_, result) = post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
+        if result["contract_completed"].is_object() {
+            // If contract completes, accept the new one and continue
+            post_action(&client, r#"{"action_type":"AcceptContract"}"#);
+        }
+    }
+
+    // After playing 15 cards from a 10-card deck, at least one reshuffle must have occurred.
+    // The hand should still have cards.
+    let state = get_state(&client);
+    let hand_size = state["hand"].as_array().expect("hand").len();
+    assert!(hand_size > 0, "hand should have cards after deck recycling");
+}
+
+// ---------------------------------------------------------------------------
+// Action history
+// ---------------------------------------------------------------------------
+
+#[test]
+fn action_history_records_all_actions() {
+    let client = client();
+    post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
+    post_action(&client, r#"{"action_type":"AcceptContract"}"#);
+    post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
+
+    let history = get_history(&client);
+    let entries = history.as_array().expect("history array");
+    // The default initialization fires a NewGame, so our explicit NewGame is logged,
+    // plus AcceptContract, plus PlayCard = at least 3 entries
+    assert!(
+        entries.len() >= 3,
+        "history should have at least 3 entries, got {}",
+        entries.len()
+    );
+
+    // Check sequence numbers are ascending
+    let seqs: Vec<u64> = entries
+        .iter()
+        .map(|e| e["seq"].as_u64().expect("seq"))
+        .collect();
+    for window in seqs.windows(2) {
+        assert!(
+            window[1] > window[0],
+            "sequence numbers should be ascending"
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// State endpoint
+// ---------------------------------------------------------------------------
+
+#[test]
+fn state_endpoint_returns_complete_view() {
+    let client = client();
+    post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
+
+    let state = get_state(&client);
+    assert!(state.get("seed").is_some());
+    assert!(state.get("turn_count").is_some());
+    assert!(state.get("contracts_completed").is_some());
+    assert!(state.get("hand").is_some());
+    assert!(state.get("deck_size").is_some());
+    assert!(state.get("discard_size").is_some());
+    assert!(state.get("tokens").is_some());
+    assert!(state.get("offered_contract").is_some());
+}

@@ -11,7 +11,9 @@ use schemars::JsonSchema;
 ///
 /// Tokens are simple counters that persist between contracts. They are
 /// produced and consumed by card effects and checked by contract requirements.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+)]
 #[serde(crate = "rocket::serde")]
 pub enum TokenType {
     // Beneficial tokens
@@ -201,4 +203,12 @@ pub struct Contract {
     pub tier: ContractTier,
     pub requirements: Vec<ContractRequirementKind>,
     pub reward_card: PlayerActionCard,
+}
+
+/// A group of contract offers for a single tier.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "rocket::serde")]
+pub struct TierContracts {
+    pub tier: ContractTier,
+    pub contracts: Vec<Contract>,
 }

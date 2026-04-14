@@ -67,8 +67,11 @@ fn new_game_initializes_state() {
     assert_eq!(state["turn_count"], 0);
     assert_eq!(state["hand"].as_array().expect("hand array").len(), 5);
     assert!(
-        state["offered_contract"].is_object(),
-        "should have an offered contract"
+        !state["offered_contracts"]
+            .as_array()
+            .expect("offered_contracts")
+            .is_empty(),
+        "should have offered contracts"
     );
     assert!(state["active_contract"].is_null(), "no active contract yet");
 }
@@ -94,16 +97,22 @@ fn accept_contract_activates_offered_contract() {
     post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
 
     let state_before = get_state(&client);
-    let offered = state_before["offered_contract"].clone();
+    let offered = state_before["offered_contracts"][0]["contracts"][0].clone();
     assert!(offered.is_object());
 
-    let (status, result) = post_action(&client, r#"{"action_type":"AcceptContract"}"#);
+    let (status, result) = post_action(
+        &client,
+        r#"{"action_type":"AcceptContract","tier_index":0,"contract_index":0}"#,
+    );
     assert_eq!(status, Status::Ok);
     assert_eq!(result["result_type"], "ContractAccepted");
 
     let state_after = get_state(&client);
     assert!(state_after["active_contract"].is_object());
-    assert!(state_after["offered_contract"].is_null());
+    assert!(state_after["offered_contracts"]
+        .as_array()
+        .expect("offered_contracts")
+        .is_empty());
     assert_eq!(state_after["active_contract"], offered);
 }
 
@@ -111,9 +120,15 @@ fn accept_contract_activates_offered_contract() {
 fn accept_contract_fails_when_already_active() {
     let client = client();
     post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
-    post_action(&client, r#"{"action_type":"AcceptContract"}"#);
+    post_action(
+        &client,
+        r#"{"action_type":"AcceptContract","tier_index":0,"contract_index":0}"#,
+    );
 
-    let (status, result) = post_action(&client, r#"{"action_type":"AcceptContract"}"#);
+    let (status, result) = post_action(
+        &client,
+        r#"{"action_type":"AcceptContract","tier_index":0,"contract_index":0}"#,
+    );
     assert_eq!(status, Status::Ok);
     assert_eq!(result["result_type"], "ContractAlreadyActive");
 }
@@ -126,7 +141,10 @@ fn accept_contract_fails_when_already_active() {
 fn play_card_adds_tokens_and_moves_card() {
     let client = client();
     post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
-    post_action(&client, r#"{"action_type":"AcceptContract"}"#);
+    post_action(
+        &client,
+        r#"{"action_type":"AcceptContract","tier_index":0,"contract_index":0}"#,
+    );
 
     let state_before = get_state(&client);
     let pu_before = token_amount(&state_before, r#""ProductionUnit""#);
@@ -160,7 +178,10 @@ fn play_card_fails_without_active_contract() {
 fn play_card_fails_with_invalid_index() {
     let client = client();
     post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
-    post_action(&client, r#"{"action_type":"AcceptContract"}"#);
+    post_action(
+        &client,
+        r#"{"action_type":"AcceptContract","tier_index":0,"contract_index":0}"#,
+    );
 
     let (status, result) = post_action(&client, r#"{"action_type":"PlayCard","hand_index":99}"#);
     assert_eq!(status, Status::Ok);
@@ -176,7 +197,10 @@ fn play_card_fails_with_invalid_index() {
 fn discard_card_gives_baseline_bonus() {
     let client = client();
     post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
-    post_action(&client, r#"{"action_type":"AcceptContract"}"#);
+    post_action(
+        &client,
+        r#"{"action_type":"AcceptContract","tier_index":0,"contract_index":0}"#,
+    );
 
     let (status, result) = post_action(&client, r#"{"action_type":"DiscardCard","hand_index":0}"#);
     assert_eq!(status, Status::Ok);
@@ -207,7 +231,10 @@ fn discard_card_fails_without_active_contract() {
 fn contract_auto_completes_when_threshold_met() {
     let client = client();
     post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
-    post_action(&client, r#"{"action_type":"AcceptContract"}"#);
+    post_action(
+        &client,
+        r#"{"action_type":"AcceptContract","tier_index":0,"contract_index":0}"#,
+    );
 
     // Get the required threshold from the active contract
     let state = get_state(&client);
@@ -238,8 +265,11 @@ fn contract_auto_completes_when_threshold_met() {
         assert_eq!(token_amount(&state, r#"{"ContractsTierCompleted":1}"#), 1);
         assert!(state["active_contract"].is_null());
         assert!(
-            state["offered_contract"].is_object(),
-            "new contract should be offered"
+            !state["offered_contracts"]
+                .as_array()
+                .expect("offered_contracts")
+                .is_empty(),
+            "new contracts should be offered"
         );
     }
 }
@@ -250,7 +280,10 @@ fn full_game_loop_two_contracts() {
     post_action(&client, r#"{"action_type":"NewGame","seed":100}"#);
 
     for contract_num in 1..=2 {
-        post_action(&client, r#"{"action_type":"AcceptContract"}"#);
+        post_action(
+            &client,
+            r#"{"action_type":"AcceptContract","tier_index":0,"contract_index":0}"#,
+        );
 
         let mut completed = false;
         for _ in 0..100 {
@@ -276,7 +309,10 @@ fn full_game_loop_two_contracts() {
 fn tokens_persist_between_contracts() {
     let client = client();
     post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
-    post_action(&client, r#"{"action_type":"AcceptContract"}"#);
+    post_action(
+        &client,
+        r#"{"action_type":"AcceptContract","tier_index":0,"contract_index":0}"#,
+    );
 
     // Play cards until the contract completes
     let mut completed = false;
@@ -294,7 +330,10 @@ fn tokens_persist_between_contracts() {
     let pu_after_completion = token_amount(&state_after_completion, r#""ProductionUnit""#);
 
     // Accept the new contract
-    let (_, accept_result) = post_action(&client, r#"{"action_type":"AcceptContract"}"#);
+    let (_, accept_result) = post_action(
+        &client,
+        r#"{"action_type":"AcceptContract","tier_index":0,"contract_index":0}"#,
+    );
     assert_eq!(accept_result["result_type"], "ContractAccepted");
 
     // Verify tokens persist into the new contract
@@ -314,7 +353,10 @@ fn tokens_persist_between_contracts() {
 fn hand_persists_between_contracts() {
     let client = client();
     post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
-    post_action(&client, r#"{"action_type":"AcceptContract"}"#);
+    post_action(
+        &client,
+        r#"{"action_type":"AcceptContract","tier_index":0,"contract_index":0}"#,
+    );
 
     // Complete a contract by playing enough cards
     let mut completed = false;
@@ -343,14 +385,20 @@ fn hand_persists_between_contracts() {
 fn deck_recycles_discard_when_empty() {
     let client = client();
     post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
-    post_action(&client, r#"{"action_type":"AcceptContract"}"#);
+    post_action(
+        &client,
+        r#"{"action_type":"AcceptContract","tier_index":0,"contract_index":0}"#,
+    );
 
     // Play more cards than the deck size to force a reshuffle
     for _ in 0..15 {
         let (_, result) = post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
         if result["contract_completed"].is_object() {
             // If contract completes, accept the new one and continue
-            post_action(&client, r#"{"action_type":"AcceptContract"}"#);
+            post_action(
+                &client,
+                r#"{"action_type":"AcceptContract","tier_index":0,"contract_index":0}"#,
+            );
         }
     }
 
@@ -369,7 +417,10 @@ fn deck_recycles_discard_when_empty() {
 fn action_history_records_all_actions() {
     let client = client();
     post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
-    post_action(&client, r#"{"action_type":"AcceptContract"}"#);
+    post_action(
+        &client,
+        r#"{"action_type":"AcceptContract","tier_index":0,"contract_index":0}"#,
+    );
     post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
 
     let history = get_history(&client);
@@ -411,5 +462,5 @@ fn state_endpoint_returns_complete_view() {
     assert!(state.get("deck_size").is_some());
     assert!(state.get("discard_size").is_some());
     assert!(state.get("tokens").is_some());
-    assert!(state.get("offered_contract").is_some());
+    assert!(state.get("offered_contracts").is_some());
 }

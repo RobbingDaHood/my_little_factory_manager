@@ -16,7 +16,7 @@ use crate::config_loader::load_game_rules;
 use crate::starter_cards::create_starter_deck;
 use crate::types::{
     CardEffect, CardTag, Contract, ContractRequirementKind, ContractTier, PlayerActionCard,
-    TokenAmount, TokenType,
+    TierContracts, TokenAmount, TokenType,
 };
 
 use rocket::serde::Serialize;
@@ -49,7 +49,10 @@ pub enum ActionResult {
 
     // -- error variants ----------------------------------------------------
     ContractAlreadyActive,
-    NoContractOffered,
+    InvalidContractSelection {
+        tier_index: usize,
+        contract_index: usize,
+    },
     NoActiveContract,
     InvalidHandIndex {
         index: usize,
@@ -73,7 +76,7 @@ pub struct GameStateView {
     pub discard_size: usize,
     pub tokens: Vec<TokenAmount>,
     pub active_contract: Option<Contract>,
-    pub offered_contract: Option<Contract>,
+    pub offered_contracts: Vec<TierContracts>,
 }
 
 // ---------------------------------------------------------------------------
@@ -92,7 +95,7 @@ pub struct GameState {
 
     // Contract state
     active_contract: Option<Contract>,
-    offered_contract: Option<Contract>,
+    offered_contracts: Vec<TierContracts>,
 
     // RNG and metadata
     rng: Pcg64,
@@ -150,7 +153,7 @@ impl GameState {
             discard: Vec::new(),
             tokens: HashMap::new(),
             active_contract: None,
-            offered_contract: None,
+            offered_contracts: Vec::new(),
             rng,
             seed: actual_seed,
             turn_count: 0,
@@ -158,8 +161,8 @@ impl GameState {
             action_log: ActionLog::new(),
         };
 
-        // Generate first offered contract
-        state.generate_offered_contract();
+        // Generate first offered contracts
+        state.generate_offered_contracts();
 
         state
     }
@@ -179,16 +182,20 @@ impl GameState {
                 .collect(),
             deck_size: self.deck.len(),
             discard_size: self.discard.len(),
-            tokens: self
-                .tokens
-                .iter()
-                .map(|(token_type, &amount)| TokenAmount {
-                    token_type: token_type.clone(),
-                    amount,
-                })
-                .collect(),
+            tokens: {
+                let mut t: Vec<_> = self
+                    .tokens
+                    .iter()
+                    .map(|(token_type, &amount)| TokenAmount {
+                        token_type: token_type.clone(),
+                        amount,
+                    })
+                    .collect();
+                t.sort_by(|a, b| a.token_type.cmp(&b.token_type));
+                t
+            },
             active_contract: self.active_contract.clone(),
-            offered_contract: self.offered_contract.clone(),
+            offered_contracts: self.offered_contracts.clone(),
         }
     }
 
@@ -210,7 +217,10 @@ impl GameState {
 
         match action {
             PlayerAction::NewGame { seed } => self.handle_new_game(seed),
-            PlayerAction::AcceptContract => self.handle_accept_contract(),
+            PlayerAction::AcceptContract {
+                tier_index,
+                contract_index,
+            } => self.handle_accept_contract(tier_index, contract_index),
             PlayerAction::PlayCard { hand_index } => self.handle_play_card(hand_index),
             PlayerAction::DiscardCard { hand_index } => self.handle_discard_card(hand_index),
         }
@@ -229,18 +239,34 @@ impl GameState {
         ActionResult::NewGameStarted { seed: self.seed }
     }
 
-    fn handle_accept_contract(&mut self) -> ActionResult {
+    fn handle_accept_contract(&mut self, tier_index: usize, contract_index: usize) -> ActionResult {
         if self.active_contract.is_some() {
             return ActionResult::ContractAlreadyActive;
         }
 
-        match self.offered_contract.take() {
-            Some(contract) => {
-                self.active_contract = Some(contract);
+        let contract = self
+            .offered_contracts
+            .get(tier_index)
+            .and_then(|tc| tc.contracts.get(contract_index))
+            .cloned();
+
+        match contract {
+            Some(c) => {
+                self.offered_contracts[tier_index]
+                    .contracts
+                    .remove(contract_index);
+                // Remove the tier group if no contracts remain
+                if self.offered_contracts[tier_index].contracts.is_empty() {
+                    self.offered_contracts.remove(tier_index);
+                }
+                self.active_contract = Some(c);
                 self.turn_count = 0;
                 ActionResult::ContractAccepted
             }
-            None => ActionResult::NoContractOffered,
+            None => ActionResult::InvalidContractSelection {
+                tier_index,
+                contract_index,
+            },
         }
     }
 
@@ -367,7 +393,8 @@ impl GameState {
     // Contract mechanics
     // -------------------------------------------------------------------
 
-    fn generate_offered_contract(&mut self) {
+    fn generate_offered_contracts(&mut self) {
+        // Placeholder — Phase 3 will replace this with formula-based generation.
         let min_amount = 5u32;
         let max_amount = 15u32;
         let range = max_amount - min_amount + 1;
@@ -394,7 +421,10 @@ impl GameState {
             reward_card,
         };
 
-        self.offered_contract = Some(contract);
+        self.offered_contracts = vec![TierContracts {
+            tier: ContractTier(1),
+            contracts: vec![contract],
+        }];
     }
 
     fn try_complete_contract(&mut self) -> Option<Contract> {
@@ -408,7 +438,7 @@ impl GameState {
         self.add_tokens(&TokenType::ContractsTierCompleted(contract.tier.0), 1);
         self.active_contract = None;
         self.turn_count = 0;
-        self.generate_offered_contract();
+        self.generate_offered_contracts();
 
         Some(contract)
     }

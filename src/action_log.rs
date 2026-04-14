@@ -14,8 +14,11 @@ use schemars::JsonSchema;
 pub enum PlayerAction {
     /// Start a new game. If seed is None, a random seed is generated.
     NewGame { seed: Option<u64> },
-    /// Accept the currently offered contract.
-    AcceptContract,
+    /// Accept a contract from the offered list by tier and contract position.
+    AcceptContract {
+        tier_index: usize,
+        contract_index: usize,
+    },
     /// Play a card from hand by its position index.
     PlayCard { hand_index: usize },
     /// Discard a card from hand for a small baseline production bonus.

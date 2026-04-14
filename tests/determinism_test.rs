@@ -43,7 +43,10 @@ fn run_game_sequence(client: &Client, seed: u64) -> serde_json::Value {
         client,
         &format!(r#"{{"action_type":"NewGame","seed":{seed}}}"#),
     );
-    post_action(client, r#"{"action_type":"AcceptContract"}"#);
+    post_action(
+        client,
+        r#"{"action_type":"AcceptContract","tier_index":0,"contract_index":0}"#,
+    );
 
     // Play several cards
     for _ in 0..5 {
@@ -131,7 +134,10 @@ fn new_game_fully_resets_state() {
 
     // Play some actions
     post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
-    post_action(&client, r#"{"action_type":"AcceptContract"}"#);
+    post_action(
+        &client,
+        r#"{"action_type":"AcceptContract","tier_index":0,"contract_index":0}"#,
+    );
     post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
 
     let state_mid = get_state(&client);
@@ -158,12 +164,12 @@ fn same_seed_generates_same_contracts() {
     // First run
     post_action(&client, r#"{"action_type":"NewGame","seed":777}"#);
     let state1 = get_state(&client);
-    let offered1 = state1["offered_contract"].clone();
+    let offered1 = state1["offered_contracts"].clone();
 
     // Second run with same seed
     post_action(&client, r#"{"action_type":"NewGame","seed":777}"#);
     let state2 = get_state(&client);
-    let offered2 = state2["offered_contract"].clone();
+    let offered2 = state2["offered_contracts"].clone();
 
     assert_eq!(
         offered1, offered2,

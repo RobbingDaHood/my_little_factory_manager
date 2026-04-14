@@ -135,12 +135,8 @@ fn new_game_fully_resets_state() {
     post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
 
     let state_mid = get_state(&client);
-    // Verify game has progressed — either turn_count > 0 or a contract was completed
-    let progressed = state_mid["turn_count"].as_u64().expect("turn_count") > 0
-        || state_mid["contracts_completed"]
-            .as_u64()
-            .expect("contracts_completed")
-            > 0;
+    // Verify game has progressed — turn_count > 0
+    let progressed = state_mid["turn_count"].as_u64().expect("turn_count") > 0;
     assert!(progressed, "game should have progressed");
 
     // Start a completely new game
@@ -148,7 +144,6 @@ fn new_game_fully_resets_state() {
 
     let state_fresh = get_state(&client);
     assert_eq!(state_fresh["turn_count"], 0);
-    assert_eq!(state_fresh["contracts_completed"], 0);
     assert_eq!(state_fresh["seed"], 42);
 }
 

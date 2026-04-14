@@ -68,11 +68,10 @@ pub enum ActionResult {
 pub struct GameStateView {
     pub seed: u64,
     pub turn_count: u32,
-    pub contracts_completed: u32,
     pub hand: Vec<PlayerActionCard>,
     pub deck_size: usize,
     pub discard_size: usize,
-    pub tokens: HashMap<TokenType, u32>,
+    pub tokens: Vec<TokenAmount>,
     pub active_contract: Option<Contract>,
     pub offered_contract: Option<Contract>,
 }
@@ -99,7 +98,6 @@ pub struct GameState {
     rng: Pcg64,
     seed: u64,
     turn_count: u32,
-    contracts_completed: u32,
 
     // Config
     rules: GameRulesConfig,
@@ -156,7 +154,6 @@ impl GameState {
             rng,
             seed: actual_seed,
             turn_count: 0,
-            contracts_completed: 0,
             rules,
             action_log: ActionLog::new(),
         };
@@ -175,7 +172,6 @@ impl GameState {
         GameStateView {
             seed: self.seed,
             turn_count: self.turn_count,
-            contracts_completed: self.contracts_completed,
             hand: self
                 .hand
                 .iter()
@@ -183,7 +179,14 @@ impl GameState {
                 .collect(),
             deck_size: self.deck.len(),
             discard_size: self.discard.len(),
-            tokens: self.tokens.clone(),
+            tokens: self
+                .tokens
+                .iter()
+                .map(|(token_type, &amount)| TokenAmount {
+                    token_type: token_type.clone(),
+                    amount,
+                })
+                .collect(),
             active_contract: self.active_contract.clone(),
             offered_contract: self.offered_contract.clone(),
         }
@@ -402,7 +405,7 @@ impl GameState {
         }
 
         self.subtract_contract_tokens(&contract);
-        self.contracts_completed += 1;
+        self.add_tokens(&TokenType::ContractsTierCompleted(contract.tier.0), 1);
         self.active_contract = None;
         self.turn_count = 0;
         self.generate_offered_contract();

@@ -37,6 +37,19 @@ fn get_history(client: &Client) -> serde_json::Value {
     serde_json::from_str(&body).expect("valid json")
 }
 
+/// Look up a token amount from the tokens array by matching `token_type` key.
+fn token_amount(state: &serde_json::Value, token_type_json: &str) -> u64 {
+    let expected: serde_json::Value =
+        serde_json::from_str(token_type_json).expect("valid token_type json");
+    state["tokens"]
+        .as_array()
+        .expect("tokens array")
+        .iter()
+        .find(|entry| entry["token_type"] == expected)
+        .map(|entry| entry["amount"].as_u64().unwrap_or(0))
+        .unwrap_or(0)
+}
+
 // ---------------------------------------------------------------------------
 // New game
 // ---------------------------------------------------------------------------
@@ -52,7 +65,6 @@ fn new_game_initializes_state() {
     let state = get_state(&client);
     assert_eq!(state["seed"], 42);
     assert_eq!(state["turn_count"], 0);
-    assert_eq!(state["contracts_completed"], 0);
     assert_eq!(state["hand"].as_array().expect("hand array").len(), 5);
     assert!(
         state["offered_contract"].is_object(),
@@ -117,19 +129,14 @@ fn play_card_adds_tokens_and_moves_card() {
     post_action(&client, r#"{"action_type":"AcceptContract"}"#);
 
     let state_before = get_state(&client);
-    let pu_before = state_before["tokens"]
-        .get("ProductionUnit")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0);
+    let pu_before = token_amount(&state_before, r#""ProductionUnit""#);
 
     let (status, result) = post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
     assert_eq!(status, Status::Ok);
     assert_eq!(result["result_type"], "CardPlayed");
 
     let state_after = get_state(&client);
-    let pu_after = state_after["tokens"]["ProductionUnit"]
-        .as_u64()
-        .expect("should have ProductionUnit");
+    let pu_after = token_amount(&state_after, r#""ProductionUnit""#);
     assert!(
         pu_after > pu_before,
         "playing a production card should increase ProductionUnit"
@@ -176,9 +183,7 @@ fn discard_card_gives_baseline_bonus() {
     assert_eq!(result["result_type"], "CardDiscarded");
 
     let state = get_state(&client);
-    let pu = state["tokens"]["ProductionUnit"]
-        .as_u64()
-        .expect("should have ProductionUnit");
+    let pu = token_amount(&state, r#""ProductionUnit""#);
     // Discard bonus is 1 PU (from config)
     assert_eq!(pu, 1);
     assert_eq!(state["turn_count"], 1);
@@ -220,10 +225,7 @@ fn contract_auto_completes_when_threshold_met() {
             break;
         }
         let st = get_state(&client);
-        total_pu = st["tokens"]
-            .get("ProductionUnit")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0);
+        total_pu = token_amount(&st, r#""ProductionUnit""#);
     }
 
     assert!(
@@ -233,7 +235,7 @@ fn contract_auto_completes_when_threshold_met() {
 
     if completed {
         let state = get_state(&client);
-        assert_eq!(state["contracts_completed"], 1);
+        assert_eq!(token_amount(&state, r#"{"ContractsTierCompleted":1}"#), 1);
         assert!(state["active_contract"].is_null());
         assert!(
             state["offered_contract"].is_object(),
@@ -263,7 +265,7 @@ fn full_game_loop_two_contracts() {
     }
 
     let state = get_state(&client);
-    assert_eq!(state["contracts_completed"], 2);
+    assert_eq!(token_amount(&state, r#"{"ContractsTierCompleted":1}"#), 2);
 }
 
 // ---------------------------------------------------------------------------
@@ -289,10 +291,7 @@ fn tokens_persist_between_contracts() {
 
     // Record PU tokens after completion (contract subtracts its requirement)
     let state_after_completion = get_state(&client);
-    let pu_after_completion = state_after_completion["tokens"]
-        .get("ProductionUnit")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0);
+    let pu_after_completion = token_amount(&state_after_completion, r#""ProductionUnit""#);
 
     // Accept the new contract
     let (_, accept_result) = post_action(&client, r#"{"action_type":"AcceptContract"}"#);
@@ -300,10 +299,7 @@ fn tokens_persist_between_contracts() {
 
     // Verify tokens persist into the new contract
     let state_new_contract = get_state(&client);
-    let pu_new_contract = state_new_contract["tokens"]
-        .get("ProductionUnit")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0);
+    let pu_new_contract = token_amount(&state_new_contract, r#""ProductionUnit""#);
     assert_eq!(
         pu_after_completion, pu_new_contract,
         "tokens should persist between contracts"
@@ -411,7 +407,6 @@ fn state_endpoint_returns_complete_view() {
     let state = get_state(&client);
     assert!(state.get("seed").is_some());
     assert!(state.get("turn_count").is_some());
-    assert!(state.get("contracts_completed").is_some());
     assert!(state.get("hand").is_some());
     assert!(state.get("deck_size").is_some());
     assert!(state.get("discard_size").is_some());

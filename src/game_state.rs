@@ -189,7 +189,6 @@ impl GameState {
             PlayerAction::AcceptContract => self.handle_accept_contract(),
             PlayerAction::PlayCard { hand_index } => self.handle_play_card(hand_index),
             PlayerAction::DiscardCard { hand_index } => self.handle_discard_card(hand_index),
-            PlayerAction::AbandonContract => self.handle_abandon_contract(),
         }
     }
 
@@ -214,7 +213,7 @@ impl GameState {
         if self.active_contract.is_some() {
             return ActionResult {
                 success: false,
-                message: "A contract is already active. Complete or abandon it first.".into(),
+                message: "A contract is already active. Complete it first.".into(),
                 contract_completed: None,
             };
         }
@@ -322,26 +321,6 @@ impl GameState {
 
         // Check contract auto-completion
         self.check_and_complete_contract()
-    }
-
-    fn handle_abandon_contract(&mut self) -> ActionResult {
-        if self.active_contract.is_none() {
-            return ActionResult {
-                success: false,
-                message: "No active contract to abandon.".into(),
-                contract_completed: None,
-            };
-        }
-
-        self.active_contract = None;
-        self.turn_count = 0;
-        self.generate_offered_contract();
-
-        ActionResult {
-            success: true,
-            message: "Contract abandoned. A new contract has been offered.".into(),
-            contract_completed: None,
-        }
     }
 
     // -------------------------------------------------------------------

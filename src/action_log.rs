@@ -20,8 +20,6 @@ pub enum PlayerAction {
     PlayCard { hand_index: usize },
     /// Discard a card from hand for a small baseline production bonus.
     DiscardCard { hand_index: usize },
-    /// Abandon the active contract and receive a new offer.
-    AbandonContract,
 }
 
 /// A single entry in the action log.

@@ -265,35 +265,6 @@ fn full_game_loop_two_contracts() {
 }
 
 // ---------------------------------------------------------------------------
-// Abandon contract
-// ---------------------------------------------------------------------------
-
-#[test]
-fn abandon_contract_offers_new_one() {
-    let client = client();
-    post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
-    post_action(&client, r#"{"action_type":"AcceptContract"}"#);
-
-    let (status, result) = post_action(&client, r#"{"action_type":"AbandonContract"}"#);
-    assert_eq!(status, Status::Ok);
-    assert_eq!(result["success"], true);
-
-    let state = get_state(&client);
-    assert!(state["active_contract"].is_null());
-    assert!(state["offered_contract"].is_object());
-}
-
-#[test]
-fn abandon_contract_fails_when_none_active() {
-    let client = client();
-    post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
-
-    let (status, result) = post_action(&client, r#"{"action_type":"AbandonContract"}"#);
-    assert_eq!(status, Status::Ok);
-    assert_eq!(result["success"], false);
-}
-
-// ---------------------------------------------------------------------------
 // Token persistence between contracts
 // ---------------------------------------------------------------------------
 
@@ -303,25 +274,37 @@ fn tokens_persist_between_contracts() {
     post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
     post_action(&client, r#"{"action_type":"AcceptContract"}"#);
 
-    // Play a card to get some tokens
-    post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
+    // Play cards until the contract completes
+    let mut completed = false;
+    for _ in 0..100 {
+        let (_, result) = post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
+        if result["contract_completed"].is_object() {
+            completed = true;
+            break;
+        }
+    }
+    assert!(completed, "first contract should complete");
 
-    let state_during = get_state(&client);
-    let pu_during = state_during["tokens"]["ProductionUnit"]
-        .as_u64()
-        .expect("PU tokens");
-    assert!(pu_during > 0);
+    // Record PU tokens after completion (contract subtracts its requirement)
+    let state_after_completion = get_state(&client);
+    let pu_after_completion = state_after_completion["tokens"]
+        .get("ProductionUnit")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
 
-    // Abandon contract (tokens should persist)
-    post_action(&client, r#"{"action_type":"AbandonContract"}"#);
+    // Accept the new contract
+    let (_, accept_result) = post_action(&client, r#"{"action_type":"AcceptContract"}"#);
+    assert_eq!(accept_result["success"], true);
 
-    let state_after = get_state(&client);
-    let pu_after = state_after["tokens"]["ProductionUnit"]
-        .as_u64()
-        .expect("PU tokens after abandon");
+    // Verify tokens persist into the new contract
+    let state_new_contract = get_state(&client);
+    let pu_new_contract = state_new_contract["tokens"]
+        .get("ProductionUnit")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
     assert_eq!(
-        pu_during, pu_after,
-        "tokens should persist after abandoning a contract"
+        pu_after_completion, pu_new_contract,
+        "tokens should persist between contracts"
     );
 }
 

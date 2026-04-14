@@ -106,46 +106,68 @@ fn every_token_type_has_at_least_one_tag() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn pure_production_serialization_roundtrip() {
-    let effect = CardEffect::PureProduction {
-        outputs: vec![TokenAmount {
+fn card_effect_outputs_only_serialization_roundtrip() {
+    let effect = CardEffect::new(
+        vec![],
+        vec![TokenAmount {
             token_type: TokenType::ProductionUnit,
             amount: 5,
         }],
-    };
-    let json = serde_json::to_string(&effect).expect("serialize PureProduction");
-    let roundtrip: CardEffect = serde_json::from_str(&json).expect("deserialize PureProduction");
+    )
+    .expect("valid effect");
+    let json = serde_json::to_string(&effect).expect("serialize CardEffect");
+    let roundtrip: CardEffect = serde_json::from_str(&json).expect("deserialize CardEffect");
     assert_eq!(effect, roundtrip);
 }
 
 #[test]
-fn conversion_serialization_roundtrip() {
-    let effect = CardEffect::Conversion {
-        inputs: vec![TokenAmount {
+fn card_effect_inputs_and_outputs_serialization_roundtrip() {
+    let effect = CardEffect::new(
+        vec![TokenAmount {
             token_type: TokenType::Energy,
             amount: 2,
         }],
-        outputs: vec![TokenAmount {
+        vec![TokenAmount {
             token_type: TokenType::ProductionUnit,
             amount: 8,
         }],
-    };
-    let json = serde_json::to_string(&effect).expect("serialize Conversion");
-    let roundtrip: CardEffect = serde_json::from_str(&json).expect("deserialize Conversion");
+    )
+    .expect("valid effect");
+    let json = serde_json::to_string(&effect).expect("serialize CardEffect");
+    let roundtrip: CardEffect = serde_json::from_str(&json).expect("deserialize CardEffect");
     assert_eq!(effect, roundtrip);
 }
 
 #[test]
-fn waste_removal_serialization_roundtrip() {
-    let effect = CardEffect::WasteRemoval {
-        inputs: vec![TokenAmount {
+fn card_effect_inputs_only_serialization_roundtrip() {
+    let effect = CardEffect::new(
+        vec![TokenAmount {
             token_type: TokenType::Heat,
             amount: 3,
         }],
-    };
-    let json = serde_json::to_string(&effect).expect("serialize WasteRemoval");
-    let roundtrip: CardEffect = serde_json::from_str(&json).expect("deserialize WasteRemoval");
+        vec![],
+    )
+    .expect("valid effect");
+    let json = serde_json::to_string(&effect).expect("serialize CardEffect");
+    let roundtrip: CardEffect = serde_json::from_str(&json).expect("deserialize CardEffect");
     assert_eq!(effect, roundtrip);
+}
+
+#[test]
+fn card_effect_empty_inputs_and_outputs_rejected() {
+    assert!(
+        CardEffect::new(vec![], vec![]).is_err(),
+        "CardEffect with no inputs and no outputs should be rejected"
+    );
+}
+
+#[test]
+fn card_effect_empty_json_deserialization_rejected() {
+    let json = r#"{}"#;
+    assert!(
+        serde_json::from_str::<CardEffect>(json).is_err(),
+        "Deserializing CardEffect with no inputs and no outputs should fail"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -267,22 +289,25 @@ fn player_action_card_serialization_roundtrip() {
     let card = PlayerActionCard {
         tags: vec![CardTag::Production, CardTag::Transformation],
         effects: vec![
-            CardEffect::PureProduction {
-                outputs: vec![TokenAmount {
+            CardEffect::new(
+                vec![],
+                vec![TokenAmount {
                     token_type: TokenType::ProductionUnit,
                     amount: 3,
                 }],
-            },
-            CardEffect::Conversion {
-                inputs: vec![TokenAmount {
+            )
+            .expect("valid effect"),
+            CardEffect::new(
+                vec![TokenAmount {
                     token_type: TokenType::Energy,
                     amount: 1,
                 }],
-                outputs: vec![TokenAmount {
+                vec![TokenAmount {
                     token_type: TokenType::ProductionUnit,
                     amount: 5,
                 }],
-            },
+            )
+            .expect("valid effect"),
         ],
     };
     let json = serde_json::to_string(&card).expect("serialize PlayerActionCard");
@@ -307,8 +332,9 @@ fn contract_serialization_roundtrip() {
         ],
         reward_card: PlayerActionCard {
             tags: vec![CardTag::Production],
-            effects: vec![CardEffect::PureProduction {
-                outputs: vec![
+            effects: vec![CardEffect::new(
+                vec![],
+                vec![
                     TokenAmount {
                         token_type: TokenType::ProductionUnit,
                         amount: 8,
@@ -318,7 +344,8 @@ fn contract_serialization_roundtrip() {
                         amount: 2,
                     },
                 ],
-            }],
+            )
+            .expect("valid effect")],
         },
     };
     let json = serde_json::to_string(&contract).expect("serialize Contract");

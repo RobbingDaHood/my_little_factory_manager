@@ -89,23 +89,47 @@ pub enum CardTag {
     SystemAdjustment,
 }
 
-/// Concrete card effect variants.
+/// A card effect with token inputs consumed and token outputs produced.
 ///
-/// Each effect has inputs (tokens consumed) and/or outputs (tokens produced).
-/// At least one of inputs or outputs is non-empty. The variant name
-/// communicates the intent/pattern of the effect.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(crate = "rocket::serde", tag = "effect_type")]
-pub enum CardEffect {
-    /// No input required; produces beneficial tokens in moderate amounts.
-    PureProduction { outputs: Vec<TokenAmount> },
-    /// Consumes beneficial tokens to produce beneficial tokens in larger amounts.
-    Conversion {
-        inputs: Vec<TokenAmount>,
-        outputs: Vec<TokenAmount>,
-    },
-    /// Consumes harmful tokens with no output — removing waste is its own reward.
-    WasteRemoval { inputs: Vec<TokenAmount> },
+/// At least one of `inputs` or `outputs` must be non-empty. Deserialization
+/// enforces this constraint; use `CardEffect::new()` for programmatic construction.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(crate = "rocket::serde")]
+pub struct CardEffect {
+    #[serde(default)]
+    pub inputs: Vec<TokenAmount>,
+    #[serde(default)]
+    pub outputs: Vec<TokenAmount>,
+}
+
+impl CardEffect {
+    /// Creates a new `CardEffect`, returning an error if both inputs and outputs are empty.
+    pub fn new(inputs: Vec<TokenAmount>, outputs: Vec<TokenAmount>) -> Result<Self, String> {
+        if inputs.is_empty() && outputs.is_empty() {
+            return Err("CardEffect must have at least one input or output".into());
+        }
+        Ok(Self { inputs, outputs })
+    }
+}
+
+/// Raw deserialization helper that validates non-empty inputs/outputs.
+#[derive(Deserialize)]
+#[serde(crate = "rocket::serde")]
+struct CardEffectRaw {
+    #[serde(default)]
+    inputs: Vec<TokenAmount>,
+    #[serde(default)]
+    outputs: Vec<TokenAmount>,
+}
+
+impl<'de> Deserialize<'de> for CardEffect {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: rocket::serde::Deserializer<'de>,
+    {
+        let raw = CardEffectRaw::deserialize(deserializer)?;
+        CardEffect::new(raw.inputs, raw.outputs).map_err(rocket::serde::de::Error::custom)
+    }
 }
 
 /// Where card copies reside during gameplay.

@@ -140,16 +140,23 @@ fn new_game_fully_resets_state() {
     post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
 
     let state_mid = get_state(&client);
-    // Verify game has progressed — turn_count > 0
-    let progressed = state_mid["turn_count"].as_u64().expect("turn_count") > 0;
+    // Verify game has progressed — tokens should have been produced
+    let tokens = state_mid["tokens"].as_array().expect("tokens array");
+    let progressed = !tokens.is_empty();
     assert!(progressed, "game should have progressed");
 
     // Start a completely new game
     post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
 
     let state_fresh = get_state(&client);
-    assert_eq!(state_fresh["turn_count"], 0);
     assert_eq!(state_fresh["seed"], 42);
+    assert!(
+        state_fresh["tokens"]
+            .as_array()
+            .expect("tokens array")
+            .is_empty(),
+        "fresh game should have no tokens"
+    );
 }
 
 // ---------------------------------------------------------------------------

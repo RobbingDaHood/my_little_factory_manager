@@ -23,6 +23,11 @@ fn post_action(client: &Client, json: &str) -> (Status, serde_json::Value) {
     (status, value)
 }
 
+/// Extract the detail payload from an ActionResult response.
+fn detail(result: &serde_json::Value) -> &serde_json::Value {
+    &result["detail"]
+}
+
 fn get_state(client: &Client) -> serde_json::Value {
     let response = client.get("/state").dispatch();
     assert_eq!(response.status(), Status::Ok);
@@ -69,12 +74,12 @@ fn new_game_initializes_state() {
     let client = client();
     let (status, result) = post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
     assert_eq!(status, Status::Ok);
-    assert_eq!(result["result_type"], "NewGameStarted");
-    assert_eq!(result["seed"], 42);
+    assert_eq!(result["outcome"], "Success");
+    assert_eq!(detail(&result)["result_type"], "NewGameStarted");
+    assert_eq!(detail(&result)["seed"], 42);
 
     let state = get_state(&client);
     assert_eq!(state["seed"], 42);
-    assert_eq!(state["turn_count"], 0);
     assert_eq!(card_count_total(&state, "hand"), 5);
     assert!(
         !state["offered_contracts"]
@@ -91,7 +96,8 @@ fn new_game_without_seed_generates_random_seed() {
     let client = client();
     let (status, result) = post_action(&client, r#"{"action_type":"NewGame","seed":null}"#);
     assert_eq!(status, Status::Ok);
-    assert_eq!(result["result_type"], "NewGameStarted");
+    assert_eq!(result["outcome"], "Success");
+    assert_eq!(detail(&result)["result_type"], "NewGameStarted");
 
     let state = get_state(&client);
     assert!(state["seed"].is_u64(), "should have a seed");
@@ -115,7 +121,8 @@ fn accept_contract_activates_offered_contract() {
         r#"{"action_type":"AcceptContract","tier_index":0,"contract_index":0}"#,
     );
     assert_eq!(status, Status::Ok);
-    assert_eq!(result["result_type"], "ContractAccepted");
+    assert_eq!(result["outcome"], "Success");
+    assert_eq!(detail(&result)["result_type"], "ContractAccepted");
 
     let state_after = get_state(&client);
     assert!(state_after["active_contract"].is_object());
@@ -140,7 +147,8 @@ fn accept_contract_fails_when_already_active() {
         r#"{"action_type":"AcceptContract","tier_index":0,"contract_index":0}"#,
     );
     assert_eq!(status, Status::Ok);
-    assert_eq!(result["result_type"], "ContractAlreadyActive");
+    assert_eq!(result["outcome"], "Error");
+    assert_eq!(detail(&result)["error_type"], "ContractAlreadyActive");
 }
 
 // ---------------------------------------------------------------------------
@@ -161,7 +169,8 @@ fn play_card_adds_tokens_and_moves_card() {
 
     let (status, result) = post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
     assert_eq!(status, Status::Ok);
-    assert_eq!(result["result_type"], "CardPlayed");
+    assert_eq!(result["outcome"], "Success");
+    assert_eq!(detail(&result)["result_type"], "CardPlayed");
 
     let state_after = get_state(&client);
     let pu_after = token_amount(&state_after, r#""ProductionUnit""#);
@@ -169,7 +178,6 @@ fn play_card_adds_tokens_and_moves_card() {
         pu_after > pu_before,
         "playing a production card should increase ProductionUnit"
     );
-    assert_eq!(state_after["turn_count"], 1);
     // Hand should still have 5 cards (drew a replacement)
     assert_eq!(card_count_total(&state_after, "hand"), 5);
 }
@@ -181,7 +189,8 @@ fn play_card_fails_without_active_contract() {
 
     let (status, result) = post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
     assert_eq!(status, Status::Ok);
-    assert_eq!(result["result_type"], "NoActiveContract");
+    assert_eq!(result["outcome"], "Error");
+    assert_eq!(detail(&result)["error_type"], "NoActiveContract");
 }
 
 #[test]
@@ -195,8 +204,9 @@ fn play_card_fails_with_invalid_index() {
 
     let (status, result) = post_action(&client, r#"{"action_type":"PlayCard","hand_index":99}"#);
     assert_eq!(status, Status::Ok);
-    assert_eq!(result["result_type"], "InvalidHandIndex");
-    assert_eq!(result["index"], 99);
+    assert_eq!(result["outcome"], "Error");
+    assert_eq!(detail(&result)["error_type"], "InvalidHandIndex");
+    assert_eq!(detail(&result)["index"], 99);
 }
 
 // ---------------------------------------------------------------------------
@@ -214,13 +224,13 @@ fn discard_card_gives_baseline_bonus() {
 
     let (status, result) = post_action(&client, r#"{"action_type":"DiscardCard","hand_index":0}"#);
     assert_eq!(status, Status::Ok);
-    assert_eq!(result["result_type"], "CardDiscarded");
+    assert_eq!(result["outcome"], "Success");
+    assert_eq!(detail(&result)["result_type"], "CardDiscarded");
 
     let state = get_state(&client);
     let pu = token_amount(&state, r#""ProductionUnit""#);
     // Discard bonus is 1 PU (from config)
     assert_eq!(pu, 1);
-    assert_eq!(state["turn_count"], 1);
 }
 
 #[test]
@@ -230,7 +240,8 @@ fn discard_card_fails_without_active_contract() {
 
     let (status, result) = post_action(&client, r#"{"action_type":"DiscardCard","hand_index":0}"#);
     assert_eq!(status, Status::Ok);
-    assert_eq!(result["result_type"], "NoActiveContract");
+    assert_eq!(result["outcome"], "Error");
+    assert_eq!(detail(&result)["error_type"], "NoActiveContract");
 }
 
 // ---------------------------------------------------------------------------
@@ -257,7 +268,7 @@ fn contract_auto_completes_when_threshold_met() {
     let mut completed = false;
     for _ in 0..50 {
         let (_, result) = post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
-        if result["contract_completed"].is_object() {
+        if detail(&result)["contract_completed"].is_object() {
             completed = true;
             break;
         }
@@ -298,7 +309,7 @@ fn full_game_loop_two_contracts() {
         let mut completed = false;
         for _ in 0..100 {
             let (_, result) = post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
-            if result["contract_completed"].is_object() {
+            if detail(&result)["contract_completed"].is_object() {
                 completed = true;
                 break;
             }
@@ -328,7 +339,7 @@ fn tokens_persist_between_contracts() {
     let mut completed = false;
     for _ in 0..100 {
         let (_, result) = post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
-        if result["contract_completed"].is_object() {
+        if detail(&result)["contract_completed"].is_object() {
             completed = true;
             break;
         }
@@ -344,7 +355,7 @@ fn tokens_persist_between_contracts() {
         &client,
         r#"{"action_type":"AcceptContract","tier_index":0,"contract_index":0}"#,
     );
-    assert_eq!(accept_result["result_type"], "ContractAccepted");
+    assert_eq!(detail(&accept_result)["result_type"], "ContractAccepted");
 
     // Verify tokens persist into the new contract
     let state_new_contract = get_state(&client);
@@ -372,7 +383,7 @@ fn hand_persists_between_contracts() {
     let mut completed = false;
     for _ in 0..100 {
         let (_, result) = post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
-        if result["contract_completed"].is_object() {
+        if detail(&result)["contract_completed"].is_object() {
             completed = true;
             break;
         }
@@ -403,7 +414,7 @@ fn deck_recycles_discard_when_empty() {
     // Play more cards than the deck size to force a reshuffle
     for _ in 0..15 {
         let (_, result) = post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
-        if result["contract_completed"].is_object() {
+        if detail(&result)["contract_completed"].is_object() {
             // If contract completes, accept the new one and continue
             post_action(
                 &client,
@@ -467,7 +478,6 @@ fn state_endpoint_returns_complete_view() {
 
     let state = get_state(&client);
     assert!(state.get("seed").is_some());
-    assert!(state.get("turn_count").is_some());
     assert!(state.get("cards").is_some());
     assert!(state.get("tokens").is_some());
     assert!(state.get("offered_contracts").is_some());

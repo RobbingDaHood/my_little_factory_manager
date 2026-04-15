@@ -27,12 +27,20 @@ use schemars::JsonSchema;
 
 /// Typed outcome of processing a player action.
 ///
-/// Each `PlayerAction` has dedicated success and error variants, making the
-/// API response self-describing and exhaustive.
+/// Wraps `ActionSuccess` or `ActionError`, making the distinction explicit
+/// at the type level. Each `PlayerAction` has dedicated success and error
+/// variants so the API response is self-describing and exhaustive.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[serde(tag = "outcome", content = "detail", crate = "rocket::serde")]
+pub enum ActionResult {
+    Success(ActionSuccess),
+    Error(ActionError),
+}
+
+/// Successful outcomes — one variant per `PlayerAction`.
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 #[serde(tag = "result_type", crate = "rocket::serde")]
-pub enum ActionResult {
-    // -- success variants --------------------------------------------------
+pub enum ActionSuccess {
     NewGameStarted {
         seed: u64,
     },
@@ -45,19 +53,27 @@ pub enum ActionResult {
         #[serde(skip_serializing_if = "Option::is_none")]
         contract_completed: Option<Contract>,
     },
+}
 
-    // -- error variants ----------------------------------------------------
+/// Error outcomes — explicit variants for every failure mode.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[serde(tag = "error_type", crate = "rocket::serde")]
+pub enum ActionError {
     ContractAlreadyActive,
-    InvalidContractSelection {
+    InvalidTierIndex {
+        tier_index: usize,
+    },
+    InvalidContractIndex {
         tier_index: usize,
         contract_index: usize,
     },
     NoActiveContract,
     InvalidHandIndex {
         index: usize,
-        hand_size: usize,
     },
-    InsufficientTokens,
+    InsufficientTokens {
+        missing: Vec<TokenAmount>,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -69,7 +85,6 @@ pub enum ActionResult {
 #[serde(crate = "rocket::serde")]
 pub struct GameStateView {
     pub seed: u64,
-    pub turn_count: u32,
     pub cards: Vec<CardEntry>,
     pub tokens: Vec<TokenAmount>,
     pub active_contract: Option<Contract>,
@@ -94,7 +109,6 @@ pub struct GameState {
     // RNG and metadata
     rng: Pcg64,
     seed: u64,
-    turn_count: u32,
 
     // Config
     rules: GameRulesConfig,
@@ -144,7 +158,6 @@ impl GameState {
             offered_contracts: Vec::new(),
             rng,
             seed: actual_seed,
-            turn_count: 0,
             rules,
             action_log: ActionLog::new(),
         };
@@ -162,7 +175,6 @@ impl GameState {
     pub fn view(&self) -> GameStateView {
         GameStateView {
             seed: self.seed,
-            turn_count: self.turn_count,
             cards: self.cards.clone(),
             tokens: {
                 let mut t: Vec<_> = self
@@ -217,57 +229,57 @@ impl GameState {
         let log = self.action_log.clone();
         *self = new_state;
         self.action_log = log;
-        ActionResult::NewGameStarted { seed: self.seed }
+        ActionResult::Success(ActionSuccess::NewGameStarted { seed: self.seed })
     }
 
     fn handle_accept_contract(&mut self, tier_index: usize, contract_index: usize) -> ActionResult {
         if self.active_contract.is_some() {
-            return ActionResult::ContractAlreadyActive;
+            return ActionResult::Error(ActionError::ContractAlreadyActive);
         }
 
-        let contract = self
-            .offered_contracts
-            .get(tier_index)
-            .and_then(|tc| tc.contracts.get(contract_index))
-            .cloned();
-
-        match contract {
-            Some(c) => {
-                self.offered_contracts[tier_index]
-                    .contracts
-                    .remove(contract_index);
-                if self.offered_contracts[tier_index].contracts.is_empty() {
-                    self.offered_contracts.remove(tier_index);
-                }
-                self.active_contract = Some(c);
-                self.turn_count = 0;
-                ActionResult::ContractAccepted
+        let tier = match self.offered_contracts.get(tier_index) {
+            Some(tc) => tc,
+            None => {
+                return ActionResult::Error(ActionError::InvalidTierIndex { tier_index });
             }
-            None => ActionResult::InvalidContractSelection {
-                tier_index,
-                contract_index,
-            },
+        };
+
+        let contract = match tier.contracts.get(contract_index) {
+            Some(c) => c.clone(),
+            None => {
+                return ActionResult::Error(ActionError::InvalidContractIndex {
+                    tier_index,
+                    contract_index,
+                });
+            }
+        };
+
+        self.offered_contracts[tier_index]
+            .contracts
+            .remove(contract_index);
+        if self.offered_contracts[tier_index].contracts.is_empty() {
+            self.offered_contracts.remove(tier_index);
         }
+        self.active_contract = Some(contract);
+        ActionResult::Success(ActionSuccess::ContractAccepted)
     }
 
     fn handle_play_card(&mut self, hand_index: usize) -> ActionResult {
         if self.active_contract.is_none() {
-            return ActionResult::NoActiveContract;
+            return ActionResult::Error(ActionError::NoActiveContract);
         }
 
         let hand_size = hand_total(&self.cards);
         if hand_index >= hand_size {
-            return ActionResult::InvalidHandIndex {
-                index: hand_index,
-                hand_size,
-            };
+            return ActionResult::Error(ActionError::InvalidHandIndex { index: hand_index });
         }
 
         let entry_idx = resolve_hand_index(&self.cards, hand_index);
         let card = self.cards[entry_idx].card.clone();
 
-        if !self.can_afford_effects(&card.effects) {
-            return ActionResult::InsufficientTokens;
+        let missing = self.get_missing_tokens_for_effects(&card.effects);
+        if !missing.is_empty() {
+            return ActionResult::Error(ActionError::InsufficientTokens { missing });
         }
 
         self.apply_effects(&card.effects);
@@ -276,23 +288,19 @@ impl GameState {
         self.cards[entry_idx].counts.discard += 1;
 
         draw_from_deck(&mut self.cards, &mut self.rng);
-        self.turn_count += 1;
 
         let contract_completed = self.try_complete_contract();
-        ActionResult::CardPlayed { contract_completed }
+        ActionResult::Success(ActionSuccess::CardPlayed { contract_completed })
     }
 
     fn handle_discard_card(&mut self, hand_index: usize) -> ActionResult {
         if self.active_contract.is_none() {
-            return ActionResult::NoActiveContract;
+            return ActionResult::Error(ActionError::NoActiveContract);
         }
 
         let hand_size = hand_total(&self.cards);
         if hand_index >= hand_size {
-            return ActionResult::InvalidHandIndex {
-                index: hand_index,
-                hand_size,
-            };
+            return ActionResult::Error(ActionError::InvalidHandIndex { index: hand_index });
         }
 
         let entry_idx = resolve_hand_index(&self.cards, hand_index);
@@ -303,30 +311,36 @@ impl GameState {
         *self.tokens.entry(TokenType::ProductionUnit).or_insert(0) += bonus;
 
         draw_from_deck(&mut self.cards, &mut self.rng);
-        self.turn_count += 1;
 
         let contract_completed = self.try_complete_contract();
-        ActionResult::CardDiscarded { contract_completed }
+        ActionResult::Success(ActionSuccess::CardDiscarded { contract_completed })
     }
 
     // -------------------------------------------------------------------
     // Token mechanics
     // -------------------------------------------------------------------
 
-    fn can_afford_effects(&self, effects: &[CardEffect]) -> bool {
+    /// Returns the tokens the player is missing to pay all inputs of the given effects.
+    /// An empty Vec means the player can afford them.
+    fn get_missing_tokens_for_effects(&self, effects: &[CardEffect]) -> Vec<TokenAmount> {
         let mut required: HashMap<TokenType, u32> = HashMap::new();
         for effect in effects {
             for input in &effect.inputs {
                 *required.entry(input.token_type.clone()).or_insert(0) += input.amount;
             }
         }
-        for (token_type, needed) in &required {
-            let available = self.tokens.get(token_type).copied().unwrap_or(0);
-            if available < *needed {
-                return false;
+        let mut missing = Vec::new();
+        for (token_type, needed) in required {
+            let available = self.tokens.get(&token_type).copied().unwrap_or(0);
+            if available < needed {
+                missing.push(TokenAmount {
+                    token_type,
+                    amount: needed - available,
+                });
             }
         }
-        true
+        missing.sort_by(|a, b| a.token_type.cmp(&b.token_type));
+        missing
     }
 
     fn apply_effects(&mut self, effects: &[CardEffect]) {
@@ -401,7 +415,6 @@ impl GameState {
         self.add_reward_card(&contract.reward_card);
 
         self.active_contract = None;
-        self.turn_count = 0;
         self.generate_offered_contracts();
 
         Some(contract)
@@ -439,8 +452,9 @@ impl GameState {
                 // Phase 2 does not generate contracts with tag restrictions
                 true
             }
-            ContractRequirementKind::TurnWindow { min_turn, max_turn } => {
-                self.turn_count >= *min_turn && self.turn_count <= *max_turn
+            ContractRequirementKind::TurnWindow { .. } => {
+                // TODO: Phase 7 statistics will provide turn tracking for this requirement
+                true
             }
         })
     }
@@ -481,32 +495,30 @@ fn resolve_hand_index(cards: &[CardEntry], hand_index: usize) -> usize {
     unreachable!("hand_index validated before calling resolve_hand_index")
 }
 
-/// Draw one card from deck to hand using weighted random selection.
-/// If deck is empty, shuffles discard back into deck first.
+/// Draw one card from deck to hand via random selection.
+/// If deck is empty, recycles discard counts back into deck first.
 fn draw_from_deck(cards: &mut [CardEntry], rng: &mut Pcg64) {
     let deck_total: u32 = cards.iter().map(|e| e.counts.deck).sum();
 
     if deck_total == 0 {
-        // Shuffle discard into deck
-        let discard_total: u32 = cards.iter().map(|e| e.counts.discard).sum();
-        if discard_total == 0 {
-            return;
-        }
+        let mut discard_total = 0u32;
         for entry in cards.iter_mut() {
+            discard_total += entry.counts.discard;
             entry.counts.deck += entry.counts.discard;
             entry.counts.discard = 0;
         }
-        // Now draw from the freshly reshuffled deck
-        let new_deck_total: u32 = cards.iter().map(|e| e.counts.deck).sum();
-        draw_weighted(cards, rng, new_deck_total);
+        if discard_total == 0 {
+            return;
+        }
+        draw_random(cards, rng, discard_total);
     } else {
-        draw_weighted(cards, rng, deck_total);
+        draw_random(cards, rng, deck_total);
     }
 }
 
-/// Pick a random card from the deck (weighted by deck counts) and move one
-/// copy from deck to hand.
-fn draw_weighted(cards: &mut [CardEntry], rng: &mut Pcg64, deck_total: u32) {
+/// Pick a random card from the deck proportional to deck counts and move
+/// one copy from deck to hand.
+fn draw_random(cards: &mut [CardEntry], rng: &mut Pcg64, deck_total: u32) {
     let roll = rng.next_u32() % deck_total;
     let mut cumulative = 0u32;
     for entry in cards.iter_mut() {

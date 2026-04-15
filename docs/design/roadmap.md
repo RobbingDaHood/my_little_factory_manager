@@ -174,6 +174,7 @@ The existing [my_little_card_game](https://github.com/RobbingDaHood/my_little_ca
 **Deliverables**:
 - Contract rewards add new player action cards to library (basic version already in Phase 2)
 - Player can move cards between Library and Deck
+- Card replacement: replacing a card in Deck or Discard with a different card from the Library costs destroying another Library card. Hand cards cannot be replaced — the hand must always reflect random draws from the deck.
 - Deck size limits enforced via token system
 - Card variety: different card effect combinations and tag sets
 - `configurations/card_effects/` — card effect type definitions with tier formulas

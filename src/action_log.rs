@@ -37,24 +37,26 @@ pub struct ActionEntry {
 #[derive(Debug, Clone)]
 pub struct ActionLog {
     entries: Vec<ActionEntry>,
-    next_seq: u64,
 }
 
 impl ActionLog {
     pub fn new() -> Self {
         Self {
             entries: Vec::new(),
-            next_seq: 1,
         }
+    }
+
+    /// The sequence number that the next appended entry will receive.
+    pub fn next_seq(&self) -> u64 {
+        self.entries.len() as u64
     }
 
     /// Append an action and return the created entry.
     pub fn append(&mut self, action: PlayerAction) -> ActionEntry {
         let entry = ActionEntry {
-            seq: self.next_seq,
+            seq: self.next_seq(),
             action,
         };
-        self.next_seq += 1;
         self.entries.push(entry.clone());
         entry
     }
@@ -67,7 +69,6 @@ impl ActionLog {
     /// Clear the log (used on NewGame).
     pub fn clear(&mut self) {
         self.entries.clear();
-        self.next_seq = 1;
     }
 }
 

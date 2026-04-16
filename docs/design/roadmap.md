@@ -116,18 +116,20 @@ The existing [my_little_card_game](https://github.com/RobbingDaHood/my_little_ca
 
 ## Phase 3: Contract System
 
-**Goal**: Tier 1 contracts with simple requirements. Fail/succeed flow with new contracts offered on completion or failure.
+**Goal**: Tier 1 contracts with simple requirements. Fail/succeed flow with new contracts offered on completion or failure. This simple setup will be overwritten/exanded in pahse 6: Try not to develop something that contradicts that phase. 
 
 **Deliverables**:
 - Contract generation with formula-based requirement values:
-  - Each contract has a list of enum-based requirements
-  - Tier 1 contracts: 1–2 requirements, at least one output threshold
-  - Concrete requirement values generated from tier-based formulas with deterministic randomization
+    - Each contract has a list of enum-based requirements
+    - Tier 1 contracts: 1–2 requirements, at least one output threshold
+    - Concrete requirement values generated from tier-based formulas with deterministic randomization
 - Contract reward cards generated at contract creation time:
-  - Reward card has same number of card effects as contract has requirements
-  - Each effect matches the tier of a corresponding requirement
-  - Concrete effect values rolled from tier formulas — visible to player before accepting
-- Contract market: player chooses from 2-3 available contracts
+    - Reward card has same number of card effects as contract has requirements
+    - Each effect matches the tier of a corresponding requirement
+    - Concrete effect values rolled from tier formulas — visible to player before accepting
+    - Likely there is just one tier 1 card effect of production: With some range (that matches the cards already in the players hand at start of the game)
+        - Do not roll the initial player hand from this card effect, because we want a static known somewhat balanced start of the game. 
+- Contract market: player chooses from 2-3 available contracts pr. unlocked tier
 - Contract completion: auto-completes when all requirements are met, awards the reward card
 - Contract failure: no penalty beyond lost time; new contract offered
 - `GET /contracts/available` — list available contracts (including reward card preview)

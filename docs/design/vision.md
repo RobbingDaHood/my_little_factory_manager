@@ -79,6 +79,12 @@ Cards move between distinct locations during gameplay:
 
 When the deck is empty and a draw is required, the entire discard pile is shuffled back into the deck.
 
+### Card Replacement (Deckbuilding)
+
+Players can replace a card in the **Deck** or **Discard** with a different card from the **Library**, but at a cost: doing so **destroys** another card in the Library. This creates a meaningful tradeoff — improving the active deck requires permanently reducing the total card pool.
+
+**Hand cards cannot be replaced directly.** The hand must always be the result of random draws from the deck, preserving the core randomness of the draw mechanic. The only way to influence hand composition is by shaping which cards are in the deck.
+
 ---
 
 ## 📜 Contracts

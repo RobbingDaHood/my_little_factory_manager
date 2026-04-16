@@ -85,17 +85,23 @@ The existing [my_little_card_game](https://github.com/RobbingDaHood/my_little_ca
 
 **Deliverables**:
 - `src/game_state.rs` — `GameState` struct with:
-  - Player action card library
-  - Player token balances (persisted between contracts)
-  - Active contract state
+  - Count-based card tracking (`Vec<CardEntry>` where each entry has `CardCounts { library, deck, hand, discard }`)
+  - Player token balances (persisted between contracts, tracked as `Vec<TokenAmount>`)
+  - Active contract state with tiered offered contracts (`Vec<TierContracts>`)
   - Seeded RNG (`rand_pcg::Pcg64`)
-  - Ordered action log for reproducibility
-- Card playing: play one card from hand → apply its card effects (add/remove tokens) → draw a replacement card → move played card to discard
+  - Typed `ActionResult` enum with per-action success/error variants (no generic success/message fields)
+  - Action dispatch and all game mechanics
+- `src/action_log.rs` — `PlayerAction` enum, `ActionEntry`, `ActionLog` for deterministic replay
+- `src/endpoints.rs` — HTTP handlers: `POST /action`, `GET /state`, `GET /actions/history`
+- `src/starter_cards.rs` — starter deck card definitions (pure production cards with varying output)
+- Card playing: play one card from hand → apply its card effects (add/remove tokens) → draw a replacement card (weighted random from deck counts) → move played card to discard (count mutation)
 - Discard for baseline benefit: discard any card for small fixed progress
-- Contract auto-completion: after each card play, check if all requirements are met; if so, subtract relevant tokens and conclude the contract
+- Contract auto-completion: after each card play, check if all requirements are met; if so, subtract relevant tokens, award `ContractsTierCompleted(tier)` token, and conclude the contract
 - Hand persists between contracts
+- Contract reward cards: completing a contract adds its reward card to the player's card library
+- Deck recycling: when deck is empty and a draw is needed, discard counts are moved to deck counts (no physical shuffle needed with count-based model)
 - `POST /action` endpoint for player actions
-- `GET /state` endpoint showing current game state
+- `GET /state` endpoint showing current game state (cards with per-location counts, tiered token list)
 - `GET /actions/history` endpoint listing all player actions (seed + action log = save/load)
 - **Determinism guarantee**: same version + seed + action list = identical game state
 - Integration tests exercising a full pick-contract → play-cards → auto-complete cycle
@@ -166,16 +172,16 @@ The existing [my_little_card_game](https://github.com/RobbingDaHood/my_little_ca
 **Goal**: Players acquire new player action cards from contract rewards and can manage their deck composition.
 
 **Deliverables**:
-- Contract rewards add new player action cards to library
+- Contract rewards add new player action cards to library (basic version already in Phase 2)
 - Player can move cards between Library and Deck
+- Card replacement: replacing a card in Deck or Discard with a different card from the Library costs destroying another Library card. Hand cards cannot be replaced — the hand must always reflect random draws from the deck.
 - Deck size limits enforced via token system
 - Card variety: different card effect combinations and tag sets
 - `configurations/card_effects/` — card effect type definitions with tier formulas
 - Integration tests for deck management actions
 
 **Reference files from card game**:
-- Card location system (Library → Deck → Hand → Discard cycle)
-- `src/library/types.rs` — CardCounts struct and location tracking
+- Card location system (Library → Deck → Hand → Discard cycle) — count-based tracking already implemented in Phase 2
 - Research/Crafting discipline patterns — adapt to deckbuilding
 
 ---

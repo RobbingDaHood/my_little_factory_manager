@@ -11,7 +11,9 @@ use schemars::JsonSchema;
 ///
 /// Tokens are simple counters that persist between contracts. They are
 /// produced and consumed by card effects and checked by contract requirements.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+)]
 #[serde(crate = "rocket::serde")]
 pub enum TokenType {
     // Beneficial tokens
@@ -148,6 +150,27 @@ pub enum CardLocation {
     Discard,
 }
 
+/// Per-location copy counts for a single card type.
+///
+/// Invariant: `deck + hand + discard == library` at all times.
+/// `library` is the total copies owned (grows when reward cards are earned).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "rocket::serde")]
+pub struct CardCounts {
+    pub library: u32,
+    pub deck: u32,
+    pub hand: u32,
+    pub discard: u32,
+}
+
+/// A card type with its per-location copy counts.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "rocket::serde")]
+pub struct CardEntry {
+    pub card: PlayerActionCard,
+    pub counts: CardCounts,
+}
+
 /// A concrete player action card with tags and effects.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(crate = "rocket::serde")]
@@ -201,4 +224,12 @@ pub struct Contract {
     pub tier: ContractTier,
     pub requirements: Vec<ContractRequirementKind>,
     pub reward_card: PlayerActionCard,
+}
+
+/// A group of contract offers for a single tier.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "rocket::serde")]
+pub struct TierContracts {
+    pub tier: ContractTier,
+    pub contracts: Vec<Contract>,
 }

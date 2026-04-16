@@ -126,10 +126,14 @@ fn accept_contract_activates_offered_contract() {
 
     let state_after = get_state(&client);
     assert!(state_after["active_contract"].is_object());
-    assert!(state_after["offered_contracts"]
+    let remaining = state_after["offered_contracts"][0]["contracts"]
         .as_array()
-        .expect("offered_contracts")
-        .is_empty());
+        .expect("contracts");
+    assert_eq!(
+        remaining.len(),
+        2,
+        "should have 2 remaining contracts after accepting 1"
+    );
     assert_eq!(state_after["active_contract"], offered);
 }
 

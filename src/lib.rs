@@ -14,16 +14,17 @@ use rocket_okapi::swagger_ui::{make_swagger_ui, SwaggerUIConfig};
 pub mod action_log;
 pub mod config;
 pub mod config_loader;
+pub mod contract_generation;
 pub mod endpoints;
 pub mod game_state;
 pub mod starter_cards;
 pub mod types;
 pub mod version;
 
-use crate::endpoints::{get_actions_history, get_state, post_action};
+use crate::endpoints::{get_actions_history, get_contracts_available, get_state, post_action};
 use crate::endpoints::{
-    okapi_add_operation_for_get_actions_history_, okapi_add_operation_for_get_state_,
-    okapi_add_operation_for_post_action_,
+    okapi_add_operation_for_get_actions_history_, okapi_add_operation_for_get_contracts_available_,
+    okapi_add_operation_for_get_state_, okapi_add_operation_for_post_action_,
 };
 use crate::game_state::GameState;
 use crate::version::get_version;
@@ -41,7 +42,13 @@ pub fn rocket_initialize() -> rocket::Rocket<rocket::Build> {
         .manage(game_state)
         .mount(
             "/",
-            openapi_get_routes![get_version, post_action, get_state, get_actions_history,],
+            openapi_get_routes![
+                get_version,
+                post_action,
+                get_state,
+                get_actions_history,
+                get_contracts_available,
+            ],
         )
         .mount("/swagger", make_swagger_ui(&swagger_config()))
 }

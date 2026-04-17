@@ -75,6 +75,7 @@ Key project files
 - `src/docs/hints.rs` — `GET /docs/hints` per-tier strategy tips
 - `src/docs/designer.rs` — `GET /docs/designer` token/card/contract authoring reference
 - `configurations/general/game_rules.json` — externalized game constants
+- `configurations/card_effects/effect_types.json` — card effect type definitions with per-tier gating
 - `Makefile` — `check`, `coverage`, `install-hooks` targets
 - `scripts/check_all.sh` — unified validation script (fmt, clippy, build, test, coverage)
 - `rust-toolchain.toml` — nightly Rust toolchain config
@@ -87,6 +88,7 @@ Key project files
 - `tests/game_loop_test.rs` — integration tests for the basic game loop (full cycle, errors, persistence)
 - `tests/determinism_test.rs` — deterministic replay and seed reproducibility tests
 - `tests/api_endpoints_test.rs` — integration tests for query and documentation endpoints
+- `tests/deckbuilding_test.rs` — integration tests for deckbuilding mechanics (ReplaceCard, DeckSlots, rewards)
 
 Suggest changes to vision.md and roadmap.md
 

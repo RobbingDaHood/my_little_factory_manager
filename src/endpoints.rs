@@ -10,6 +10,7 @@ use std::sync::Mutex;
 
 use crate::action_log::{ActionEntry, PlayerAction};
 use crate::game_state::{ActionResult, GameState, GameStateView};
+use crate::types::TierContracts;
 
 /// Dispatch a player action.
 ///
@@ -49,4 +50,16 @@ pub fn get_state(game_state: &State<Mutex<GameState>>) -> Json<GameStateView> {
 pub fn get_actions_history(game_state: &State<Mutex<GameState>>) -> Json<Vec<ActionEntry>> {
     let gs = game_state.lock().expect("game state lock poisoned");
     Json(gs.action_log().entries().to_vec())
+}
+
+/// Available contracts in the market.
+///
+/// Returns the currently offered contracts grouped by tier, including
+/// each contract's requirements and reward card preview. The player can
+/// inspect these before accepting one via `POST /action`.
+#[openapi]
+#[get("/contracts/available")]
+pub fn get_contracts_available(game_state: &State<Mutex<GameState>>) -> Json<Vec<TierContracts>> {
+    let gs = game_state.lock().expect("game state lock poisoned");
+    Json(gs.offered_contracts().to_vec())
 }

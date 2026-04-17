@@ -12,9 +12,10 @@ use rand_pcg::Pcg64;
 use crate::action_log::{ActionLog, PlayerAction};
 use crate::config::GameRulesConfig;
 use crate::config_loader::load_game_rules;
+use crate::contract_generation::generate_contract;
 use crate::starter_cards::create_starter_deck;
 use crate::types::{
-    CardCounts, CardEffect, CardEntry, CardTag, Contract, ContractRequirementKind, ContractTier,
+    CardCounts, CardEffect, CardEntry, Contract, ContractRequirementKind, ContractTier,
     PlayerActionCard, TierContracts, TokenAmount, TokenType,
 };
 
@@ -163,7 +164,7 @@ impl GameState {
         };
 
         // Generate first offered contracts
-        state.generate_offered_contracts();
+        state.refill_contract_market();
 
         state
     }
@@ -195,6 +196,10 @@ impl GameState {
 
     pub fn action_log(&self) -> &ActionLog {
         &self.action_log
+    }
+
+    pub fn offered_contracts(&self) -> &[TierContracts] {
+        &self.offered_contracts
     }
 
     pub fn seed(&self) -> u64 {
@@ -367,38 +372,58 @@ impl GameState {
     // Contract mechanics
     // -------------------------------------------------------------------
 
-    fn generate_offered_contracts(&mut self) {
-        // Placeholder — Phase 3 will replace this with formula-based generation.
-        let min_amount = 5u32;
-        let max_amount = 15u32;
-        let range = max_amount - min_amount + 1;
-        let rolled = min_amount + (self.rng.next_u32() % range);
+    fn refill_contract_market(&mut self) {
+        let target = self.rules.general.contract_market_size_per_tier;
 
-        let reward_card = PlayerActionCard {
-            tags: vec![CardTag::Production],
-            effects: vec![CardEffect::new(
-                vec![],
-                vec![TokenAmount {
-                    token_type: TokenType::ProductionUnit,
-                    amount: 2,
-                }],
-            )
-            .expect("reward card effect is always valid")],
-        };
+        for tier_num in self.unlocked_tiers() {
+            let tier = ContractTier(tier_num);
 
-        let contract = Contract {
-            tier: ContractTier(1),
-            requirements: vec![ContractRequirementKind::OutputThreshold {
-                token_type: TokenType::ProductionUnit,
-                min_amount: rolled,
-            }],
-            reward_card,
-        };
+            let existing_count = self
+                .offered_contracts
+                .iter()
+                .find(|tc| tc.tier == tier)
+                .map(|tc| tc.contracts.len() as u32)
+                .unwrap_or(0);
 
-        self.offered_contracts = vec![TierContracts {
-            tier: ContractTier(1),
-            contracts: vec![contract],
-        }];
+            let needed = target.saturating_sub(existing_count);
+            if needed == 0 {
+                continue;
+            }
+
+            let new_contracts: Vec<Contract> = (0..needed)
+                .map(|_| generate_contract(tier, &mut self.rng, &self.rules.contract_formulas))
+                .collect();
+
+            if let Some(tc) = self.offered_contracts.iter_mut().find(|tc| tc.tier == tier) {
+                tc.contracts.extend(new_contracts);
+            } else {
+                self.offered_contracts.push(TierContracts {
+                    tier,
+                    contracts: new_contracts,
+                });
+            }
+        }
+    }
+
+    /// Returns the list of unlocked tier numbers.
+    /// Tier 1 is always unlocked. Tier N+1 unlocks when
+    /// `ContractsTierCompleted(N) >= contracts_per_tier_to_advance`.
+    fn unlocked_tiers(&self) -> Vec<u32> {
+        let threshold = self.rules.general.contracts_per_tier_to_advance;
+        let mut tiers = vec![1u32];
+        for tier in 1.. {
+            let completed = self
+                .tokens
+                .get(&TokenType::ContractsTierCompleted(tier))
+                .copied()
+                .unwrap_or(0);
+            if completed >= threshold {
+                tiers.push(tier + 1);
+            } else {
+                break;
+            }
+        }
+        tiers
     }
 
     fn try_complete_contract(&mut self) -> Option<Contract> {
@@ -415,7 +440,7 @@ impl GameState {
         self.add_reward_card(&contract.reward_card);
 
         self.active_contract = None;
-        self.generate_offered_contracts();
+        self.refill_contract_market();
 
         Some(contract)
     }

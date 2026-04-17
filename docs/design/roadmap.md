@@ -114,27 +114,29 @@ The existing [my_little_card_game](https://github.com/RobbingDaHood/my_little_ca
 
 ---
 
-## Phase 3: Contract System
+## Phase 3: Contract System ✅
 
-**Goal**: Tier 1 contracts with simple requirements. Fail/succeed flow with new contracts offered on completion or failure. This simple setup will be overwritten/exanded in pahse 6: Try not to develop something that contradicts that phase. 
+**Goal**: Tier 1 contracts with simple requirements. Formula-based generation with a 3-contract market per unlocked tier. Infrastructure supports arbitrary tiers for Phase 6.
 
 **Deliverables**:
-- Contract generation with formula-based requirement values:
+- `src/contract_generation.rs` — formula-based contract and reward card generation using `TierScalingFormula`:
     - Each contract has a list of enum-based requirements
-    - Tier 1 contracts: 1–2 requirements, at least one output threshold
+    - Tier 1 contracts: 1 requirement (OutputThreshold for ProductionUnit, range [5,15])
     - Concrete requirement values generated from tier-based formulas with deterministic randomization
+    - `min_tier` field on each formula gates when requirement/effect types become available
 - Contract reward cards generated at contract creation time:
     - Reward card has same number of card effects as contract has requirements
     - Each effect matches the tier of a corresponding requirement
+    - Tier 1: PureProduction effect producing [1,3] ProductionUnit (matches starter deck range)
     - Concrete effect values rolled from tier formulas — visible to player before accepting
-    - Likely there is just one tier 1 card effect of production: With some range (that matches the cards already in the players hand at start of the game)
-        - Do not roll the initial player hand from this card effect, because we want a static known somewhat balanced start of the game. 
-- Contract market: player chooses from 2-3 available contracts pr. unlocked tier
+- Contract market: 3 available contracts per unlocked tier, refills (not regenerates) after completion
 - Contract completion: auto-completes when all requirements are met, awards the reward card
-- Contract failure: no penalty beyond lost time; new contract offered
+- No abandon action: contracts either auto-complete or auto-fail (auto-fail only relevant for future tiers with HarmfulTokenLimit/TurnWindow, added in Phase 6)
 - `GET /contracts/available` — list available contracts (including reward card preview)
 - `POST /action` — accept a contract
-- Integration tests for contract success and failure paths
+- `src/config.rs` — `ContractFormulasConfig` and `TierScalingFormula` structs
+- `configurations/general/game_rules.json` — `contract_formulas` section with formula parameters
+- `tests/contract_system_test.rs` — 11 integration tests covering market structure, validation, refill, determinism, and rewards
 
 **Reference files from card game**:
 - `src/library/disciplines/` — encounter logic patterns (adapt to contract evaluation)

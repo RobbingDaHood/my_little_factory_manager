@@ -376,6 +376,22 @@ fn load_custom_game_rules_json() {
             "contracts_per_tier_to_advance": 5,
             "contract_market_size_per_tier": 4,
             "discard_production_unit_bonus": 2
+        },
+        "contract_formulas": {
+            "output_threshold": {
+                "min_tier": 1,
+                "base_min": 4,
+                "base_max": 10,
+                "per_tier_min": 1,
+                "per_tier_max": 5
+            },
+            "reward_production": {
+                "min_tier": 1,
+                "base_min": 0,
+                "base_max": 1,
+                "per_tier_min": 1,
+                "per_tier_max": 2
+            }
         }
     }"#;
     let config = load_game_rules_from_json(json).expect("parse custom game rules");

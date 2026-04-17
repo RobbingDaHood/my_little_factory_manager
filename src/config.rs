@@ -10,6 +10,7 @@ use rocket::serde::Deserialize;
 #[serde(crate = "rocket::serde")]
 pub struct GameRulesConfig {
     pub general: GeneralRules,
+    pub contract_formulas: ContractFormulasConfig,
 }
 
 /// General (non-tier-specific) game constants.
@@ -26,4 +27,25 @@ pub struct GeneralRules {
     pub contract_market_size_per_tier: u32,
     /// Production units gained when discarding a card for baseline benefit.
     pub discard_production_unit_bonus: u32,
+}
+
+/// Formula parameters for contract and reward card generation.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(crate = "rocket::serde")]
+pub struct ContractFormulasConfig {
+    pub output_threshold: TierScalingFormula,
+    pub reward_production: TierScalingFormula,
+}
+
+/// A linear tier-scaling formula: for a given tier, produces a range
+/// `[base_min + tier × per_tier_min, base_max + tier × per_tier_max]`.
+/// Only active for tiers ≥ `min_tier`.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(crate = "rocket::serde")]
+pub struct TierScalingFormula {
+    pub min_tier: u32,
+    pub base_min: u32,
+    pub base_max: u32,
+    pub per_tier_min: u32,
+    pub per_tier_max: u32,
 }

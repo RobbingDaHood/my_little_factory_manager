@@ -92,6 +92,26 @@ pub struct GameStateView {
     pub offered_contracts: Vec<TierContracts>,
 }
 
+/// Token balances grouped by tag category for the `/player/tokens` endpoint.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[serde(crate = "rocket::serde")]
+pub struct PlayerTokensView {
+    pub beneficial: Vec<TokenAmount>,
+    pub harmful: Vec<TokenAmount>,
+    pub progression: Vec<TokenAmount>,
+}
+
+/// A possible action the player can take in the current game state.
+///
+/// Each entry describes an action variant and, for indexed actions,
+/// includes the concrete index values the player could use.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[serde(crate = "rocket::serde")]
+pub struct PossibleAction {
+    pub action: PlayerAction,
+    pub description: String,
+}
+
 // ---------------------------------------------------------------------------
 // GameState
 // ---------------------------------------------------------------------------
@@ -202,8 +222,103 @@ impl GameState {
         &self.offered_contracts
     }
 
+    pub fn active_contract(&self) -> Option<&Contract> {
+        self.active_contract.as_ref()
+    }
+
+    pub fn cards(&self) -> &[CardEntry] {
+        &self.cards
+    }
+
     pub fn seed(&self) -> u64 {
         self.seed
+    }
+
+    /// Token balances grouped by tag for the `/player/tokens` endpoint.
+    pub fn tokens_view(&self) -> PlayerTokensView {
+        use crate::types::TokenTag;
+
+        let all_tokens: Vec<TokenAmount> = self
+            .tokens
+            .iter()
+            .filter(|(_, &amount)| amount > 0)
+            .map(|(token_type, &amount)| TokenAmount {
+                token_type: token_type.clone(),
+                amount,
+            })
+            .collect();
+
+        let mut beneficial: Vec<TokenAmount> = all_tokens
+            .iter()
+            .filter(|t| t.token_type.tags().contains(&TokenTag::Beneficial))
+            .cloned()
+            .collect();
+        beneficial.sort_by(|a, b| a.token_type.cmp(&b.token_type));
+
+        let mut harmful: Vec<TokenAmount> = all_tokens
+            .iter()
+            .filter(|t| t.token_type.tags().contains(&TokenTag::Harmful))
+            .cloned()
+            .collect();
+        harmful.sort_by(|a, b| a.token_type.cmp(&b.token_type));
+
+        let mut progression: Vec<TokenAmount> = all_tokens
+            .iter()
+            .filter(|t| t.token_type.tags().contains(&TokenTag::Progression))
+            .cloned()
+            .collect();
+        progression.sort_by(|a, b| a.token_type.cmp(&b.token_type));
+
+        PlayerTokensView {
+            beneficial,
+            harmful,
+            progression,
+        }
+    }
+
+    /// Returns the list of valid actions in the current game state.
+    pub fn possible_actions(&self) -> Vec<PossibleAction> {
+        let mut actions = Vec::new();
+
+        actions.push(PossibleAction {
+            action: PlayerAction::NewGame { seed: None },
+            description: "Start a new game (optionally with a specific seed)".to_string(),
+        });
+
+        if self.active_contract.is_some() {
+            let hand_size = hand_total(&self.cards);
+            for i in 0..hand_size {
+                actions.push(PossibleAction {
+                    action: PlayerAction::PlayCard { hand_index: i },
+                    description: format!("Play the card at hand position {i}"),
+                });
+            }
+            for i in 0..hand_size {
+                actions.push(PossibleAction {
+                    action: PlayerAction::DiscardCard { hand_index: i },
+                    description: format!(
+                        "Discard the card at hand position {i} for a small production bonus"
+                    ),
+                });
+            }
+        } else {
+            for (tier_idx, tier_contracts) in self.offered_contracts.iter().enumerate() {
+                for (contract_idx, _) in tier_contracts.contracts.iter().enumerate() {
+                    actions.push(PossibleAction {
+                        action: PlayerAction::AcceptContract {
+                            tier_index: tier_idx,
+                            contract_index: contract_idx,
+                        },
+                        description: format!(
+                            "Accept contract {contract_idx} from tier {}",
+                            tier_contracts.tier.0
+                        ),
+                    });
+                }
+            }
+        }
+
+        actions
     }
 
     // -------------------------------------------------------------------

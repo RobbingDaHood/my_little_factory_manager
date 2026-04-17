@@ -68,18 +68,25 @@ Key project files
 - `src/game_state.rs` — `GameState` struct, game mechanics (card/token/contract operations), action dispatch
 - `src/action_log.rs` — `PlayerAction` enum, `ActionEntry`, `ActionLog` for deterministic replay
 - `src/contract_generation.rs` — formula-based contract and reward card generation (TierScalingFormula)
-- `src/endpoints.rs` — HTTP handlers: `POST /action`, `GET /state`, `GET /actions/history`, `GET /contracts/available`
+- `src/endpoints.rs` — HTTP handlers: `POST /action`, `GET /state`, `GET /actions/history`, `GET /contracts/available`, `GET /library/cards`, `GET /player/tokens`, `GET /contracts/active`, `GET /actions/possible`
 - `src/starter_cards.rs` — starter deck card definitions (3 pure production types)
+- `src/docs/mod.rs` — documentation endpoint module declarations
+- `src/docs/tutorial.rs` — `GET /docs/tutorial` new-player walkthrough
+- `src/docs/hints.rs` — `GET /docs/hints` per-tier strategy tips
+- `src/docs/designer.rs` — `GET /docs/designer` token/card/contract authoring reference
 - `configurations/general/game_rules.json` — externalized game constants
 - `Makefile` — `check`, `coverage`, `install-hooks` targets
 - `scripts/check_all.sh` — unified validation script (fmt, clippy, build, test, coverage)
 - `rust-toolchain.toml` — nightly Rust toolchain config
 - `.github/workflows/ci.yml` — GitHub Actions CI pipeline
+- `README.md` — project overview, API endpoint table, usage examples
+- `docs/examples/api_examples.sh` — curl-based gameplay walkthrough
 - `tests/smoke_test.rs` — smoke tests for server endpoints
 - `tests/types_serialization_test.rs` — serialization roundtrip tests for core types
 - `tests/contract_system_test.rs` — integration tests for contract generation, market mechanics, and reward cards
 - `tests/game_loop_test.rs` — integration tests for the basic game loop (full cycle, errors, persistence)
 - `tests/determinism_test.rs` — deterministic replay and seed reproducibility tests
+- `tests/api_endpoints_test.rs` — integration tests for query and documentation endpoints
 
 Suggest changes to vision.md and roadmap.md
 

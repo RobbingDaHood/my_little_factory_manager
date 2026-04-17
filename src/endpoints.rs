@@ -1,7 +1,7 @@
 //! HTTP endpoints for the game loop.
 //!
 //! All gameplay is driven through `POST /action`. State inspection
-//! via `GET /state` and `GET /actions/history`.
+//! via `GET /state`, `GET /actions/history`, and additional query endpoints.
 
 use rocket::serde::json::Json;
 use rocket::State;
@@ -9,8 +9,8 @@ use rocket_okapi::openapi;
 use std::sync::Mutex;
 
 use crate::action_log::{ActionEntry, PlayerAction};
-use crate::game_state::{ActionResult, GameState, GameStateView};
-use crate::types::TierContracts;
+use crate::game_state::{ActionResult, GameState, GameStateView, PlayerTokensView, PossibleAction};
+use crate::types::{CardEntry, CardTag, Contract, TierContracts};
 
 /// Dispatch a player action.
 ///
@@ -62,4 +62,78 @@ pub fn get_actions_history(game_state: &State<Mutex<GameState>>) -> Json<Vec<Act
 pub fn get_contracts_available(game_state: &State<Mutex<GameState>>) -> Json<Vec<TierContracts>> {
     let gs = game_state.lock().expect("game state lock poisoned");
     Json(gs.offered_contracts().to_vec())
+}
+
+/// Card catalogue with optional tag filter.
+///
+/// Returns all player action cards in the game with their per-location copy
+/// counts (library, deck, hand, discard). Use the optional `?tag=` query
+/// parameter to filter by card tag (e.g., `Production`, `Transformation`,
+/// `QualityControl`, `SystemAdjustment`).
+#[openapi]
+#[get("/library/cards?<tag>")]
+pub fn get_library_cards(
+    tag: Option<String>,
+    game_state: &State<Mutex<GameState>>,
+) -> Json<Vec<CardEntry>> {
+    let gs = game_state.lock().expect("game state lock poisoned");
+
+    let tag_filter = match tag {
+        Some(t) => match serde_json::from_value::<CardTag>(serde_json::Value::String(t)) {
+            Ok(parsed) => Some(parsed),
+            Err(_) => return Json(Vec::new()),
+        },
+        None => None,
+    };
+
+    let cards: Vec<CardEntry> = gs
+        .cards()
+        .iter()
+        .filter(|entry| match &tag_filter {
+            Some(filter_tag) => entry.card.tags.contains(filter_tag),
+            None => true,
+        })
+        .cloned()
+        .collect();
+    Json(cards)
+}
+
+/// Player token balances grouped by category.
+///
+/// Returns all non-zero token balances organized into three categories:
+/// **beneficial** (ProductionUnit, Energy, RawMaterial), **harmful** (Heat,
+/// CO2, Waste, Pollution), and **progression** (ContractsTierCompleted).
+/// Use this to monitor resource levels and plan card plays.
+#[openapi]
+#[get("/player/tokens")]
+pub fn get_player_tokens(game_state: &State<Mutex<GameState>>) -> Json<PlayerTokensView> {
+    let gs = game_state.lock().expect("game state lock poisoned");
+    Json(gs.tokens_view())
+}
+
+/// Currently active contract.
+///
+/// Returns the contract the player is currently working on, or `null` if
+/// no contract is active. When a contract is active, the player can play
+/// cards or discard to make progress toward its requirements.
+#[openapi]
+#[get("/contracts/active")]
+pub fn get_contracts_active(game_state: &State<Mutex<GameState>>) -> Json<Option<Contract>> {
+    let gs = game_state.lock().expect("game state lock poisoned");
+    Json(gs.active_contract().cloned())
+}
+
+/// Actions available in the current game state.
+///
+/// Returns the list of player actions that are valid right now, along with
+/// a human-readable description for each. This is the recommended way for
+/// clients to discover what they can do:
+/// - **No active contract**: `AcceptContract` actions for each offered contract
+/// - **Active contract**: `PlayCard` and `DiscardCard` for each hand position
+/// - `NewGame` is always available
+#[openapi]
+#[get("/actions/possible")]
+pub fn get_actions_possible(game_state: &State<Mutex<GameState>>) -> Json<Vec<PossibleAction>> {
+    let gs = game_state.lock().expect("game state lock poisoned");
+    Json(gs.possible_actions())
 }

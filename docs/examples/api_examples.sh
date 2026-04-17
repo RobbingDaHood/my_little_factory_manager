@@ -4,7 +4,7 @@
 # Requires: curl, jq
 #
 # This script demonstrates a complete gameplay loop:
-#   NewGame → view market → accept contract → play cards → complete → tokens
+#   NewGame → view market → accept contract → play cards → complete → deckbuilding → tokens
 
 set -euo pipefail
 BASE_URL="http://localhost:8000"
@@ -83,6 +83,25 @@ echo
 # ── Step 10: Check tokens after contract ──────────────────────────
 echo "10. Token balances after contract:"
 curl -s "${BASE_URL}/player/tokens" | jq '.'
+echo
+
+# ── Step 10b: Check deck slots ────────────────────────────────────
+echo "10b. Deck slot status:"
+curl -s "${BASE_URL}/state" | jq '{ deck_slots_used, deck_slots_total }'
+echo
+
+# ── Step 10c: Deckbuilding — ReplaceCard (if shelved cards exist) ─
+echo "10c. Check for ReplaceCard opportunities:"
+POSSIBLE=$(curl -s "${BASE_URL}/actions/possible")
+REPLACE_COUNT=$(echo "$POSSIBLE" | jq '[ .[] | select(.action.action_type == "ReplaceCard") ] | length')
+echo "   Found ${REPLACE_COUNT} ReplaceCard options"
+if [ "$REPLACE_COUNT" -gt 0 ]; then
+  FIRST_REPLACE=$(echo "$POSSIBLE" | jq -c '[ .[] | select(.action.action_type == "ReplaceCard") ] | .[0].action')
+  echo "   Performing first ReplaceCard:"
+  curl -s -X POST "${BASE_URL}/action" \
+    -H "Content-Type: application/json" \
+    -d "$FIRST_REPLACE" | jq '.'
+fi
 echo
 
 # ── Step 11: Browse card catalogue ────────────────────────────────

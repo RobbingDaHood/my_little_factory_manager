@@ -16,7 +16,7 @@ use crate::contract_generation::generate_contract;
 use crate::starter_cards::create_starter_deck;
 use crate::types::{
     CardCounts, CardEffect, CardEntry, Contract, ContractRequirementKind, ContractTier,
-    PlayerActionCard, TierContracts, TokenAmount, TokenType,
+    PlayerActionCard, ReplaceableLocation, TierContracts, TokenAmount, TokenType,
 };
 
 use rocket::serde::Serialize;
@@ -54,6 +54,8 @@ pub enum ActionSuccess {
         #[serde(skip_serializing_if = "Option::is_none")]
         contract_completed: Option<Contract>,
     },
+    /// A deck/discard card was replaced with a library card; sacrifice destroyed.
+    CardReplaced,
 }
 
 /// Error outcomes — explicit variants for every failure mode.
@@ -75,6 +77,33 @@ pub enum ActionError {
     InsufficientTokens {
         missing: Vec<TokenAmount>,
     },
+    /// ReplaceCard attempted while a contract is active.
+    ContractActiveForDeckbuilding,
+    /// target_card_index is out of bounds.
+    InvalidTargetCardIndex {
+        index: usize,
+    },
+    /// Target card has no copies in the specified location.
+    NoTargetCopies {
+        index: usize,
+        location: ReplaceableLocation,
+    },
+    /// replacement_card_index is out of bounds.
+    InvalidReplacementCardIndex {
+        index: usize,
+    },
+    /// Replacement card has no shelved copies (library - deck - hand - discard = 0).
+    NoShelvedCopies {
+        index: usize,
+    },
+    /// sacrifice_card_index is out of bounds.
+    InvalidSacrificeCardIndex {
+        index: usize,
+    },
+    /// Sacrifice card has no library copies to destroy.
+    NoSacrificeCopies {
+        index: usize,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -90,6 +119,8 @@ pub struct GameStateView {
     pub tokens: Vec<TokenAmount>,
     pub active_contract: Option<Contract>,
     pub offered_contracts: Vec<TierContracts>,
+    pub deck_slots_used: u32,
+    pub deck_slots_total: u32,
 }
 
 /// Token balances grouped by tag category for the `/player/tokens` endpoint.
@@ -179,9 +210,12 @@ impl GameState {
             offered_contracts: Vec::new(),
             rng,
             seed: actual_seed,
-            rules,
+            rules: rules.clone(),
             action_log: ActionLog::new(),
         };
+
+        // Initialize deck slots to starting deck size
+        state.add_tokens(&TokenType::DeckSlots, rules.general.starting_deck_size);
 
         // Generate first offered contracts
         state.refill_contract_market();
@@ -211,6 +245,8 @@ impl GameState {
             },
             active_contract: self.active_contract.clone(),
             offered_contracts: self.offered_contracts.clone(),
+            deck_slots_used: active_card_total(&self.cards),
+            deck_slots_total: self.deck_slots_total(),
         }
     }
 
@@ -316,9 +352,70 @@ impl GameState {
                     });
                 }
             }
+
+            // List ReplaceCard options when shelved and sacrifice candidates exist
+            self.add_replace_card_actions(&mut actions);
         }
 
         actions
+    }
+
+    /// Enumerates valid ReplaceCard actions and adds them to the actions list.
+    fn add_replace_card_actions(&self, actions: &mut Vec<PossibleAction>) {
+        // Collect shelved card indices (cards with library > deck+hand+discard)
+        let shelved_indices: Vec<usize> = self
+            .cards
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| e.counts.library > e.counts.deck + e.counts.hand + e.counts.discard)
+            .map(|(i, _)| i)
+            .collect();
+
+        if shelved_indices.is_empty() {
+            return;
+        }
+
+        // Collect sacrifice candidates (cards with library > 0)
+        let sacrifice_indices: Vec<usize> = self
+            .cards
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| e.counts.library > 0)
+            .map(|(i, _)| i)
+            .collect();
+
+        if sacrifice_indices.is_empty() {
+            return;
+        }
+
+        // For each target in deck/discard × each replacement × each sacrifice
+        for (target_idx, entry) in self.cards.iter().enumerate() {
+            for location in &[ReplaceableLocation::Deck, ReplaceableLocation::Discard] {
+                let loc_count = match location {
+                    ReplaceableLocation::Deck => entry.counts.deck,
+                    ReplaceableLocation::Discard => entry.counts.discard,
+                };
+                if loc_count == 0 {
+                    continue;
+                }
+
+                for &repl_idx in &shelved_indices {
+                    for &sac_idx in &sacrifice_indices {
+                        actions.push(PossibleAction {
+                            action: PlayerAction::ReplaceCard {
+                                target_card_index: target_idx,
+                                target_location: location.clone(),
+                                replacement_card_index: repl_idx,
+                                sacrifice_card_index: sac_idx,
+                            },
+                            description: format!(
+                                "Replace card {target_idx} in {location:?} with shelved card {repl_idx}, sacrificing card {sac_idx}"
+                            ),
+                        });
+                    }
+                }
+            }
+        }
     }
 
     // -------------------------------------------------------------------
@@ -337,6 +434,17 @@ impl GameState {
             } => self.handle_accept_contract(tier_index, contract_index),
             PlayerAction::PlayCard { hand_index } => self.handle_play_card(hand_index),
             PlayerAction::DiscardCard { hand_index } => self.handle_discard_card(hand_index),
+            PlayerAction::ReplaceCard {
+                target_card_index,
+                target_location,
+                replacement_card_index,
+                sacrifice_card_index,
+            } => self.handle_replace_card(
+                target_card_index,
+                target_location,
+                replacement_card_index,
+                sacrifice_card_index,
+            ),
         }
     }
 
@@ -434,6 +542,95 @@ impl GameState {
 
         let contract_completed = self.try_complete_contract();
         ActionResult::Success(ActionSuccess::CardDiscarded { contract_completed })
+    }
+
+    fn handle_replace_card(
+        &mut self,
+        target_card_index: usize,
+        target_location: ReplaceableLocation,
+        replacement_card_index: usize,
+        sacrifice_card_index: usize,
+    ) -> ActionResult {
+        // Must not have an active contract
+        if self.active_contract.is_some() {
+            return ActionResult::Error(ActionError::ContractActiveForDeckbuilding);
+        }
+
+        let card_count = self.cards.len();
+
+        // Validate target index
+        if target_card_index >= card_count {
+            return ActionResult::Error(ActionError::InvalidTargetCardIndex {
+                index: target_card_index,
+            });
+        }
+
+        // Validate target has copies in specified location
+        let target_location_count = match target_location {
+            ReplaceableLocation::Deck => self.cards[target_card_index].counts.deck,
+            ReplaceableLocation::Discard => self.cards[target_card_index].counts.discard,
+        };
+        if target_location_count == 0 {
+            return ActionResult::Error(ActionError::NoTargetCopies {
+                index: target_card_index,
+                location: target_location,
+            });
+        }
+
+        // Validate replacement index
+        if replacement_card_index >= card_count {
+            return ActionResult::Error(ActionError::InvalidReplacementCardIndex {
+                index: replacement_card_index,
+            });
+        }
+
+        // Validate replacement has shelved copies
+        let replacement = &self.cards[replacement_card_index].counts;
+        let shelved = replacement
+            .library
+            .saturating_sub(replacement.deck + replacement.hand + replacement.discard);
+        if shelved == 0 {
+            return ActionResult::Error(ActionError::NoShelvedCopies {
+                index: replacement_card_index,
+            });
+        }
+
+        // Validate sacrifice index
+        if sacrifice_card_index >= card_count {
+            return ActionResult::Error(ActionError::InvalidSacrificeCardIndex {
+                index: sacrifice_card_index,
+            });
+        }
+
+        if self.cards[sacrifice_card_index].counts.library == 0 {
+            return ActionResult::Error(ActionError::NoSacrificeCopies {
+                index: sacrifice_card_index,
+            });
+        }
+
+        // --- Apply the replacement ---
+
+        // Remove target from its location, add to library shelf (stays in library, removed from active)
+        match target_location {
+            ReplaceableLocation::Deck => self.cards[target_card_index].counts.deck -= 1,
+            ReplaceableLocation::Discard => self.cards[target_card_index].counts.discard -= 1,
+        }
+
+        // Move replacement from shelf to the target's location
+        match target_location {
+            ReplaceableLocation::Deck => self.cards[replacement_card_index].counts.deck += 1,
+            ReplaceableLocation::Discard => self.cards[replacement_card_index].counts.discard += 1,
+        }
+
+        // Destroy sacrifice (permanently remove from library)
+        self.cards[sacrifice_card_index].counts.library -= 1;
+
+        // Clean up entries where all counts are zero
+        self.cards.retain(|e| {
+            e.counts.library > 0 || e.counts.deck > 0 || e.counts.hand > 0 || e.counts.discard > 0
+        });
+
+        ActionResult::Success(ActionSuccess::CardReplaced)
     }
 
     // -------------------------------------------------------------------
@@ -551,8 +748,17 @@ impl GameState {
         self.subtract_contract_tokens(&contract);
         self.add_tokens(&TokenType::ContractsTierCompleted(contract.tier.0), 1);
 
-        // Add reward card to library and deck
+        // Add reward card to library and deck (respects deck limit)
         self.add_reward_card(&contract.reward_card);
+
+        // Roll for bonus DeckSlots
+        let chance = self.rules.general.deck_slot_reward_chance;
+        if chance > 0.0 {
+            let roll = (self.rng.next_u32() % 10_000) as f64 / 10_000.0;
+            if roll < chance {
+                self.add_tokens(&TokenType::DeckSlots, 1);
+            }
+        }
 
         self.active_contract = None;
         self.refill_contract_market();
@@ -561,21 +767,29 @@ impl GameState {
     }
 
     fn add_reward_card(&mut self, card: &PlayerActionCard) {
-        // Check if an identical card already exists in the library
+        let at_limit = active_card_total(&self.cards) >= self.deck_slots_total();
+
         if let Some(entry) = self.cards.iter_mut().find(|e| e.card == *card) {
             entry.counts.library += 1;
-            entry.counts.deck += 1;
+            if !at_limit {
+                entry.counts.deck += 1;
+            }
         } else {
             self.cards.push(CardEntry {
                 card: card.clone(),
                 counts: CardCounts {
                     library: 1,
-                    deck: 1,
+                    deck: if at_limit { 0 } else { 1 },
                     hand: 0,
                     discard: 0,
                 },
             });
         }
+    }
+
+    /// Returns the current DeckSlots token value.
+    fn deck_slots_total(&self) -> u32 {
+        self.tokens.get(&TokenType::DeckSlots).copied().unwrap_or(0)
     }
 
     fn all_requirements_met(&self, contract: &Contract) -> bool {
@@ -615,6 +829,14 @@ impl GameState {
 // ---------------------------------------------------------------------------
 // Card helper functions (free functions operating on Vec<CardEntry>)
 // ---------------------------------------------------------------------------
+
+/// Total number of cards in the active cycle (deck + hand + discard).
+fn active_card_total(cards: &[CardEntry]) -> u32 {
+    cards
+        .iter()
+        .map(|e| e.counts.deck + e.counts.hand + e.counts.discard)
+        .sum()
+}
 
 /// Total number of cards currently in hand.
 fn hand_total(cards: &[CardEntry]) -> usize {

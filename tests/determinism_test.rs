@@ -150,12 +150,11 @@ fn new_game_fully_resets_state() {
 
     let state_fresh = get_state(&client);
     assert_eq!(state_fresh["seed"], 42);
+    // Fresh game should only have the DeckSlots progression token (initialized at start)
+    let fresh_tokens = state_fresh["tokens"].as_array().expect("tokens array");
     assert!(
-        state_fresh["tokens"]
-            .as_array()
-            .expect("tokens array")
-            .is_empty(),
-        "fresh game should have no tokens"
+        fresh_tokens.iter().all(|t| t["token_type"] == "DeckSlots"),
+        "fresh game should only have DeckSlots token, got: {fresh_tokens:?}"
     );
 }
 

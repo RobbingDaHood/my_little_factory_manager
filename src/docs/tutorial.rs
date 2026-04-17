@@ -156,8 +156,10 @@ fn build_tutorial() -> Tutorial {
                 step: 8,
                 title: "Contract Completion and Rewards".to_string(),
                 description: "When all requirements are met, the contract auto-completes. \
-                    The required tokens are subtracted, you earn the reward card (added to \
-                    your library and deck), and the market refills."
+                    The required tokens are subtracted, you earn the reward card, and the \
+                    market refills. If your active deck is under the DeckSlots limit, the \
+                    reward card enters both library and deck. Otherwise it goes to your \
+                    library shelf — owned but not in the active cycle."
                     .to_string(),
                 endpoint: "/state".to_string(),
                 method: "GET".to_string(),
@@ -165,11 +167,33 @@ fn build_tutorial() -> Tutorial {
                 tips: vec![
                     "Reward cards make your deck stronger over time.".to_string(),
                     "Completing 10 contracts in a tier unlocks the next tier.".to_string(),
-                    "Check /contracts/active to verify no contract is active after completion.".to_string(),
+                    "Each completion has a 25% chance to award +1 DeckSlots.".to_string(),
+                    "Check deck_slots_used vs deck_slots_total in /state to see capacity.".to_string(),
                 ],
             },
             TutorialStep {
                 step: 9,
+                title: "Manage Your Deck (Deckbuilding)".to_string(),
+                description: "Between contracts, you can use ReplaceCard to swap a card \
+                    in your deck or discard with a shelved card from your library. The cost \
+                    is permanently destroying a third card (sacrifice). This is the only way \
+                    to change your active deck composition."
+                    .to_string(),
+                endpoint: "/action".to_string(),
+                method: "POST".to_string(),
+                example_body: Some(
+                    r#"{"action_type": "ReplaceCard", "target_card_index": 0, "target_location": "Deck", "replacement_card_index": 3, "sacrifice_card_index": 1}"#.to_string(),
+                ),
+                tips: vec![
+                    "ReplaceCard is only available between contracts (no active contract).".to_string(),
+                    "The replacement card must have shelved copies (library > deck+hand+discard).".to_string(),
+                    "The sacrifice is permanent — that library copy is gone forever.".to_string(),
+                    "Use /actions/possible to see all valid ReplaceCard combinations.".to_string(),
+                    "Improve your deck quality by replacing weak starter cards with strong reward cards.".to_string(),
+                ],
+            },
+            TutorialStep {
+                step: 10,
                 title: "Browse Your Card Catalogue".to_string(),
                 description: "View all your cards and their location counts. Filter by \
                     tag to find specific card types."
@@ -180,11 +204,11 @@ fn build_tutorial() -> Tutorial {
                 tips: vec![
                     "Use ?tag=Production to see only production cards.".to_string(),
                     "Card counts show how many copies are in each location.".to_string(),
-                    "library count = total owned; deck+hand+discard = current distribution.".to_string(),
+                    "library count = total owned; deck+hand+discard = in active cycle; shelved = library - active.".to_string(),
                 ],
             },
             TutorialStep {
-                step: 10,
+                step: 11,
                 title: "Save and Replay".to_string(),
                 description: "The action history endpoint returns every action taken. \
                     Combined with the seed from /state, replaying these actions on a \

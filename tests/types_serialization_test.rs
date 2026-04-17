@@ -375,7 +375,8 @@ fn load_custom_game_rules_json() {
             "starting_deck_size": 15,
             "contracts_per_tier_to_advance": 5,
             "contract_market_size_per_tier": 4,
-            "discard_production_unit_bonus": 2
+            "discard_production_unit_bonus": 2,
+            "deck_slot_reward_chance": 0.5
         },
         "contract_formulas": {
             "output_threshold": {

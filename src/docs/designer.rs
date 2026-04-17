@@ -45,6 +45,7 @@ fn build_designer_guide() -> DesignerGuide {
             build_contract_requirements(),
             build_tier_system(),
             build_card_locations(),
+            build_deckbuilding(),
             build_configuration(),
             build_determinism(),
         ],
@@ -108,6 +109,15 @@ fn build_token_types() -> DesignerSection {
                 description: "Tracks the number of contracts completed at tier N. \
                     When this reaches the advancement threshold (default: 10), the next \
                     tier unlocks."
+                    .to_string(),
+            },
+            ReferenceEntry {
+                name: "DeckSlots (Progression)".to_string(),
+                description: "Controls the maximum number of cards in the active cycle \
+                    (deck + hand + discard). Initialized to starting_deck_size (default: 10). \
+                    Each contract completion has a 25% chance to award +1 DeckSlots. When \
+                    the active cycle is at the limit, reward cards go to the library shelf \
+                    instead of entering the deck."
                     .to_string(),
             },
         ],
@@ -257,7 +267,9 @@ fn build_card_locations() -> DesignerSection {
             ReferenceEntry {
                 name: "Library".to_string(),
                 description: "The total number of copies of this card the player owns. \
-                    Grows when reward cards are earned. library = deck + hand + discard."
+                    Grows when reward cards are earned. library >= deck + hand + discard. \
+                    The difference (library - active) represents shelved copies — owned but \
+                    not in the active deck cycle."
                     .to_string(),
             },
             ReferenceEntry {
@@ -283,6 +295,47 @@ fn build_card_locations() -> DesignerSection {
     }
 }
 
+fn build_deckbuilding() -> DesignerSection {
+    DesignerSection {
+        title: "Deckbuilding".to_string(),
+        description: "Between contracts, players can reshape their active deck using the \
+            ReplaceCard action. The deck size is limited by the DeckSlots token. Cards \
+            that exceed the limit are shelved in the library."
+            .to_string(),
+        entries: vec![
+            ReferenceEntry {
+                name: "DeckSlots".to_string(),
+                description: "Limits active deck size (deck + hand + discard). Initialized \
+                    to starting_deck_size. Each contract completion has a configurable chance \
+                    (deck_slot_reward_chance, default 25%) to award +1 DeckSlots."
+                    .to_string(),
+            },
+            ReferenceEntry {
+                name: "Shelved Cards".to_string(),
+                description: "Cards with library count > (deck + hand + discard) have \
+                    shelved copies. These are owned but not in the active cycle. Shelved \
+                    cards can be moved into the deck via ReplaceCard."
+                    .to_string(),
+            },
+            ReferenceEntry {
+                name: "ReplaceCard Action".to_string(),
+                description: "The sole deckbuilding action. Swaps a target card (in Deck \
+                    or Discard) with a shelved replacement card. Permanently destroys a \
+                    third sacrifice card (library count decremented). Only available \
+                    between contracts."
+                    .to_string(),
+            },
+            ReferenceEntry {
+                name: "Reward Card Placement".to_string(),
+                description: "When a contract is completed, the reward card enters the \
+                    library. If the active cycle is under the DeckSlots limit, it also \
+                    enters the deck. Otherwise it is shelved."
+                    .to_string(),
+            },
+        ],
+    }
+}
+
 fn build_configuration() -> DesignerSection {
     DesignerSection {
         title: "Game Configuration".to_string(),
@@ -294,9 +347,18 @@ fn build_configuration() -> DesignerSection {
                 name: "configurations/general/game_rules.json".to_string(),
                 description: "Contains general rules (starting_hand_size, \
                     starting_deck_size, contracts_per_tier_to_advance, \
-                    contract_market_size_per_tier, discard_production_unit_bonus) \
+                    contract_market_size_per_tier, discard_production_unit_bonus, \
+                    deck_slot_reward_chance) \
                     and contract formula parameters (output_threshold, \
                     reward_production scaling formulas)."
+                    .to_string(),
+            },
+            ReferenceEntry {
+                name: "configurations/card_effects/effect_types.json".to_string(),
+                description: "Defines card effect types with per-tier availability. Each \
+                    type specifies: name, min_tier, tags, input formulas, and output \
+                    formulas. Tier 1 has pure_production only. Higher tiers add \
+                    boosted_production and energy_production."
                     .to_string(),
             },
             ReferenceEntry {

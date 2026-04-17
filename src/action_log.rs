@@ -8,6 +8,8 @@
 use rocket::serde::{Deserialize, Serialize};
 use schemars::JsonSchema;
 
+use crate::types::ReplaceableLocation;
+
 /// A player action that can be dispatched to the game.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "action_type", crate = "rocket::serde")]
@@ -23,6 +25,15 @@ pub enum PlayerAction {
     PlayCard { hand_index: usize },
     /// Discard a card from hand for a small baseline production bonus.
     DiscardCard { hand_index: usize },
+    /// Replace a card in the deck or discard with a shelved library card,
+    /// permanently destroying a third card as the cost. Only available
+    /// between contracts.
+    ReplaceCard {
+        target_card_index: usize,
+        target_location: ReplaceableLocation,
+        replacement_card_index: usize,
+        sacrifice_card_index: usize,
+    },
 }
 
 /// A single entry in the action log.

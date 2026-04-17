@@ -43,6 +43,9 @@ fn build_hints() -> HintsGuide {
             "Check the reward card preview before accepting a contract — some rewards are better than others.".to_string(),
             "Completing 10 contracts in a tier unlocks the next tier with new challenges and stronger reward cards.".to_string(),
             "The seed + action log is your save file — use GET /actions/history to export it.".to_string(),
+            "Between contracts, use ReplaceCard to swap weak deck cards for strong shelved reward cards.".to_string(),
+            "ReplaceCard costs a sacrifice — choose carefully which card to permanently destroy.".to_string(),
+            "Check deck_slots_used vs deck_slots_total in /state to know if rewards will auto-enter your deck.".to_string(),
         ],
         tiers: vec![
             build_tier1_hints(),
@@ -73,8 +76,16 @@ fn build_tier1_hints() -> TierHints {
             },
             Strategy {
                 name: "Build your deck through rewards".to_string(),
-                description: "Each completed contract adds its reward card to your deck. \
-                    These new cards improve your production capacity for future contracts."
+                description: "Each completed contract adds its reward card to your deck \
+                    (if under the DeckSlots limit). These new cards improve your production \
+                    capacity for future contracts."
+                    .to_string(),
+            },
+            Strategy {
+                name: "Replace weak starter cards".to_string(),
+                description: "Once you have shelved reward cards, use ReplaceCard between \
+                    contracts to swap weak 1-ProductionUnit starter cards for stronger rewards. \
+                    Sacrifice the weakest card you own to minimize loss."
                     .to_string(),
             },
         ],

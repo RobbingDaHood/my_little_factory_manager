@@ -171,18 +171,21 @@ The existing [my_little_card_game](https://github.com/RobbingDaHood/my_little_ca
 
 ---
 
-## Phase 5: Deckbuilding
+## Phase 5: Deckbuilding ✅
 
 **Goal**: Players acquire new player action cards from contract rewards and can manage their deck composition.
 
 **Deliverables**:
-- Contract rewards add new player action cards to library (basic version already in Phase 2)
-- Player can move cards between Library and Deck
-- Card replacement: replacing a card in Deck or Discard with a different card from the Library costs destroying another Library card. Hand cards cannot be replaced — the hand must always reflect random draws from the deck.
-- Deck size limits enforced via token system
-- Card variety: different card effect combinations and tag sets
-- `configurations/card_effects/` — card effect type definitions with tier formulas
-- Integration tests for deck management actions
+- ✅ Contract rewards add new player action cards to library (respects deck size limits)
+- ✅ ReplaceCard action: swap a card in Deck or Discard with a shelved Library card, destroying a third card as sacrifice
+- ✅ Deck size limits enforced via DeckSlots token (Progression tag)
+- ✅ Card variety infrastructure: config-driven effect types (`configurations/card_effects/effect_types.json`)
+- ✅ Tier 1 has only `pure_production`; `boosted_production` and `energy_production` defined at min_tier=2 for Phase 6
+- ✅ `deck_slot_reward_chance` (25%) for +1 DeckSlots on contract completion
+- ✅ GameStateView includes `deck_slots_used` and `deck_slots_total`
+- ✅ `possible_actions()` lists valid ReplaceCard options between contracts
+- ✅ Integration tests for deckbuilding mechanics
+- ✅ Updated tutorial, hints, designer docs, README
 
 **Reference files from card game**:
 - Card location system (Library → Deck → Hand → Discard cycle) — count-based tracking already implemented in Phase 2

@@ -37,6 +37,8 @@ pub enum TokenType {
     // Progression tracking
     /// Number of contracts completed for a given tier (1-based, unbounded).
     ContractsTierCompleted(u32),
+    /// Current deck size limit — cards in deck+hand+discard cannot exceed this.
+    DeckSlots,
 }
 
 /// Classification tags for token types.
@@ -57,7 +59,7 @@ impl TokenType {
         match self {
             Self::ProductionUnit | Self::Energy | Self::RawMaterial => &[TokenTag::Beneficial],
             Self::Heat | Self::CO2 | Self::Waste | Self::Pollution => &[TokenTag::Harmful],
-            Self::ContractsTierCompleted(_) => &[TokenTag::Progression],
+            Self::ContractsTierCompleted(_) | Self::DeckSlots => &[TokenTag::Progression],
         }
     }
 }
@@ -150,10 +152,20 @@ pub enum CardLocation {
     Discard,
 }
 
+/// Locations where a card can be replaced via the ReplaceCard action.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "rocket::serde")]
+pub enum ReplaceableLocation {
+    Deck,
+    Discard,
+}
+
 /// Per-location copy counts for a single card type.
 ///
-/// Invariant: `deck + hand + discard == library` at all times.
 /// `library` is the total copies owned (grows when reward cards are earned).
+/// `deck + hand + discard <= library` at all times.
+/// The difference `library - deck - hand - discard` represents copies
+/// "shelved" in the library — owned but not in the active deck cycle.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(crate = "rocket::serde")]
 pub struct CardCounts {

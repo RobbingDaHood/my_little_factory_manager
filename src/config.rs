@@ -27,6 +27,8 @@ pub struct GeneralRules {
     pub contract_market_size_per_tier: u32,
     /// Production units gained when discarding a card for baseline benefit.
     pub discard_production_unit_bonus: u32,
+    /// Probability (0.0–1.0) that completing a contract awards +1 DeckSlots.
+    pub deck_slot_reward_chance: f64,
 }
 
 /// Formula parameters for contract and reward card generation.
@@ -48,4 +50,33 @@ pub struct TierScalingFormula {
     pub base_max: u32,
     pub per_tier_min: u32,
     pub per_tier_max: u32,
+}
+
+// ---------------------------------------------------------------------------
+// Card effect type configuration
+// ---------------------------------------------------------------------------
+
+/// A single card-effect type definition loaded from
+/// `configurations/card_effects/effect_types.json`.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(crate = "rocket::serde")]
+pub struct CardEffectTypeConfig {
+    /// Identifier (e.g. "pure_production").
+    pub name: String,
+    /// Minimum contract tier where this effect type appears as a reward.
+    pub min_tier: u32,
+    /// Tags assigned to cards generated with this effect type.
+    pub tags: Vec<String>,
+    /// Token inputs consumed when the card is played.
+    pub inputs: Vec<EffectFormula>,
+    /// Token outputs produced when the card is played.
+    pub outputs: Vec<EffectFormula>,
+}
+
+/// A formula pairing a token type name with a tier-scaling formula.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(crate = "rocket::serde")]
+pub struct EffectFormula {
+    pub token_type: String,
+    pub formula: TierScalingFormula,
 }

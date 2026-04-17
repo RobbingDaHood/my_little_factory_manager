@@ -4,11 +4,15 @@
 //! Each formula produces a range `[base_min + tier × per_tier_min,
 //! base_max + tier × per_tier_max]` and a value is rolled uniformly
 //! within that range using the seeded RNG.
+//!
+//! Reward card effects are driven by `CardEffectTypeConfig` definitions
+//! loaded from `configurations/card_effects/effect_types.json`.
 
 use rand::RngCore;
 use rand_pcg::Pcg64;
 
-use crate::config::{ContractFormulasConfig, TierScalingFormula};
+use crate::config::{CardEffectTypeConfig, ContractFormulasConfig, TierScalingFormula};
+use crate::config_loader::load_effect_types;
 use crate::types::{
     CardEffect, CardTag, Contract, ContractRequirementKind, ContractTier, PlayerActionCard,
     TokenAmount, TokenType,
@@ -89,15 +93,105 @@ pub fn generate_contract(
 }
 
 /// Generate a reward card with the given number of effects at the given tier.
+/// Uses config-driven effect type selection from `effect_types.json`.
 fn generate_reward_card(
     tier: ContractTier,
     num_effects: usize,
     rng: &mut Pcg64,
     formulas: &ContractFormulasConfig,
 ) -> PlayerActionCard {
+    let all_effect_types = load_effect_types().expect("embedded effect types must parse");
+    generate_reward_card_with_types(tier, num_effects, rng, formulas, &all_effect_types)
+}
+
+/// Generate a reward card using explicit effect type definitions (for testing).
+pub fn generate_reward_card_with_types(
+    tier: ContractTier,
+    num_effects: usize,
+    rng: &mut Pcg64,
+    _formulas: &ContractFormulasConfig,
+    effect_types: &[CardEffectTypeConfig],
+) -> PlayerActionCard {
+    let available: Vec<&CardEffectTypeConfig> = effect_types
+        .iter()
+        .filter(|et| et.min_tier <= tier.0)
+        .collect();
+
+    // Fallback to hardcoded pure production if no config types available
+    if available.is_empty() {
+        return generate_fallback_reward_card(tier, num_effects, rng);
+    }
+
+    let mut all_tags: Vec<CardTag> = Vec::new();
     let effects: Vec<CardEffect> = (0..num_effects)
         .map(|_| {
-            let amount = roll_from_formula(tier.0, &formulas.reward_production, rng);
+            let selected = available[rng.next_u32() as usize % available.len()];
+
+            // Collect tags from selected effect type
+            for tag_str in &selected.tags {
+                if let Some(tag) = parse_card_tag(tag_str) {
+                    if !all_tags.contains(&tag) {
+                        all_tags.push(tag);
+                    }
+                }
+            }
+
+            let inputs: Vec<TokenAmount> = selected
+                .inputs
+                .iter()
+                .filter_map(|ef| {
+                    let token = parse_token_type(&ef.token_type)?;
+                    let amount = roll_from_formula(tier.0, &ef.formula, rng);
+                    Some(TokenAmount {
+                        token_type: token,
+                        amount,
+                    })
+                })
+                .collect();
+
+            let outputs: Vec<TokenAmount> = selected
+                .outputs
+                .iter()
+                .filter_map(|ef| {
+                    let token = parse_token_type(&ef.token_type)?;
+                    let amount = roll_from_formula(tier.0, &ef.formula, rng);
+                    Some(TokenAmount {
+                        token_type: token,
+                        amount,
+                    })
+                })
+                .collect();
+
+            CardEffect::new(inputs, outputs).expect("config-driven effect should be valid")
+        })
+        .collect();
+
+    if all_tags.is_empty() {
+        all_tags.push(CardTag::Production);
+    }
+
+    PlayerActionCard {
+        tags: all_tags,
+        effects,
+    }
+}
+
+/// Fallback reward card when no effect types are configured for the tier.
+fn generate_fallback_reward_card(
+    tier: ContractTier,
+    num_effects: usize,
+    rng: &mut Pcg64,
+) -> PlayerActionCard {
+    let formula = TierScalingFormula {
+        min_tier: 1,
+        base_min: 0,
+        base_max: 1,
+        per_tier_min: 1,
+        per_tier_max: 2,
+    };
+    let effects: Vec<CardEffect> = (0..num_effects)
+        .map(|_| {
+            let amount = roll_from_formula(tier.0, &formula, rng);
             CardEffect::new(
                 vec![],
                 vec![TokenAmount {
@@ -105,12 +199,35 @@ fn generate_reward_card(
                     amount,
                 }],
             )
-            .expect("reward card effect with production output is always valid")
+            .expect("fallback effect is always valid")
         })
         .collect();
 
     PlayerActionCard {
         tags: vec![CardTag::Production],
         effects,
+    }
+}
+
+/// Parse a config string into a `TokenType`.
+fn parse_token_type(s: &str) -> Option<TokenType> {
+    match s {
+        "ProductionUnit" => Some(TokenType::ProductionUnit),
+        "Heat" => Some(TokenType::Heat),
+        "Energy" => Some(TokenType::Energy),
+        "Waste" => Some(TokenType::Waste),
+        "DeckSlots" => Some(TokenType::DeckSlots),
+        _ => None,
+    }
+}
+
+/// Parse a config string into a `CardTag`.
+fn parse_card_tag(s: &str) -> Option<CardTag> {
+    match s {
+        "Production" => Some(CardTag::Production),
+        "QualityControl" => Some(CardTag::QualityControl),
+        "Transformation" => Some(CardTag::Transformation),
+        "SystemAdjustment" => Some(CardTag::SystemAdjustment),
+        _ => None,
     }
 }

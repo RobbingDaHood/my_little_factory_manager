@@ -356,9 +356,9 @@ fn build_configuration() -> DesignerSection {
             ReferenceEntry {
                 name: "configurations/card_effects/effect_types.json".to_string(),
                 description: "Defines card effect types with per-tier availability. Each \
-                    type specifies: name, min_tier, tags, input formulas, and output \
-                    formulas. Tier 1 has pure_production only. Higher tiers add \
-                    boosted_production and energy_production."
+                    type specifies: min_tier, tags, input formulas, and output \
+                    formulas. Tier 1 has pure production only. Tier 2 adds \
+                    boosted production (with Heat output) and heat removal."
                     .to_string(),
             },
             ReferenceEntry {

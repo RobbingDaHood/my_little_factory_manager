@@ -61,8 +61,6 @@ pub struct TierScalingFormula {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(crate = "rocket::serde")]
 pub struct CardEffectTypeConfig {
-    /// Identifier (e.g. "pure_production").
-    pub name: String,
     /// Minimum contract tier where this effect type appears as a reward.
     pub min_tier: u32,
     /// Tags assigned to cards generated with this effect type.

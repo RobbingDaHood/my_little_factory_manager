@@ -163,8 +163,8 @@ fn tier1_reward_cards_match_requirements() {
 
             let amount = outputs[0]["amount"].as_u64().expect("amount");
             assert!(
-                (1..=3).contains(&amount),
-                "contract {} effect {} production amount {} should be in [1, 3]",
+                (2..=7).contains(&amount),
+                "contract {} effect {} production amount {} should be in [2, 7]",
                 i,
                 j,
                 amount

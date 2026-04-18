@@ -1,6 +1,5 @@
 [
     {
-        "name": "pure_production",
         "min_tier": 1,
         "tags": ["Production"],
         "inputs": [],
@@ -9,8 +8,8 @@
                 "token_type": "ProductionUnit",
                 "formula": {
                     "min_tier": 1,
-                    "base_min": 0,
-                    "base_max": 1,
+                    "base_min": 1,
+                    "base_max": 5,
                     "per_tier_min": 1,
                     "per_tier_max": 2
                 }
@@ -18,7 +17,6 @@
         ]
     },
     {
-        "name": "boosted_production",
         "min_tier": 2,
         "tags": ["Production"],
         "inputs": [],
@@ -27,8 +25,8 @@
                 "token_type": "ProductionUnit",
                 "formula": {
                     "min_tier": 1,
-                    "base_min": 1,
-                    "base_max": 2,
+                    "base_min": 3,
+                    "base_max": 7,
                     "per_tier_min": 2,
                     "per_tier_max": 3
                 }
@@ -37,8 +35,8 @@
                 "token_type": "Heat",
                 "formula": {
                     "min_tier": 1,
-                    "base_min": 0,
-                    "base_max": 1,
+                    "base_min": 1,
+                    "base_max": 2,
                     "per_tier_min": 0,
                     "per_tier_max": 1
                 }
@@ -46,21 +44,20 @@
         ]
     },
     {
-        "name": "energy_production",
         "min_tier": 2,
-        "tags": ["Production"],
-        "inputs": [],
-        "outputs": [
+        "tags": ["QualityControl"],
+        "inputs": [
             {
-                "token_type": "Energy",
+                "token_type": "Heat",
                 "formula": {
                     "min_tier": 1,
-                    "base_min": 0,
-                    "base_max": 1,
+                    "base_min": 1,
+                    "base_max": 3,
                     "per_tier_min": 1,
                     "per_tier_max": 2
                 }
             }
-        ]
+        ],
+        "outputs": []
     }
 ]

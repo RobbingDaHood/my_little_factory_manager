@@ -129,7 +129,7 @@ fn replace_card_fails_during_active_contract() {
 
     let (status, result) = post_action(
         &client,
-        r#"{"action_type":"ReplaceCard","target_card_index":0,"target_location":"Deck","replacement_card_index":1,"sacrifice_card_index":2}"#,
+        r#"{"action_type":"ReplaceCard","target_card_index":0,"replacement_card_index":1,"sacrifice_card_index":2}"#,
     );
     assert_eq!(status, Status::Ok);
     assert_eq!(result["outcome"], "Error");
@@ -146,7 +146,7 @@ fn replace_card_fails_with_invalid_target_index() {
 
     let (status, result) = post_action(
         &client,
-        r#"{"action_type":"ReplaceCard","target_card_index":999,"target_location":"Deck","replacement_card_index":0,"sacrifice_card_index":0}"#,
+        r#"{"action_type":"ReplaceCard","target_card_index":999,"replacement_card_index":0,"sacrifice_card_index":0}"#,
     );
     assert_eq!(status, Status::Ok);
     assert_eq!(result["outcome"], "Error");
@@ -160,7 +160,7 @@ fn replace_card_fails_with_invalid_replacement_index() {
 
     let (status, result) = post_action(
         &client,
-        r#"{"action_type":"ReplaceCard","target_card_index":0,"target_location":"Deck","replacement_card_index":999,"sacrifice_card_index":0}"#,
+        r#"{"action_type":"ReplaceCard","target_card_index":0,"replacement_card_index":999,"sacrifice_card_index":0}"#,
     );
     assert_eq!(status, Status::Ok);
     assert_eq!(result["outcome"], "Error");
@@ -179,7 +179,7 @@ fn replace_card_fails_with_invalid_sacrifice_index() {
 
     let (status, result) = post_action(
         &client,
-        r#"{"action_type":"ReplaceCard","target_card_index":0,"target_location":"Deck","replacement_card_index":0,"sacrifice_card_index":999}"#,
+        r#"{"action_type":"ReplaceCard","target_card_index":0,"replacement_card_index":0,"sacrifice_card_index":999}"#,
     );
     assert_eq!(status, Status::Ok);
     assert_eq!(result["outcome"], "Error");
@@ -202,16 +202,83 @@ fn replace_card_fails_when_no_shelved_copies() {
     // so no card has shelved copies. ReplaceCard should fail.
     let (status, result) = post_action(
         &client,
-        r#"{"action_type":"ReplaceCard","target_card_index":0,"target_location":"Deck","replacement_card_index":0,"sacrifice_card_index":0}"#,
+        r#"{"action_type":"ReplaceCard","target_card_index":0,"replacement_card_index":0,"sacrifice_card_index":1}"#,
     );
     assert_eq!(status, Status::Ok);
     assert_eq!(result["outcome"], "Error");
-    // Should be NoShelvedCopies or NoTargetCopies
     let error_type = detail(&result)["error_type"].as_str().unwrap_or("");
     assert!(
         error_type == "NoShelvedCopies" || error_type == "NoTargetCopies",
         "expected shelved/target error, got: {error_type}"
     );
+}
+
+#[test]
+fn replace_card_fails_when_sacrifice_is_target() {
+    let client = client();
+    post_action(&client, r#"{"action_type":"NewGame","seed":100}"#);
+
+    // Complete contracts to get a shelved reward card
+    for _ in 0..15 {
+        let state = get_state(&client);
+        if state["active_contract"].is_null() {
+            let cards = state["cards"].as_array().expect("cards");
+            let has_shelved = cards.iter().any(|c| {
+                let counts = &c["counts"];
+                let lib = counts["library"].as_u64().unwrap_or(0);
+                let active = counts["deck"].as_u64().unwrap_or(0)
+                    + counts["hand"].as_u64().unwrap_or(0)
+                    + counts["discard"].as_u64().unwrap_or(0);
+                lib > active
+            });
+            if has_shelved {
+                break;
+            }
+            post_action(
+                &client,
+                r#"{"action_type":"AcceptContract","tier_index":0,"contract_index":0}"#,
+            );
+        } else {
+            post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
+        }
+    }
+
+    let state = get_state(&client);
+    let cards = state["cards"].as_array().expect("cards");
+
+    // Find a card in deck to use as both target and sacrifice
+    let target_idx = cards
+        .iter()
+        .enumerate()
+        .find(|(_, c)| c["counts"]["deck"].as_u64().unwrap_or(0) > 0)
+        .map(|(i, _)| i);
+
+    let shelved_idx = cards
+        .iter()
+        .enumerate()
+        .find(|(_, c)| {
+            let counts = &c["counts"];
+            let lib = counts["library"].as_u64().unwrap_or(0);
+            let active = counts["deck"].as_u64().unwrap_or(0)
+                + counts["hand"].as_u64().unwrap_or(0)
+                + counts["discard"].as_u64().unwrap_or(0);
+            lib > active
+        })
+        .map(|(i, _)| i);
+
+    if let (Some(target), Some(replacement)) = (target_idx, shelved_idx) {
+        let action = format!(
+            r#"{{"action_type":"ReplaceCard","target_card_index":{target},"replacement_card_index":{replacement},"sacrifice_card_index":{target}}}"#,
+        );
+        let (status, result) = post_action(&client, &action);
+        assert_eq!(status, Status::Ok);
+        assert_eq!(result["outcome"], "Error");
+        assert_eq!(
+            detail(&result)["error_type"],
+            "SacrificeIsTarget",
+            "should not allow sacrificing the target card"
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -275,11 +342,18 @@ fn replace_card_swaps_deck_card_with_shelved_card() {
         .find(|(_, c)| c["counts"]["deck"].as_u64().unwrap_or(0) > 0)
         .map(|(i, _)| i);
 
-    // Find a sacrifice candidate (any card with library > 0)
+    // Find a sacrifice candidate (card with shelved copies, not the target)
     let sacrifice_idx = cards
         .iter()
         .enumerate()
-        .find(|(_, c)| c["counts"]["library"].as_u64().unwrap_or(0) > 0)
+        .find(|(i, c)| {
+            let counts = &c["counts"];
+            let lib = counts["library"].as_u64().unwrap_or(0);
+            let active = counts["deck"].as_u64().unwrap_or(0)
+                + counts["hand"].as_u64().unwrap_or(0)
+                + counts["discard"].as_u64().unwrap_or(0);
+            lib > active && Some(*i) != target_idx
+        })
         .map(|(i, _)| i);
 
     if let (Some(target), Some(replacement), Some(sacrifice)) =
@@ -288,7 +362,7 @@ fn replace_card_swaps_deck_card_with_shelved_card() {
         let before_library_total: u64 = card_count_total(&state, "library");
 
         let action = format!(
-            r#"{{"action_type":"ReplaceCard","target_card_index":{target},"target_location":"Deck","replacement_card_index":{replacement},"sacrifice_card_index":{sacrifice}}}"#,
+            r#"{{"action_type":"ReplaceCard","target_card_index":{target},"replacement_card_index":{replacement},"sacrifice_card_index":{sacrifice}}}"#,
         );
         let (status, result) = post_action(&client, &action);
         assert_eq!(status, Status::Ok);

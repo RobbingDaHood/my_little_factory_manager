@@ -16,7 +16,7 @@ use crate::contract_generation::generate_contract;
 use crate::starter_cards::create_starter_deck;
 use crate::types::{
     CardCounts, CardEffect, CardEntry, Contract, ContractRequirementKind, ContractTier,
-    PlayerActionCard, ReplaceableLocation, TierContracts, TokenAmount, TokenType,
+    PlayerActionCard, TierContracts, TokenAmount, TokenType,
 };
 
 use rocket::serde::Serialize;
@@ -83,10 +83,9 @@ pub enum ActionError {
     InvalidTargetCardIndex {
         index: usize,
     },
-    /// Target card has no copies in the specified location.
+    /// Target card has no copies in the active cycle (deck or discard).
     NoTargetCopies {
         index: usize,
-        location: ReplaceableLocation,
     },
     /// replacement_card_index is out of bounds.
     InvalidReplacementCardIndex {
@@ -100,8 +99,12 @@ pub enum ActionError {
     InvalidSacrificeCardIndex {
         index: usize,
     },
-    /// Sacrifice card has no library copies to destroy.
+    /// Sacrifice card has no shelved copies to destroy.
     NoSacrificeCopies {
+        index: usize,
+    },
+    /// Cannot sacrifice the same card being replaced.
+    SacrificeIsTarget {
         index: usize,
     },
 }
@@ -371,12 +374,12 @@ impl GameState {
             return;
         }
 
-        // Collect sacrifice candidates (cards with library > 0)
+        // Collect sacrifice candidates (cards with shelved copies)
         let sacrifice_indices: Vec<usize> = self
             .cards
             .iter()
             .enumerate()
-            .filter(|(_, e)| e.counts.library > 0)
+            .filter(|(_, e)| e.counts.library > e.counts.deck + e.counts.hand + e.counts.discard)
             .map(|(i, _)| i)
             .collect();
 
@@ -384,31 +387,27 @@ impl GameState {
             return;
         }
 
-        // For each target in deck/discard × each replacement × each sacrifice
+        // Target cards: any card with copies in deck or discard
         for (target_idx, entry) in self.cards.iter().enumerate() {
-            for location in &[ReplaceableLocation::Deck, ReplaceableLocation::Discard] {
-                let loc_count = match location {
-                    ReplaceableLocation::Deck => entry.counts.deck,
-                    ReplaceableLocation::Discard => entry.counts.discard,
-                };
-                if loc_count == 0 {
-                    continue;
-                }
+            if entry.counts.deck == 0 && entry.counts.discard == 0 {
+                continue;
+            }
 
-                for &repl_idx in &shelved_indices {
-                    for &sac_idx in &sacrifice_indices {
-                        actions.push(PossibleAction {
-                            action: PlayerAction::ReplaceCard {
-                                target_card_index: target_idx,
-                                target_location: location.clone(),
-                                replacement_card_index: repl_idx,
-                                sacrifice_card_index: sac_idx,
-                            },
-                            description: format!(
-                                "Replace card {target_idx} in {location:?} with shelved card {repl_idx}, sacrificing card {sac_idx}"
-                            ),
-                        });
+            for &repl_idx in &shelved_indices {
+                for &sac_idx in &sacrifice_indices {
+                    if sac_idx == target_idx {
+                        continue;
                     }
+                    actions.push(PossibleAction {
+                        action: PlayerAction::ReplaceCard {
+                            target_card_index: target_idx,
+                            replacement_card_index: repl_idx,
+                            sacrifice_card_index: sac_idx,
+                        },
+                        description: format!(
+                            "Replace card {target_idx} with shelved card {repl_idx}, sacrificing card {sac_idx}"
+                        ),
+                    });
                 }
             }
         }
@@ -432,12 +431,10 @@ impl GameState {
             PlayerAction::DiscardCard { hand_index } => self.handle_discard_card(hand_index),
             PlayerAction::ReplaceCard {
                 target_card_index,
-                target_location,
                 replacement_card_index,
                 sacrifice_card_index,
             } => self.handle_replace_card(
                 target_card_index,
-                target_location,
                 replacement_card_index,
                 sacrifice_card_index,
             ),
@@ -543,7 +540,6 @@ impl GameState {
     fn handle_replace_card(
         &mut self,
         target_card_index: usize,
-        target_location: ReplaceableLocation,
         replacement_card_index: usize,
         sacrifice_card_index: usize,
     ) -> ActionResult {
@@ -561,15 +557,13 @@ impl GameState {
             });
         }
 
-        // Validate target has copies in specified location
-        let target_location_count = match target_location {
-            ReplaceableLocation::Deck => self.cards[target_card_index].counts.deck,
-            ReplaceableLocation::Discard => self.cards[target_card_index].counts.discard,
-        };
-        if target_location_count == 0 {
+        // Auto-determine location: deck first, then discard
+        let target_entry = &self.cards[target_card_index];
+        let use_deck = target_entry.counts.deck > 0;
+        let use_discard = target_entry.counts.discard > 0;
+        if !use_deck && !use_discard {
             return ActionResult::Error(ActionError::NoTargetCopies {
                 index: target_card_index,
-                location: target_location,
             });
         }
 
@@ -598,7 +592,19 @@ impl GameState {
             });
         }
 
-        if self.cards[sacrifice_card_index].counts.library == 0 {
+        // Cannot sacrifice the card being replaced (Thread 8)
+        if sacrifice_card_index == target_card_index {
+            return ActionResult::Error(ActionError::SacrificeIsTarget {
+                index: sacrifice_card_index,
+            });
+        }
+
+        // Sacrifice must come from shelved copies (Thread 11)
+        let sac = &self.cards[sacrifice_card_index].counts;
+        let sac_shelved = sac
+            .library
+            .saturating_sub(sac.deck + sac.hand + sac.discard);
+        if sac_shelved == 0 {
             return ActionResult::Error(ActionError::NoSacrificeCopies {
                 index: sacrifice_card_index,
             });
@@ -606,16 +612,18 @@ impl GameState {
 
         // --- Apply the replacement ---
 
-        // Remove target from its location, add to library shelf (stays in library, removed from active)
-        match target_location {
-            ReplaceableLocation::Deck => self.cards[target_card_index].counts.deck -= 1,
-            ReplaceableLocation::Discard => self.cards[target_card_index].counts.discard -= 1,
+        // Remove target from deck (preferred) or discard
+        if use_deck {
+            self.cards[target_card_index].counts.deck -= 1;
+        } else {
+            self.cards[target_card_index].counts.discard -= 1;
         }
 
-        // Move replacement from shelf to the target's location
-        match target_location {
-            ReplaceableLocation::Deck => self.cards[replacement_card_index].counts.deck += 1,
-            ReplaceableLocation::Discard => self.cards[replacement_card_index].counts.discard += 1,
+        // Move replacement from shelf to the same location
+        if use_deck {
+            self.cards[replacement_card_index].counts.deck += 1;
+        } else {
+            self.cards[replacement_card_index].counts.discard += 1;
         }
 
         // Destroy sacrifice (permanently remove from library)

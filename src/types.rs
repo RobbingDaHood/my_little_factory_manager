@@ -152,14 +152,6 @@ pub enum CardLocation {
     Discard,
 }
 
-/// Locations where a card can be replaced via the ReplaceCard action.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
-#[serde(crate = "rocket::serde")]
-pub enum ReplaceableLocation {
-    Deck,
-    Discard,
-}
-
 /// Per-location copy counts for a single card type.
 ///
 /// `library` is the total copies owned (grows when reward cards are earned).

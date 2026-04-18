@@ -85,22 +85,21 @@ echo "10. Token balances after contract:"
 curl -s "${BASE_URL}/player/tokens" | jq '.'
 echo
 
-# ── Step 10b: Check deck slots ────────────────────────────────────
-echo "10b. Deck slot status:"
-curl -s "${BASE_URL}/state" | jq '{ deck_slots_used, deck_slots_total }'
-echo
-
-# ── Step 10c: Deckbuilding — ReplaceCard (if shelved cards exist) ─
-echo "10c. Check for ReplaceCard opportunities:"
+# ── Step 10b: Deckbuilding — ReplaceCard (if available) ───────────
+echo "10b. Check for ReplaceCard opportunities:"
 POSSIBLE=$(curl -s "${BASE_URL}/actions/possible")
-REPLACE_COUNT=$(echo "$POSSIBLE" | jq '[ .[] | select(.action.action_type == "ReplaceCard") ] | length')
-echo "   Found ${REPLACE_COUNT} ReplaceCard options"
-if [ "$REPLACE_COUNT" -gt 0 ]; then
-  FIRST_REPLACE=$(echo "$POSSIBLE" | jq -c '[ .[] | select(.action.action_type == "ReplaceCard") ] | .[0].action')
-  echo "   Performing first ReplaceCard:"
+HAS_REPLACE=$(echo "$POSSIBLE" | jq '[ .[] | select(.action_type == "ReplaceCard") ] | length')
+echo "   ReplaceCard available: $([ "$HAS_REPLACE" -gt 0 ] && echo 'yes' || echo 'no')"
+if [ "$HAS_REPLACE" -gt 0 ]; then
+  REPLACE_INFO=$(echo "$POSSIBLE" | jq -c '[ .[] | select(.action_type == "ReplaceCard") ] | .[0]')
+  echo "   ReplaceCard ranges: $REPLACE_INFO"
+  echo "   Example ReplaceCard (first valid indices):"
+  TARGET=$(echo "$REPLACE_INFO" | jq '.valid_target_card_indices[0]')
+  REPLACEMENT=$(echo "$REPLACE_INFO" | jq '.valid_replacement_card_indices[0]')
+  SACRIFICE=$(echo "$REPLACE_INFO" | jq '.valid_sacrifice_card_indices[0]')
   curl -s -X POST "${BASE_URL}/action" \
     -H "Content-Type: application/json" \
-    -d "$FIRST_REPLACE" | jq '.'
+    -d "{\"action_type\": \"ReplaceCard\", \"target_card_index\": $TARGET, \"replacement_card_index\": $REPLACEMENT, \"sacrifice_card_index\": $SACRIFICE}" | jq '.'
 fi
 echo
 

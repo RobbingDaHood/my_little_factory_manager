@@ -113,11 +113,10 @@ fn build_token_types() -> DesignerSection {
             },
             ReferenceEntry {
                 name: "DeckSlots (Progression)".to_string(),
-                description: "Controls the maximum number of cards in the active cycle \
-                    (deck + hand + discard). Initialized to starting_deck_size (default: 10). \
-                    Each contract completion has a 25% chance to award +1 DeckSlots. When \
-                    the active cycle is at the limit, reward cards go to the library shelf \
-                    instead of entering the deck."
+                description: "Fixed deck size limit (deck + hand + discard). Initialized \
+                    to starting_deck_size (default: 50) and never changes. Reward cards \
+                    always go to the library shelf — use ReplaceCard to bring them into \
+                    the active cycle."
                     .to_string(),
             },
         ],
@@ -299,15 +298,15 @@ fn build_deckbuilding() -> DesignerSection {
     DesignerSection {
         title: "Deckbuilding".to_string(),
         description: "Between contracts, players can reshape their active deck using the \
-            ReplaceCard action. The deck size is limited by the DeckSlots token. Cards \
-            that exceed the limit are shelved in the library."
+            ReplaceCard action. The active cycle (deck + hand + discard) is fixed at 50 \
+            cards. Reward cards always enter the library shelf and must be explicitly \
+            swapped in via ReplaceCard."
             .to_string(),
         entries: vec![
             ReferenceEntry {
                 name: "DeckSlots".to_string(),
-                description: "Limits active deck size (deck + hand + discard). Initialized \
-                    to starting_deck_size. Each contract completion has a configurable chance \
-                    (deck_slot_reward_chance, default 25%) to award +1 DeckSlots."
+                description: "Fixed at starting_deck_size (50). The active cycle never \
+                    grows or shrinks — ReplaceCard is a 1-for-1 swap."
                     .to_string(),
             },
             ReferenceEntry {
@@ -319,17 +318,18 @@ fn build_deckbuilding() -> DesignerSection {
             },
             ReferenceEntry {
                 name: "ReplaceCard Action".to_string(),
-                description: "The sole deckbuilding action. Swaps a target card (in Deck \
-                    or Discard) with a shelved replacement card. Permanently destroys a \
-                    third sacrifice card (library count decremented). Only available \
+                description: "The sole deckbuilding action. Swaps a target card (deck \
+                    first, then discard — auto-selected) with a shelved replacement card. \
+                    Permanently destroys a third sacrifice card from shelved copies. The \
+                    sacrifice cannot be the same card as the target. Only available \
                     between contracts."
                     .to_string(),
             },
             ReferenceEntry {
                 name: "Reward Card Placement".to_string(),
-                description: "When a contract is completed, the reward card enters the \
-                    library. If the active cycle is under the DeckSlots limit, it also \
-                    enters the deck. Otherwise it is shelved."
+                description: "When a contract is completed, the reward card always enters \
+                    the library shelf only (never auto-enters the deck). Use ReplaceCard \
+                    to bring reward cards into the active cycle."
                     .to_string(),
             },
         ],
@@ -347,8 +347,7 @@ fn build_configuration() -> DesignerSection {
                 name: "configurations/general/game_rules.json".to_string(),
                 description: "Contains general rules (starting_hand_size, \
                     starting_deck_size, contracts_per_tier_to_advance, \
-                    contract_market_size_per_tier, discard_production_unit_bonus, \
-                    deck_slot_reward_chance) \
+                    contract_market_size_per_tier, discard_production_unit_bonus) \
                     and contract formula parameters (output_threshold, \
                     reward_production scaling formulas)."
                     .to_string(),

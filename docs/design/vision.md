@@ -81,7 +81,9 @@ When the deck is empty and a draw is required, the entire discard pile is shuffl
 
 ### Card Replacement (Deckbuilding)
 
-Players can replace a card in the **Deck** or **Discard** with a different card from the **Library**, but at a cost: doing so **destroys** another card in the Library. This creates a meaningful tradeoff — improving the active deck requires permanently reducing the total card pool.
+Players can replace a card in the **Deck** or **Discard** (auto-selected: Deck first, then Discard) with a different card from the **Library** shelf, but at a cost: doing so **destroys** another shelved card in the Library. This creates a meaningful tradeoff — improving the active deck requires permanently reducing the total card pool.
+
+The sacrifice card must be different from the target card and must have shelved copies (owned copies not in the active cycle). The active cycle (deck + hand + discard) is fixed at the starting deck size (50 cards) and never changes.
 
 **Hand cards cannot be replaced directly.** The hand must always be the result of random draws from the deck, preserving the core randomness of the draw mechanic. The only way to influence hand composition is by shaping which cards are in the deck.
 
@@ -171,6 +173,16 @@ The formula system ensures:
 
 * A card effect that **consumes harmful tokens** should produce fewer beneficial tokens than one that does not (removing waste is its own reward).
 * A card effect that **produces harmful tokens** should produce more beneficial tokens than one that does not (pollution is a meaningful tradeoff).
+
+### Future: Proportional Cost Model
+
+Currently each token output/input uses its own independent formula with absolute min/max values. A future improvement is the **proportional cost model**: a card's primary value (e.g. ProductionUnit output) uses an absolute formula, and all secondary values (harmful outputs, beneficial inputs, harmful inputs) are expressed as **ratios of the primary value**. This means:
+
+* Only 5–10 design-intent parameters control balance instead of independent ranges per token type.
+* Adjusting the primary output automatically scales all costs proportionally.
+* Priority order for classification: production → beneficial output → harmful input → beneficial input → harmful output.
+
+This is deferred to a future phase for cleaner separation of concerns.
 
 ### Progressive Tier Introduction
 

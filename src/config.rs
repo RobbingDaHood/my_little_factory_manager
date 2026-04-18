@@ -27,8 +27,6 @@ pub struct GeneralRules {
     pub contract_market_size_per_tier: u32,
     /// Production units gained when discarding a card for baseline benefit.
     pub discard_production_unit_bonus: u32,
-    /// Probability (0.0–1.0) that completing a contract awards +1 DeckSlots.
-    pub deck_slot_reward_chance: f64,
 }
 
 /// Formula parameters for contract and reward card generation.

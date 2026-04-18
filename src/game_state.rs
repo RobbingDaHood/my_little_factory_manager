@@ -119,8 +119,6 @@ pub struct GameStateView {
     pub tokens: Vec<TokenAmount>,
     pub active_contract: Option<Contract>,
     pub offered_contracts: Vec<TierContracts>,
-    pub deck_slots_used: u32,
-    pub deck_slots_total: u32,
 }
 
 /// Token balances grouped by tag category for the `/player/tokens` endpoint.
@@ -195,7 +193,7 @@ impl GameState {
             0xa02b_dbf7_bb3c_0a7a_c28f_5c28_f5c2_8f5c,
         );
 
-        let mut cards = create_starter_deck();
+        let mut cards = create_starter_deck(rules.general.starting_deck_size, &mut rng);
 
         // Deal starting hand
         let hand_size = rules.general.starting_hand_size;
@@ -245,8 +243,6 @@ impl GameState {
             },
             active_contract: self.active_contract.clone(),
             offered_contracts: self.offered_contracts.clone(),
-            deck_slots_used: active_card_total(&self.cards),
-            deck_slots_total: self.deck_slots_total(),
         }
     }
 
@@ -748,17 +744,8 @@ impl GameState {
         self.subtract_contract_tokens(&contract);
         self.add_tokens(&TokenType::ContractsTierCompleted(contract.tier.0), 1);
 
-        // Add reward card to library and deck (respects deck limit)
+        // Add reward card to library
         self.add_reward_card(&contract.reward_card);
-
-        // Roll for bonus DeckSlots
-        let chance = self.rules.general.deck_slot_reward_chance;
-        if chance > 0.0 {
-            let roll = (self.rng.next_u32() % 10_000) as f64 / 10_000.0;
-            if roll < chance {
-                self.add_tokens(&TokenType::DeckSlots, 1);
-            }
-        }
 
         self.active_contract = None;
         self.refill_contract_market();
@@ -767,29 +754,19 @@ impl GameState {
     }
 
     fn add_reward_card(&mut self, card: &PlayerActionCard) {
-        let at_limit = active_card_total(&self.cards) >= self.deck_slots_total();
-
         if let Some(entry) = self.cards.iter_mut().find(|e| e.card == *card) {
             entry.counts.library += 1;
-            if !at_limit {
-                entry.counts.deck += 1;
-            }
         } else {
             self.cards.push(CardEntry {
                 card: card.clone(),
                 counts: CardCounts {
                     library: 1,
-                    deck: if at_limit { 0 } else { 1 },
+                    deck: 0,
                     hand: 0,
                     discard: 0,
                 },
             });
         }
-    }
-
-    /// Returns the current DeckSlots token value.
-    fn deck_slots_total(&self) -> u32 {
-        self.tokens.get(&TokenType::DeckSlots).copied().unwrap_or(0)
     }
 
     fn all_requirements_met(&self, contract: &Contract) -> bool {
@@ -829,14 +806,6 @@ impl GameState {
 // ---------------------------------------------------------------------------
 // Card helper functions (free functions operating on Vec<CardEntry>)
 // ---------------------------------------------------------------------------
-
-/// Total number of cards in the active cycle (deck + hand + discard).
-fn active_card_total(cards: &[CardEntry]) -> u32 {
-    cards
-        .iter()
-        .map(|e| e.counts.deck + e.counts.hand + e.counts.discard)
-        .sum()
-}
 
 /// Total number of cards currently in hand.
 fn hand_total(cards: &[CardEntry]) -> usize {

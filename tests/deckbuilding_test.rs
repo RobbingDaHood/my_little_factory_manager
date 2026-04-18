@@ -93,32 +93,24 @@ fn deck_slots_initialized_to_starting_deck_size() {
 
     let deck_slots = token_amount(&state, r#""DeckSlots""#);
     assert_eq!(
-        deck_slots, 10,
-        "DeckSlots should be initialized to starting_deck_size (10)"
+        deck_slots, 50,
+        "DeckSlots should be initialized to starting_deck_size (50)"
     );
 }
 
 #[test]
-fn state_view_shows_deck_slots_fields() {
+fn state_view_does_not_include_deck_slots_fields() {
     let client = client();
     post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
     let state = get_state(&client);
 
     assert!(
-        state["deck_slots_total"].is_number(),
-        "deck_slots_total should be present"
+        state.get("deck_slots_total").is_none(),
+        "deck_slots_total should not be present (DeckSlots is fixed)"
     );
     assert!(
-        state["deck_slots_used"].is_number(),
-        "deck_slots_used should be present"
-    );
-    assert_eq!(state["deck_slots_total"].as_u64().unwrap_or(0), 10);
-
-    let used = state["deck_slots_used"].as_u64().unwrap_or(0);
-    let expected_used = active_total(&state);
-    assert_eq!(
-        used, expected_used,
-        "deck_slots_used should equal active card total"
+        state.get("deck_slots_used").is_none(),
+        "deck_slots_used should not be present (DeckSlots is fixed)"
     );
 }
 
@@ -322,20 +314,11 @@ fn replace_card_swaps_deck_card_with_shelved_card() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn reward_card_auto_enters_deck_when_under_limit() {
+fn reward_card_goes_to_library_only() {
     let client = client();
     post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
 
     let state_before = get_state(&client);
-    let active_before = active_total(&state_before);
-    let deck_slots = state_before["deck_slots_total"].as_u64().unwrap_or(0);
-
-    // At game start, active cards should equal starting_deck_size (10) and
-    // DeckSlots should also be 10, so completing a contract should add to deck
-    assert!(
-        active_before <= deck_slots,
-        "should start at or under the limit"
-    );
 
     // Complete one contract
     complete_one_contract(&client);
@@ -348,6 +331,14 @@ fn reward_card_auto_enters_deck_when_under_limit() {
     assert!(
         lib_after > lib_before,
         "library count should increase after completing a contract"
+    );
+
+    // Active cycle (deck+hand+discard) should NOT have changed
+    let active_before = active_total(&state_before);
+    let active_after = active_total(&state_after);
+    assert_eq!(
+        active_before, active_after,
+        "active cycle (deck+hand+discard) should stay fixed at 50"
     );
 }
 

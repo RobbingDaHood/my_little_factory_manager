@@ -1,17 +1,16 @@
-//! Starter deck definitions for Phase 2.
+//! Starter deck generation.
 //!
-//! All starter cards are pure production (no inputs). They vary only
-//! in the amount of ProductionUnit they produce.
+//! Generates the starting deck by rolling each card's production amount
+//! from the tier 1 pure-production formula using the game's seeded RNG.
 
+use rand::RngCore;
+use rand_pcg::Pcg64;
+
+use crate::config::TierScalingFormula;
+use crate::config_loader::load_effect_types;
 use crate::types::{
     CardCounts, CardEffect, CardEntry, CardTag, PlayerActionCard, TokenAmount, TokenType,
 };
-
-/// A starter card definition: how many copies and the card template.
-struct StarterCardDef {
-    copies: u32,
-    card: PlayerActionCard,
-}
 
 fn production_card(output_amount: u32) -> PlayerActionCard {
     PlayerActionCard {
@@ -27,37 +26,56 @@ fn production_card(output_amount: u32) -> PlayerActionCard {
     }
 }
 
-fn starter_card_defs() -> Vec<StarterCardDef> {
-    vec![
-        StarterCardDef {
-            copies: 4,
-            card: production_card(1),
-        },
-        StarterCardDef {
-            copies: 4,
-            card: production_card(2),
-        },
-        StarterCardDef {
-            copies: 2,
-            card: production_card(3),
-        },
-    ]
+/// Roll a value from a tier-scaling formula for the given tier.
+fn roll_from_formula(tier: u32, formula: &TierScalingFormula, rng: &mut Pcg64) -> u32 {
+    let min = formula.base_min + tier * formula.per_tier_min;
+    let max = formula.base_max + tier * formula.per_tier_max;
+    if min >= max {
+        return min;
+    }
+    let range = max - min + 1;
+    min + (rng.next_u32() % range)
 }
 
-/// Build the starter card library as a list of `CardEntry` values.
+/// Build the starter deck by rolling `count` cards using the tier 1
+/// pure-production output formula from `effect_types.json`.
 ///
-/// Each entry starts with all copies in `deck` (and `library` set to match).
-pub fn create_starter_deck() -> Vec<CardEntry> {
-    starter_card_defs()
-        .into_iter()
-        .map(|def| CardEntry {
-            card: def.card,
-            counts: CardCounts {
-                library: def.copies,
-                deck: def.copies,
-                hand: 0,
-                discard: 0,
-            },
-        })
-        .collect()
+/// Duplicate cards (same production amount) are grouped into a single
+/// `CardEntry` with the appropriate copy count.
+pub fn create_starter_deck(count: u32, rng: &mut Pcg64) -> Vec<CardEntry> {
+    let effect_types = load_effect_types().expect("embedded effect types must parse");
+
+    // Find the tier 1 pure-production output formula (first effect type
+    // with min_tier <= 1 that has a ProductionUnit output).
+    let output_formula = effect_types
+        .iter()
+        .filter(|et| et.min_tier <= 1)
+        .flat_map(|et| et.outputs.iter())
+        .find(|ef| ef.token_type == "ProductionUnit")
+        .map(|ef| ef.formula.clone())
+        .expect("tier 1 must have a ProductionUnit output formula");
+
+    let mut entries: Vec<CardEntry> = Vec::new();
+
+    for _ in 0..count {
+        let amount = roll_from_formula(1, &output_formula, rng);
+        let card = production_card(amount);
+
+        if let Some(entry) = entries.iter_mut().find(|e| e.card == card) {
+            entry.counts.library += 1;
+            entry.counts.deck += 1;
+        } else {
+            entries.push(CardEntry {
+                card,
+                counts: CardCounts {
+                    library: 1,
+                    deck: 1,
+                    hand: 0,
+                    discard: 0,
+                },
+            });
+        }
+    }
+
+    entries
 }

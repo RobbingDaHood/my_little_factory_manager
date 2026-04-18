@@ -135,13 +135,44 @@ pub struct PlayerTokensView {
 
 /// A possible action the player can take in the current game state.
 ///
-/// Each entry describes an action variant and, for indexed actions,
-/// includes the concrete index values the player could use.
+/// An inclusive range of valid indices.
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 #[serde(crate = "rocket::serde")]
-pub struct PossibleAction {
-    pub action: PlayerAction,
-    pub description: String,
+pub struct IndexRange {
+    pub min: usize,
+    pub max: usize,
+}
+
+/// The valid contract index range within a single tier.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[serde(crate = "rocket::serde")]
+pub struct TierContractRange {
+    pub tier_index: usize,
+    pub valid_contract_index_range: IndexRange,
+}
+
+/// A compact descriptor of what actions the player can take.
+///
+/// Instead of enumerating every concrete action instance, each variant
+/// describes the valid parameter ranges for its action type.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[serde(tag = "action_type", crate = "rocket::serde")]
+pub enum PossibleAction {
+    NewGame,
+    PlayCard {
+        valid_hand_index_range: IndexRange,
+    },
+    DiscardCard {
+        valid_hand_index_range: IndexRange,
+    },
+    AcceptContract {
+        valid_tiers: Vec<TierContractRange>,
+    },
+    ReplaceCard {
+        valid_target_card_indices: Vec<usize>,
+        valid_replacement_card_indices: Vec<usize>,
+        valid_sacrifice_card_indices: Vec<usize>,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -315,52 +346,50 @@ impl GameState {
     pub fn possible_actions(&self) -> Vec<PossibleAction> {
         let mut actions = Vec::new();
 
-        actions.push(PossibleAction {
-            action: PlayerAction::NewGame { seed: None },
-            description: "Start a new game (optionally with a specific seed)".to_string(),
-        });
+        actions.push(PossibleAction::NewGame);
 
         if self.active_contract.is_some() {
             let hand_size = hand_total(&self.cards);
-            for i in 0..hand_size {
-                actions.push(PossibleAction {
-                    action: PlayerAction::PlayCard { hand_index: i },
-                    description: format!("Play the card at hand position {i}"),
+            if hand_size > 0 {
+                let range = IndexRange {
+                    min: 0,
+                    max: hand_size - 1,
+                };
+                actions.push(PossibleAction::PlayCard {
+                    valid_hand_index_range: range.clone(),
                 });
-            }
-            for i in 0..hand_size {
-                actions.push(PossibleAction {
-                    action: PlayerAction::DiscardCard { hand_index: i },
-                    description: format!(
-                        "Discard the card at hand position {i} for a small production bonus"
-                    ),
+                actions.push(PossibleAction::DiscardCard {
+                    valid_hand_index_range: range,
                 });
             }
         } else {
-            for (tier_idx, tier_contracts) in self.offered_contracts.iter().enumerate() {
-                for (contract_idx, _) in tier_contracts.contracts.iter().enumerate() {
-                    actions.push(PossibleAction {
-                        action: PlayerAction::AcceptContract {
-                            tier_index: tier_idx,
-                            contract_index: contract_idx,
-                        },
-                        description: format!(
-                            "Accept contract {contract_idx} from tier {}",
-                            tier_contracts.tier.0
-                        ),
-                    });
-                }
+            let valid_tiers: Vec<TierContractRange> = self
+                .offered_contracts
+                .iter()
+                .enumerate()
+                .filter(|(_, tc)| !tc.contracts.is_empty())
+                .map(|(tier_idx, tc)| TierContractRange {
+                    tier_index: tier_idx,
+                    valid_contract_index_range: IndexRange {
+                        min: 0,
+                        max: tc.contracts.len() - 1,
+                    },
+                })
+                .collect();
+
+            if !valid_tiers.is_empty() {
+                actions.push(PossibleAction::AcceptContract { valid_tiers });
             }
 
             // List ReplaceCard options when shelved and sacrifice candidates exist
-            self.add_replace_card_actions(&mut actions);
+            self.add_replace_card_action(&mut actions);
         }
 
         actions
     }
 
-    /// Enumerates valid ReplaceCard actions and adds them to the actions list.
-    fn add_replace_card_actions(&self, actions: &mut Vec<PossibleAction>) {
+    /// Adds a single ReplaceCard action descriptor with valid index sets.
+    fn add_replace_card_action(&self, actions: &mut Vec<PossibleAction>) {
         // Collect shelved card indices (cards with library > deck+hand+discard)
         let shelved_indices: Vec<usize> = self
             .cards
@@ -374,43 +403,26 @@ impl GameState {
             return;
         }
 
-        // Collect sacrifice candidates (cards with shelved copies)
-        let sacrifice_indices: Vec<usize> = self
+        // Target cards: any card with copies in deck or discard
+        let target_indices: Vec<usize> = self
             .cards
             .iter()
             .enumerate()
-            .filter(|(_, e)| e.counts.library > e.counts.deck + e.counts.hand + e.counts.discard)
+            .filter(|(_, e)| e.counts.deck > 0 || e.counts.discard > 0)
             .map(|(i, _)| i)
             .collect();
 
-        if sacrifice_indices.is_empty() {
+        if target_indices.is_empty() {
             return;
         }
 
-        // Target cards: any card with copies in deck or discard
-        for (target_idx, entry) in self.cards.iter().enumerate() {
-            if entry.counts.deck == 0 && entry.counts.discard == 0 {
-                continue;
-            }
-
-            for &repl_idx in &shelved_indices {
-                for &sac_idx in &sacrifice_indices {
-                    if sac_idx == target_idx {
-                        continue;
-                    }
-                    actions.push(PossibleAction {
-                        action: PlayerAction::ReplaceCard {
-                            target_card_index: target_idx,
-                            replacement_card_index: repl_idx,
-                            sacrifice_card_index: sac_idx,
-                        },
-                        description: format!(
-                            "Replace card {target_idx} with shelved card {repl_idx}, sacrificing card {sac_idx}"
-                        ),
-                    });
-                }
-            }
-        }
+        // Sacrifice candidates are shelved cards (same criteria as replacement)
+        // The constraint sacrifice != target is enforced at dispatch time.
+        actions.push(PossibleAction::ReplaceCard {
+            valid_target_card_indices: target_indices,
+            valid_replacement_card_indices: shelved_indices.clone(),
+            valid_sacrifice_card_indices: shelved_indices,
+        });
     }
 
     // -------------------------------------------------------------------

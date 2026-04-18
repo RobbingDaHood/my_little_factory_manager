@@ -434,7 +434,7 @@ fn possible_actions_do_not_include_replace_card_at_game_start() {
         .as_array()
         .expect("actions array")
         .iter()
-        .any(|a| a["action"]["action_type"] == "ReplaceCard");
+        .any(|a| a["action_type"] == "ReplaceCard");
 
     assert!(
         !has_replace,

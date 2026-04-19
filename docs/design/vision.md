@@ -72,7 +72,7 @@ There are many possible variations. The key design principle: **more powerful be
 
 Cards move between distinct locations during gameplay:
 
-* **Library** — the complete catalogue of available actions
+* **Shelved** — the complete catalogue of available actions (owned but not in the active cycle)
 * **Deck** — the player's current operational toolset
 * **Hand** — actions available for the current turn
 * **Discard** — used actions awaiting recycling back into the deck
@@ -81,7 +81,7 @@ When the deck is empty and a draw is required, the entire discard pile is shuffl
 
 ### Card Replacement (Deckbuilding)
 
-Players can replace a card in the **Deck** or **Discard** (auto-selected: Deck first, then Discard) with a different card from the **Library** shelf, but at a cost: doing so **destroys** another shelved card in the Library. This creates a meaningful tradeoff — improving the active deck requires permanently reducing the total card pool.
+Players can replace a card in the **Deck** or **Discard** (auto-selected: Deck first, then Discard) with a different card from the **Shelf**, but at a cost: doing so **destroys** another shelved card. This creates a meaningful tradeoff — improving the active deck requires permanently reducing the total card pool.
 
 The sacrifice card must be different from the target card and must have shelved copies (owned copies not in the active cycle). The active cycle (deck + hand + discard) is fixed at the starting deck size (50 cards) and never changes.
 
@@ -103,14 +103,9 @@ Each contract has a **list of contract requirements**. Each requirement is an en
 * **Harmful token limits** — complete without exceeding a maximum amount of specific harmful tokens.
 * **Card tag restrictions** — certain card tags are unavailable or penalized during this contract.
 * **Turn window** — the contract must be completed between turn X and turn Y (inclusive).
-
-### Possible Future Requirements
-
-These may be added in later versions:
-
-* **Quality requirements** — output must meet a minimum quality level (quality is not implemented in the first version).
+* **Quality requirements** — output must meet a minimum quality level.
 * **Sequencing rules** — certain operations must happen in a specific order.
-* **Multiple output types** — currently all output is just "production units"; future contracts may require specific output types.
+* **Multiple output types** — contracts may require specific output types beyond production units.
 
 ### Contract Outcomes
 
@@ -174,21 +169,19 @@ The formula system ensures:
 * A card effect that **consumes harmful tokens** should produce fewer beneficial tokens than one that does not (removing waste is its own reward).
 * A card effect that **produces harmful tokens** should produce more beneficial tokens than one that does not (pollution is a meaningful tradeoff).
 
-### Future: Proportional Cost Model
+### Proportional Cost Model
 
-Currently each token output/input uses its own independent formula with absolute min/max values. A future improvement is the **proportional cost model**: a card's primary value (e.g. ProductionUnit output) uses an absolute formula, and all secondary values (harmful outputs, beneficial inputs, harmful inputs) are expressed as **ratios of the primary value**. This means:
+A card's primary value (e.g. ProductionUnit output) uses an absolute formula, and all secondary values (harmful outputs, beneficial inputs, harmful inputs) are expressed as **ratios of the primary value**. This means:
 
 * Only 5–10 design-intent parameters control balance instead of independent ranges per token type.
 * Adjusting the primary output automatically scales all costs proportionally.
 * Priority order for classification: production → beneficial output → harmful input → beneficial input → harmful output.
 
-This is deferred to a future phase for cleaner separation of concerns.
-
 ### Progressive Tier Introduction
 
-* All possible card effect types and contract requirement types have a **minimum tier** where they first appear.
-* **Tier 1** is very simple — perhaps just pure output production cards and basic output threshold contracts.
-* **Each subsequent tier introduces a small group of new effects and requirements.** For example, tier 2 might introduce energy production and consumption (as card effects) and a "max energy use" contract requirement.
+* All possible card effect types and contract requirement types have an **unlock tier** where they first appear.
+* **Tier 1** has only pure output production cards and basic output threshold contracts.
+* **Each subsequent tier introduces a small group of new effects and requirements.** For example, tier 2 introduces energy production and consumption (as card effects) and a "max energy use" contract requirement.
 
 ---
 

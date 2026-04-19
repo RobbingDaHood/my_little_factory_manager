@@ -55,6 +55,7 @@ Key conventions and repository-specific notes
 Files to check for agent config
 
 - Always respect everything written in the files in the `docs/design` folder; treat those files as authoritative guidance for the repository and follow them without contradiction.
+- **`docs/design/vision.md` is final-destination only.** It describes the game as it will exist when complete — never reference current implementation state, future plans, phased rollouts, or "not yet implemented" language. If something is in the vision, write it as if it already exists. Implementation sequencing and current-state notes belong in `docs/design/roadmap.md`.
 
 Key project files
 

@@ -19,7 +19,7 @@ High-level architecture
 
 Key conventions and repository-specific notes
 
-- "Everything is a deck" design: core game state is modelled as decks of player action cards and cards move between Deck, Hand, Discard, and Library states.
+- "Everything is a deck" design: core game state is modelled as decks of player action cards and cards move between Shelved, Deck, Hand, and Discard states.
 - Tests: place tests in separate files under the top-level `tests/` directory (do not put tests inline in `src` files). Prefer integration tests that exercise the public HTTP API. Do not make items `pub` solely to enable unit testing — keep as much of the program private as possible and test through integration tests instead. Aim for at least 90% test coverage before committing; ensure coverage is measured and enforced in CI.
 - OpenAPI/Swagger is enabled using `rocket_okapi`; when the server is running, view Swagger UI at `/swagger/`.
 - No unwraps and zero Clippy warnings policy: avoid adding unwrap() in production code; prefer Result propagation and explicit error handling.
@@ -64,13 +64,13 @@ Key project files
 - `src/lib.rs` — library root, route mounting, `rocket_initialize()`
 - `src/version.rs` — `GET /version` endpoint
 - `src/types.rs` — core enums and structs (TokenType, CardEffect, Contract, etc.)
-- `src/config.rs` — config struct definitions (GameRulesConfig)
+- `src/config.rs` — config struct definitions (GameRulesConfig, CardEffectTypeConfig, CardEffectVariation, ModifierRange)
 - `src/config_loader.rs` — JSON config embedding and loading
 - `src/game_state.rs` — `GameState` struct, game mechanics (card/token/contract operations), action dispatch
 - `src/action_log.rs` — `PlayerAction` enum, `ActionEntry`, `ActionLog` for deterministic replay
 - `src/contract_generation.rs` — formula-based contract and reward card generation (TierScalingFormula)
 - `src/endpoints.rs` — HTTP handlers: `POST /action`, `GET /state`, `GET /actions/history`, `GET /contracts/available`, `GET /library/cards`, `GET /player/tokens`, `GET /contracts/active`, `GET /actions/possible`
-- `src/starter_cards.rs` — starter deck card definitions (3 pure production types)
+- `src/starter_cards.rs` — starter deck generation (round-robin all tier ≤ 1 effect types)
 - `src/docs/mod.rs` — documentation endpoint module declarations
 - `src/docs/tutorial.rs` — `GET /docs/tutorial` new-player walkthrough
 - `src/docs/hints.rs` — `GET /docs/hints` per-tier strategy tips

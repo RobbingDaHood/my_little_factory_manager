@@ -101,8 +101,8 @@ pub fn get_library_cards(
 /// Player token balances grouped by category.
 ///
 /// Returns all non-zero token balances organized into three categories:
-/// **beneficial** (ProductionUnit, Energy, RawMaterial), **harmful** (Heat,
-/// CO2, Waste, Pollution), and **progression** (ContractsTierCompleted).
+/// **beneficial** (ProductionUnit, Energy, QualityPoint, Innovation), **harmful** (Heat,
+/// Waste, Pollution), and **progression** (ContractsTierCompleted).
 /// Use this to monitor resource levels and plan card plays.
 #[openapi]
 #[get("/player/tokens")]

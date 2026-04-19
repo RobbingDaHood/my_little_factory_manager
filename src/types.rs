@@ -11,6 +11,15 @@ use schemars::JsonSchema;
 ///
 /// Tokens are simple counters that persist between contracts. They are
 /// produced and consumed by card effects and checked by contract requirements.
+///
+/// Introduction order (alternating beneficial/harmful):
+/// 1. ProductionUnit (beneficial) — tier 0
+/// 2. Heat (harmful) — tier 1
+/// 3. Energy (beneficial) — tier 4
+/// 4. Waste (harmful) — tier 9
+/// 5. QualityPoint (beneficial) — tier 16
+/// 6. Pollution (harmful) — tier 25
+/// 7. Innovation (beneficial) — tier 36
 #[derive(
     Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
 )]
@@ -21,21 +30,21 @@ pub enum TokenType {
     ProductionUnit,
     /// Energy resource — consumed by conversion effects, produced by some cards.
     Energy,
-    /// Basic material input for transformations.
-    RawMaterial,
+    /// Quality measure — produced by quality-focused operations.
+    QualityPoint,
+    /// Research and development output — produced by innovation-focused cards.
+    Innovation,
 
     // Harmful tokens
     /// Thermal byproduct from production processes.
     Heat,
-    /// Carbon emissions from factory operations.
-    CO2,
     /// Generic industrial waste.
     Waste,
     /// Environmental contamination.
     Pollution,
 
     // Progression tracking
-    /// Number of contracts completed for a given tier (1-based, unbounded).
+    /// Number of contracts completed for a given tier (0-based, unbounded).
     ContractsTierCompleted(u32),
     /// Current active cycle size limit — cards in deck+hand+discard cannot exceed this.
     DeckSlots,
@@ -47,7 +56,7 @@ pub enum TokenType {
 pub enum TokenTag {
     /// A positive resource (production units, energy, materials).
     Beneficial,
-    /// A negative byproduct (heat, CO2, waste, pollution).
+    /// A negative byproduct (heat, waste, pollution).
     Harmful,
     /// Tracks long-term progression (contracts completed per tier).
     Progression,
@@ -57,10 +66,22 @@ impl TokenType {
     /// Returns the classification tags for this token type (compile-time known).
     pub fn tags(&self) -> &'static [TokenTag] {
         match self {
-            Self::ProductionUnit | Self::Energy | Self::RawMaterial => &[TokenTag::Beneficial],
-            Self::Heat | Self::CO2 | Self::Waste | Self::Pollution => &[TokenTag::Harmful],
+            Self::ProductionUnit | Self::Energy | Self::QualityPoint | Self::Innovation => {
+                &[TokenTag::Beneficial]
+            }
+            Self::Heat | Self::Waste | Self::Pollution => &[TokenTag::Harmful],
             Self::ContractsTierCompleted(_) | Self::DeckSlots => &[TokenTag::Progression],
         }
+    }
+
+    /// Whether this token type is beneficial to the player.
+    pub fn is_beneficial(&self) -> bool {
+        self.tags().contains(&TokenTag::Beneficial)
+    }
+
+    /// Whether this token type is harmful to the player.
+    pub fn is_harmful(&self) -> bool {
+        self.tags().contains(&TokenTag::Harmful)
     }
 }
 
@@ -70,6 +91,29 @@ impl TokenType {
 pub struct TokenAmount {
     pub token_type: TokenType,
     pub amount: u32,
+}
+
+// ---------------------------------------------------------------------------
+// Effect direction types
+// ---------------------------------------------------------------------------
+
+/// Whether a main card effect is a producer (outputs its token) or a
+/// consumer/remover (inputs its token).
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "rocket::serde")]
+pub enum MainEffectDirection {
+    /// Primary formula → output amount (beneficial producers, harmful producers).
+    Producer,
+    /// Primary formula → input amount (beneficial consumers, harmful removers).
+    Consumer,
+}
+
+/// Whether a variation's secondary token appears as an input or output.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "rocket::serde")]
+pub enum VariationDirection {
+    Input,
+    Output,
 }
 
 // ---------------------------------------------------------------------------

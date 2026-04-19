@@ -60,7 +60,7 @@ The existing [my_little_card_game](https://github.com/RobbingDaHood/my_little_ca
 
 **Deliverables**:
 - `src/types.rs` — core enums and structs:
-  - `TokenType` enum — resource/waste types (ProductionUnit, Energy, RawMaterial, Heat, CO2, Waste, Pollution) plus progression tracking (ContractsTierXCompleted)
+  - `TokenType` enum — resource/waste types (ProductionUnit, Energy, QualityPoint, Innovation, Heat, Waste, Pollution) plus progression tracking (ContractsTierXCompleted)
   - `TokenTag` enum — Beneficial, Harmful, Progression (each token type has a list of tags)
   - `CardTag` enum — card type tags (Production, Transformation, QualityControl, SystemAdjustment, etc.)
   - `CardEffect` enum — effect variants with input/output token lists (PureProduction, Conversion, WasteRemoval, etc.)
@@ -182,8 +182,8 @@ The existing [my_little_card_game](https://github.com/RobbingDaHood/my_little_ca
 - ✅ Sacrifice cannot be the same card as the target
 - ✅ Fixed 50-card active cycle (deck + hand + discard) — DeckSlots initialized to starting_deck_size and never changes
 - ✅ Starter deck: 50 cards generated via tier 1 pure_production formula (output range [2,7])
-- ✅ Card variety infrastructure: config-driven effect types (`configurations/card_effects/effect_types.json`)
-- ✅ Tier 1 has only `pure_production`; `boosted_production` (Production+Heat) and `heat_removal` (QualityControl, consumes Heat) defined at min_tier=2 for Phase 6
+- ✅ Card variety infrastructure: config-driven effect types (`configurations/card_effects/token_definitions.json`)
+- ✅ Tier 0 has only `pure_production`; additional effect types are generated combinatorially in Phase 6
 - ✅ `possible_actions()` returns range-based descriptors (one entry per action type with valid index ranges) instead of enumerating all concrete combinations
 - ✅ Integration tests for deckbuilding mechanics
 - ✅ Updated tutorial, hints, designer docs, README
@@ -194,22 +194,24 @@ The existing [my_little_card_game](https://github.com/RobbingDaHood/my_little_ca
 
 ---
 
-## Phase 6: Contract Tier Progression
+## Phase 6: Contract Tier Progression ✅
 
-**Goal**: Tier 2+ contracts unlock after completing 10 contracts in the previous tier. Higher tiers introduce new requirement types and card effect types.
+**Goal**: Tier 2+ contracts unlock after completing 10 contracts in the previous tier. Higher tiers introduce new requirement types and card effect types via combinatorial generation and a proportional model.
 
 **Deliverables**:
-- Tier tracking via tokens (ContractsTier1Completed, etc.)
-- **Requirement count formula**: `max(1, contract_tier − 1)` to `contract_tier + 1` requirements per contract (capped by available requirement types)
-- **Per-requirement tier formula**: Each requirement's tier is rolled independently from `max(1, contract_tier − 1)` to `contract_tier + 1`, filtered by `unlocked_at_tier` — a requirement type is only eligible if its `unlocked_at_tier ≤ rolled_tier`
-- Tier 2 contracts: 1–3 requirements, new requirement types (e.g., harmful token limits)
-- Tier 2 card effects: boosted_production (ProductionUnit + Heat output), heat_removal (consumes Heat)
-- Tier 3 contracts: 2–4 requirements, new card effect types
-- Progressive introduction: each tier unlocks a small group of new effects and requirements
-- Stronger player action cards available at higher tiers
-- Formula-based scaling: tier X effects/requirements are usually better/harder than tier X−1
-- Proportional cost model: secondary token values expressed as ratios of the primary output, reducing balance parameters to ~5-10 design-intent numbers per effect type
-- Integration tests for tier progression and new mechanics per tier
+- ✅ Tier tracking via tokens (ContractsTierXCompleted)
+- ✅ **Requirement count formula**: `max(1, contract_tier − 1)` to `contract_tier + 1` requirements per contract (capped by available requirement types)
+- ✅ **Per-requirement tier formula**: Each requirement's tier is rolled independently from `contract_tier − 1` to `contract_tier + 1`, filtered by token type availability
+- ✅ **Combinatorial effect type generator**: 7 tokens × (producer + consumer/remover) → 13 mains + 85 variations = 98 items, 2 per tier across tiers 0–48
+- ✅ **Proportional model**: secondary token amounts as ratios of primary output, with 4 combo directions (direction_sign ±1), boost_factor (1.5), and efficiency_per_tier (0.02)
+- ✅ **HarmfulTokenLimit** requirement generator for harmful tokens (Heat, Waste, Pollution)
+- ✅ **Requirement tier-gating**: requirements only reference token types with unlocked card effects at or before the contract's tier
+- ✅ **Duplicate requirement stacking**: OutputThreshold sums min_amounts for same token; HarmfulTokenLimit takes tightest max_amount
+- ✅ Token type redesign: 4 beneficial (ProductionUnit, Energy, QualityPoint, Innovation) + 3 harmful (Heat, Waste, Pollution)
+- ✅ `token_definitions.json` replaces `effect_types.json` — ~5 design-intent parameters per token
+- ✅ Formula-based scaling: tier X effects/requirements are usually better/harder than tier X−1
+- ✅ 24 integration tests covering generator correctness, proportional model, tier-gating, direction_sign, determinism
+- ✅ 0-indexed tiers (tier 0 is the first tier)
 
 **Reference files from card game**:
 - Milestone progression system

@@ -287,7 +287,7 @@ fn contract_auto_completes_when_threshold_met() {
 
     if completed {
         let state = get_state(&client);
-        assert_eq!(token_amount(&state, r#"{"ContractsTierCompleted":1}"#), 1);
+        assert_eq!(token_amount(&state, r#"{"ContractsTierCompleted":0}"#), 1);
         assert!(state["active_contract"].is_null());
         assert!(
             !state["offered_contracts"]
@@ -323,7 +323,7 @@ fn full_game_loop_two_contracts() {
     }
 
     let state = get_state(&client);
-    assert_eq!(token_amount(&state, r#"{"ContractsTierCompleted":1}"#), 2);
+    assert_eq!(token_amount(&state, r#"{"ContractsTierCompleted":0}"#), 2);
 }
 
 // ---------------------------------------------------------------------------

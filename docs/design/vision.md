@@ -54,8 +54,8 @@ Tokens are the universal currency of the game:
 * Tokens are **enum-based** and have no logic of their own — they solely exist to be referenced by card effects and contract requirements.
 * There is **no lifecycle** for tokens (unlike the sibling card game) — they are simply added and removed.
 * Each token type has a **list of tags**, at minimum indicating whether it is:
-  * **Beneficial** — a resource, energy, production unit, etc.
-  * **Harmful** — heat, CO2, waste, pollution, etc.
+  * **Beneficial** — ProductionUnit, Energy, QualityPoint, Innovation
+  * **Harmful** — Heat, Waste, Pollution
 
 #### Card Effect Variants
 
@@ -169,19 +169,23 @@ The formula system ensures:
 * A card effect that **consumes harmful tokens** should produce fewer beneficial tokens than one that does not (removing waste is its own reward).
 * A card effect that **produces harmful tokens** should produce more beneficial tokens than one that does not (pollution is a meaningful tradeoff).
 
-### Proportional Cost Model
+### Proportional Model
 
-A card's primary value (e.g. ProductionUnit output) uses an absolute formula, and all secondary values (harmful outputs, beneficial inputs, harmful inputs) are expressed as **ratios of the primary value**. This means:
+A card's primary value (e.g. ProductionUnit output) uses an absolute formula, and all secondary values (harmful outputs, beneficial inputs, harmful inputs, beneficial outputs) are expressed as **ratios of the unmodified primary value**. This means:
 
 * Only 5–10 design-intent parameters control balance instead of independent ranges per token type.
-* Adjusting the primary output automatically scales all costs proportionally.
-* Priority order for classification: production → beneficial output → harmful input → beneficial input → harmful output.
+* Adjusting the primary output automatically scales all secondary amounts proportionally.
+* A direction_sign determines whether a secondary token **boosts** (+1) or **penalizes** (-1) the primary output:
+  * Harmful output or beneficial input → player accepts a tradeoff → primary is boosted.
+  * Harmful input or beneficial output → player gains an advantage → primary is penalized.
+* A boost_factor (default 1.5) ensures self-consuming variations are strictly better than their pure counterparts.
+* An efficiency_per_tier parameter (default 0.02) makes higher-tier variations more efficient (lower effective ratio → less secondary cost/output for the same boost).
 
 ### Progressive Tier Introduction
 
 * All possible card effect types and contract requirement types have an **unlock tier** where they first appear.
-* **Tier 1** has only pure output production cards and basic output threshold contracts.
-* **Each subsequent tier introduces a small group of new effects and requirements.** For example, tier 2 introduces energy production and consumption (as card effects) and a "max energy use" contract requirement.
+* **Tier 0** has only pure output production cards and basic output threshold contracts.
+* **New card effect types and requirement types are introduced at specific tiers.** The combinatorial generator produces 13 main effect types and 85 variations across all 7 tokens, unlocking 2 items per tier for 49 tiers (0–48). Each new token introduces its mains, self-consuming variations, and cross-token variations with all earlier tokens.
 
 ---
 
@@ -284,7 +288,7 @@ The factory is never "solved." Each new contract, each shift in the adaptive sys
 Items that are not yet implemented but may be addressed in future phases:
 
 * **Card entry lookup performance** — currently the card collection is a `Vec<CardEntry>` with linear scan for lookups by card hash. With N unique card types, lookup is O(N). Late game might have ~100–500 unique cards; linear scan on small in-memory structs is fast up to ~10,000+ entries. If card variety grows into thousands, consider switching to a `HashMap` keyed by card hash for O(1) lookups.
-* **Additional requirement types** — Phase 6 will introduce new contract requirement types beyond `OutputThreshold`, gated by tier via `min_tier`.
+* **Additional requirement types** — Future phases may introduce requirement types beyond `OutputThreshold` and `HarmfulTokenLimit`, such as `CardTagRestriction` and `TurnWindow`.
 
 ---
 

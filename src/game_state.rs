@@ -629,6 +629,16 @@ impl GameState {
             });
         }
 
+        // Sacrifice == replacement requires at least 2 shelved copies
+        // (one consumed by replacement move, one destroyed by sacrifice).
+        if sacrifice_card_index == replacement_card_index
+            && self.cards[sacrifice_card_index].counts.shelved < 2
+        {
+            return ActionResult::Error(ActionError::NoSacrificeCopies {
+                index: sacrifice_card_index,
+            });
+        }
+
         // --- Apply the replacement ---
 
         // Remove target from deck (preferred) or discard, move to shelf
@@ -737,12 +747,12 @@ impl GameState {
     }
 
     /// Returns the list of unlocked tier numbers.
-    /// Tier 1 is always unlocked. Tier N+1 unlocks when
+    /// Tier 0 is always unlocked. Tier N+1 unlocks when
     /// `ContractsTierCompleted(N) >= contracts_per_tier_to_advance`.
     fn unlocked_tiers(&self) -> Vec<u32> {
         let threshold = self.rules.general.contracts_per_tier_to_advance;
-        let mut tiers = vec![1u32];
-        for tier in 1.. {
+        let mut tiers = vec![0u32];
+        for tier in 0.. {
             let completed = self
                 .tokens
                 .get(&TokenType::ContractsTierCompleted(tier))
@@ -781,35 +791,62 @@ impl GameState {
     }
 
     fn all_requirements_met(&self, contract: &Contract) -> bool {
-        contract.requirements.iter().all(|req| match req {
-            ContractRequirementKind::OutputThreshold {
-                token_type,
-                min_amount,
-            } => self.tokens.get(token_type).copied().unwrap_or(0) >= *min_amount,
-            ContractRequirementKind::HarmfulTokenLimit {
-                token_type,
-                max_amount,
-            } => self.tokens.get(token_type).copied().unwrap_or(0) <= *max_amount,
-            ContractRequirementKind::CardTagRestriction { .. } => {
-                // Phase 2 does not generate contracts with tag restrictions
-                true
+        let (output_thresholds, harmful_limits) =
+            Self::aggregate_requirements(&contract.requirements);
+
+        for (token_type, total_min) in &output_thresholds {
+            if self.tokens.get(token_type).copied().unwrap_or(0) < *total_min {
+                return false;
             }
-            ContractRequirementKind::TurnWindow { .. } => {
-                // TODO: Phase 7 statistics will provide turn tracking for this requirement
-                true
+        }
+
+        for (token_type, tightest_max) in &harmful_limits {
+            if self.tokens.get(token_type).copied().unwrap_or(0) > *tightest_max {
+                return false;
             }
-        })
+        }
+
+        true
+    }
+
+    fn aggregate_requirements(
+        requirements: &[ContractRequirementKind],
+    ) -> (
+        std::collections::HashMap<TokenType, u32>,
+        std::collections::HashMap<TokenType, u32>,
+    ) {
+        let mut output_thresholds: std::collections::HashMap<TokenType, u32> =
+            std::collections::HashMap::new();
+        let mut harmful_limits: std::collections::HashMap<TokenType, u32> =
+            std::collections::HashMap::new();
+
+        for req in requirements {
+            match req {
+                ContractRequirementKind::OutputThreshold {
+                    token_type,
+                    min_amount,
+                } => {
+                    *output_thresholds.entry(token_type.clone()).or_insert(0) += min_amount;
+                }
+                ContractRequirementKind::HarmfulTokenLimit {
+                    token_type,
+                    max_amount,
+                } => {
+                    let entry = harmful_limits.entry(token_type.clone()).or_insert(u32::MAX);
+                    *entry = (*entry).min(*max_amount);
+                }
+                ContractRequirementKind::CardTagRestriction { .. }
+                | ContractRequirementKind::TurnWindow { .. } => {}
+            }
+        }
+
+        (output_thresholds, harmful_limits)
     }
 
     fn subtract_contract_tokens(&mut self, contract: &Contract) {
-        for req in &contract.requirements {
-            if let ContractRequirementKind::OutputThreshold {
-                token_type,
-                min_amount,
-            } = req
-            {
-                self.remove_tokens(token_type, *min_amount);
-            }
+        let (output_thresholds, _) = Self::aggregate_requirements(&contract.requirements);
+        for (token_type, total_min) in &output_thresholds {
+            self.remove_tokens(token_type, *total_min);
         }
     }
 }

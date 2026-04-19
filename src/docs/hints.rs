@@ -48,15 +48,16 @@ fn build_hints() -> HintsGuide {
             "Reward cards always go to the shelf — use ReplaceCard to bring them into your active cycle.".to_string(),
         ],
         tiers: vec![
+            build_tier0_hints(),
             build_tier1_hints(),
         ],
     }
 }
 
-fn build_tier1_hints() -> TierHints {
+fn build_tier0_hints() -> TierHints {
     TierHints {
-        tier: 1,
-        overview: "Tier 1 contracts have a single OutputThreshold requirement: produce \
+        tier: 0,
+        overview: "Tier 0 contracts have a single OutputThreshold requirement: produce \
             enough ProductionUnits. Your starter deck contains only pure production cards \
             with no inputs required."
             .to_string(),
@@ -95,10 +96,54 @@ fn build_tier1_hints() -> TierHints {
             "Not checking /state between plays — you might already meet the contract threshold.".to_string(),
         ],
         tips: vec![
-            "Starter cards produce 2-7 ProductionUnits per play (generated via tier 1 formula).".to_string(),
-            "Tier 1 thresholds range from 5-15 ProductionUnits.".to_string(),
+            "Starter cards produce 2-7 ProductionUnits per play (generated via tier 0 formula).".to_string(),
+            "Tier 0 thresholds range from 5-15 ProductionUnits.".to_string(),
             "The market always has 3 contracts available per tier.".to_string(),
             "After completing a contract, the market refills (not regenerates) — remaining contracts stay.".to_string(),
+        ],
+    }
+}
+
+fn build_tier1_hints() -> TierHints {
+    TierHints {
+        tier: 1,
+        overview: "Tier 1 introduces Heat — your first harmful token. Contracts may \
+            include HarmfulTokenLimit requirements constraining how much Heat you can \
+            accumulate. Heat producer and remover card effects become available, along \
+            with self-consuming variations."
+            .to_string(),
+        strategies: vec![
+            Strategy {
+                name: "Balance production and Heat management".to_string(),
+                description: "Some reward cards produce Heat as a byproduct of higher \
+                    output. Watch for HarmfulTokenLimit requirements on contracts — you \
+                    may need Heat removal cards in your deck."
+                    .to_string(),
+            },
+            Strategy {
+                name: "Use self-consuming variations".to_string(),
+                description: "Self-consuming variations (e.g., PU producer that also \
+                    consumes PU) are strictly better than pure effects due to the \
+                    boost_factor. Seek these in reward cards."
+                    .to_string(),
+            },
+            Strategy {
+                name: "Consider variation tradeoffs".to_string(),
+                description: "Variations with harmful output (Heat) boost your primary \
+                    production. Variations that remove harm or produce extra beneficial \
+                    tokens reduce it. Choose based on your contract requirements."
+                    .to_string(),
+            },
+        ],
+        common_pitfalls: vec![
+            "Ignoring Heat accumulation — HarmfulTokenLimit contracts can fail if Heat spirals.".to_string(),
+            "Only chasing raw ProductionUnit output — balance matters more than max output.".to_string(),
+        ],
+        tips: vec![
+            "Heat is the first harmful token introduced at tier 1.".to_string(),
+            "HarmfulTokenLimit requirements cap how much of a harmful token you can have.".to_string(),
+            "Variation effects with direction_sign +1 boost primary output (tradeoff for the player).".to_string(),
+            "Variation effects with direction_sign -1 reduce primary output (advantage for the player).".to_string(),
         ],
     }
 }

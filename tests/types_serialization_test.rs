@@ -13,9 +13,9 @@ fn token_type_serialization_roundtrip() {
     let tokens = vec![
         TokenType::ProductionUnit,
         TokenType::Energy,
-        TokenType::RawMaterial,
+        TokenType::QualityPoint,
+        TokenType::Innovation,
         TokenType::Heat,
-        TokenType::CO2,
         TokenType::Waste,
         TokenType::Pollution,
         TokenType::ContractsTierCompleted(1),
@@ -33,7 +33,8 @@ fn beneficial_tokens_have_beneficial_tag() {
     let beneficial = vec![
         TokenType::ProductionUnit,
         TokenType::Energy,
-        TokenType::RawMaterial,
+        TokenType::QualityPoint,
+        TokenType::Innovation,
     ];
     for token in &beneficial {
         let tags = token.tags();
@@ -46,12 +47,7 @@ fn beneficial_tokens_have_beneficial_tag() {
 
 #[test]
 fn harmful_tokens_have_harmful_tag() {
-    let harmful = vec![
-        TokenType::Heat,
-        TokenType::CO2,
-        TokenType::Waste,
-        TokenType::Pollution,
-    ];
+    let harmful = vec![TokenType::Heat, TokenType::Waste, TokenType::Pollution];
     for token in &harmful {
         let tags = token.tags();
         assert!(
@@ -84,9 +80,9 @@ fn every_token_type_has_at_least_one_tag() {
     let all_tokens = vec![
         TokenType::ProductionUnit,
         TokenType::Energy,
-        TokenType::RawMaterial,
+        TokenType::QualityPoint,
+        TokenType::Innovation,
         TokenType::Heat,
-        TokenType::CO2,
         TokenType::Waste,
         TokenType::Pollution,
         TokenType::ContractsTierCompleted(1),
@@ -326,7 +322,7 @@ fn contract_serialization_roundtrip() {
                 min_amount: 15,
             },
             ContractRequirementKind::HarmfulTokenLimit {
-                token_type: TokenType::CO2,
+                token_type: TokenType::Heat,
                 max_amount: 10,
             },
         ],
@@ -379,18 +375,16 @@ fn load_custom_game_rules_json() {
         },
         "contract_formulas": {
             "output_threshold": {
-                "min_tier": 1,
                 "base_min": 4,
                 "base_max": 10,
                 "per_tier_min": 1,
                 "per_tier_max": 5
             },
-            "reward_production": {
-                "min_tier": 1,
-                "base_min": 0,
-                "base_max": 1,
-                "per_tier_min": 1,
-                "per_tier_max": 2
+            "harmful_token_limit": {
+                "base_min": 5,
+                "base_max": 15,
+                "per_tier_min": 2,
+                "per_tier_max": 4
             }
         }
     }"#;

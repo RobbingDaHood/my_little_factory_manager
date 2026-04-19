@@ -42,16 +42,16 @@ fn all_starter_cards_are_pure_production() {
 }
 
 #[test]
-fn starter_cards_production_amounts_in_tier1_range() {
+fn starter_cards_production_amounts_in_tier0_range() {
     let mut rng = Pcg64::seed_from_u64(123);
     let entries = create_starter_deck(50, &mut rng);
     for entry in &entries {
         let amount = entry.card.effects[0].outputs[0].amount;
-        // Tier 1 pure_production: base_min=1 + 1*per_tier_min=1 = 2,
-        //                         base_max=5 + 1*per_tier_max=2 = 7
+        // Tier 0 pure_production: base_min=1 + 0*per_tier_min=1 = 1,
+        //                         base_max=5 + 0*per_tier_max=2 = 5
         assert!(
-            (2..=7).contains(&amount),
-            "production amount {amount} should be in [2, 7]"
+            (1..=5).contains(&amount),
+            "production amount {amount} should be in [1, 5]"
         );
     }
 }

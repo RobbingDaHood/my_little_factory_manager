@@ -154,11 +154,11 @@ pub enum CardLocation {
 
 /// Per-location copy counts for a single card type.
 ///
-/// `shelved` is the total copies owned (grows when reward cards are earned).
-/// `deck + hand + discard <= shelved` at all times.
-/// The difference `shelved - deck - hand - discard` represents copies
-/// on the shelf — owned but not in the active deck cycle.
-/// `deck + hand + discard` are collectively "non-shelved" (in active play).
+/// Each field independently tracks copies at that location:
+/// - `shelved` — copies on the shelf (owned but not in the active cycle).
+/// - `deck` + `hand` + `discard` — copies in the active cycle.
+///
+/// Total owned = `shelved + deck + hand + discard`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(crate = "rocket::serde")]
 pub struct CardCounts {
@@ -166,6 +166,24 @@ pub struct CardCounts {
     pub deck: u32,
     pub hand: u32,
     pub discard: u32,
+}
+
+impl CardCounts {
+    pub fn has_shelved(&self) -> bool {
+        self.shelved > 0
+    }
+
+    pub fn has_non_shelved(&self) -> bool {
+        self.deck + self.hand + self.discard > 0
+    }
+
+    pub fn non_shelved(&self) -> u32 {
+        self.deck + self.hand + self.discard
+    }
+
+    pub fn total(&self) -> u32 {
+        self.shelved + self.deck + self.hand + self.discard
+    }
 }
 
 /// A card type with its per-location copy counts.
@@ -180,20 +198,17 @@ pub struct CardEntry {
 ///
 /// If an identical card already exists, its counts are incremented.
 /// Otherwise a new `CardEntry` is appended.
-/// `shelved` (total owned) is always incremented. The active-cycle field
-/// (`deck`, `hand`, or `discard`) is incremented only when `location` is
-/// not `Shelved`.
+/// Only the specified location's count is incremented.
 pub fn add_card_to_entries(
     entries: &mut Vec<CardEntry>,
     card: &PlayerActionCard,
     location: CardLocation,
 ) {
     if let Some(entry) = entries.iter_mut().find(|e| e.card == *card) {
-        entry.counts.shelved += 1;
         increment_location_count(&mut entry.counts, &location);
     } else {
         let mut counts = CardCounts {
-            shelved: 1,
+            shelved: 0,
             deck: 0,
             hand: 0,
             discard: 0,
@@ -208,10 +223,10 @@ pub fn add_card_to_entries(
 
 fn increment_location_count(counts: &mut CardCounts, location: &CardLocation) {
     match location {
+        CardLocation::Shelved => counts.shelved += 1,
         CardLocation::Deck => counts.deck += 1,
         CardLocation::Hand => counts.hand += 1,
         CardLocation::Discard => counts.discard += 1,
-        CardLocation::Shelved => {} // shelved already incremented by caller
     }
 }
 

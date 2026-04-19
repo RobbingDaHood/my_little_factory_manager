@@ -91,7 +91,7 @@ pub enum ActionError {
     InvalidReplacementCardIndex {
         index: usize,
     },
-    /// Replacement card has no shelved copies (shelved - deck - hand - discard = 0).
+    /// Replacement card has no copies on the shelf.
     NoShelvedCopies {
         index: usize,
     },
@@ -390,12 +390,12 @@ impl GameState {
 
     /// Adds a single ReplaceCard action descriptor with valid index sets.
     fn add_replace_card_action(&self, actions: &mut Vec<PossibleAction>) {
-        // Collect shelved card indices (cards with shelved > deck+hand+discard)
+        // Collect shelved card indices (cards with copies on the shelf)
         let shelved_indices: Vec<usize> = self
             .cards
             .iter()
             .enumerate()
-            .filter(|(_, e)| e.counts.shelved > e.counts.deck + e.counts.hand + e.counts.discard)
+            .filter(|(_, e)| e.counts.has_shelved())
             .map(|(i, _)| i)
             .collect();
 
@@ -416,17 +416,12 @@ impl GameState {
             return;
         }
 
-        // Sacrifice candidates include shelved-only cards plus cards with
-        // shelved >= 2 (allowing sacrifice == target when enough copies exist).
+        // Sacrifice candidates: any card with copies on the shelf
         let sacrifice_indices: Vec<usize> = self
             .cards
             .iter()
             .enumerate()
-            .filter(|(_, e)| {
-                let shelf_only =
-                    e.counts.shelved - (e.counts.deck + e.counts.hand + e.counts.discard);
-                shelf_only > 0
-            })
+            .filter(|(_, e)| e.counts.has_shelved())
             .map(|(i, _)| i)
             .collect();
 
@@ -604,10 +599,7 @@ impl GameState {
 
         // Validate replacement has shelved copies
         let replacement = &self.cards[replacement_card_index].counts;
-        let shelved = replacement
-            .shelved
-            .saturating_sub(replacement.deck + replacement.hand + replacement.discard);
-        if shelved == 0 {
+        if !replacement.has_shelved() {
             return ActionResult::Error(ActionError::NoShelvedCopies {
                 index: replacement_card_index,
             });
@@ -620,23 +612,18 @@ impl GameState {
             });
         }
 
-        // Sacrifice == target is allowed when the card has ≥ 2 total shelved
-        // copies (one will be destroyed, one remains to maintain the card entry).
-        if sacrifice_card_index == target_card_index {
-            let total_shelved = self.cards[sacrifice_card_index].counts.shelved;
-            if total_shelved < 2 {
-                return ActionResult::Error(ActionError::SacrificeIsTarget {
-                    index: sacrifice_card_index,
-                });
-            }
+        // Sacrifice == target is allowed when the card has shelved copies
+        // (one will be destroyed by the sacrifice).
+        if sacrifice_card_index == target_card_index
+            && !self.cards[sacrifice_card_index].counts.has_shelved()
+        {
+            return ActionResult::Error(ActionError::SacrificeIsTarget {
+                index: sacrifice_card_index,
+            });
         }
 
-        // Sacrifice must come from shelved copies (Thread 11)
-        let sac = &self.cards[sacrifice_card_index].counts;
-        let sac_shelved = sac
-            .shelved
-            .saturating_sub(sac.deck + sac.hand + sac.discard);
-        if sac_shelved == 0 {
+        // Sacrifice must come from shelved copies
+        if !self.cards[sacrifice_card_index].counts.has_shelved() {
             return ActionResult::Error(ActionError::NoSacrificeCopies {
                 index: sacrifice_card_index,
             });
@@ -644,24 +631,23 @@ impl GameState {
 
         // --- Apply the replacement ---
 
-        // Remove target from deck (preferred) or discard
+        // Remove target from deck (preferred) or discard, move to shelf
         if use_deck {
             self.cards[target_card_index].counts.deck -= 1;
         } else {
             self.cards[target_card_index].counts.discard -= 1;
         }
+        self.cards[target_card_index].counts.shelved += 1;
 
-        // Move replacement from shelf to the deck (always deck, regardless
-        // of where the target was)
+        // Move replacement from shelf to the deck
+        self.cards[replacement_card_index].counts.shelved -= 1;
         self.cards[replacement_card_index].counts.deck += 1;
 
-        // Destroy sacrifice (permanently remove from shelved)
+        // Destroy sacrifice (permanently remove from shelf)
         self.cards[sacrifice_card_index].counts.shelved -= 1;
 
         // Clean up entries where all counts are zero
-        self.cards.retain(|e| {
-            e.counts.shelved > 0 || e.counts.deck > 0 || e.counts.hand > 0 || e.counts.discard > 0
-        });
+        self.cards.retain(|e| e.counts.total() > 0);
 
         ActionResult::Success(ActionSuccess::CardReplaced)
     }

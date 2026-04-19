@@ -186,7 +186,7 @@ fn build_tutorial() -> Tutorial {
                 ),
                 tips: vec![
                     "ReplaceCard is only available between contracts (no active contract).".to_string(),
-                    "The replacement card must have shelved copies (shelved > deck+hand+discard).".to_string(),
+                    "The replacement card must have copies on the shelf (shelved > 0).".to_string(),
                     "The sacrifice must also come from shelved copies — you cannot sacrifice active cards.".to_string(),
                     "You cannot sacrifice the same card you are replacing.".to_string(),
                     "The target location is auto-selected: deck first, then discard.".to_string(),
@@ -206,7 +206,7 @@ fn build_tutorial() -> Tutorial {
                 tips: vec![
                     "Use ?tag=Production to see only production cards.".to_string(),
                     "Card counts show how many copies are in each location.".to_string(),
-                    "shelved count = total owned; deck+hand+discard = non-shelved (in active cycle).".to_string(),
+                    "shelved = copies on the shelf; deck+hand+discard = copies in the active cycle.".to_string(),
                 ],
             },
             TutorialStep {

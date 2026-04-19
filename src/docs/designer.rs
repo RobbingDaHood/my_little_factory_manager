@@ -265,10 +265,9 @@ fn build_card_locations() -> DesignerSection {
         entries: vec![
             ReferenceEntry {
                 name: "Shelved".to_string(),
-                description: "The total number of copies of this card the player owns. \
-                    Grows when reward cards are earned. shelved >= deck + hand + discard. \
-                    The difference (shelved - non-shelved) represents copies on the shelf — \
-                    owned but not in the active deck cycle."
+                description: "Copies on the shelf — owned but not in the active cycle. \
+                    Grows when reward cards are earned. Use ReplaceCard to move shelved \
+                    copies into the deck."
                     .to_string(),
             },
             ReferenceEntry {
@@ -311,8 +310,8 @@ fn build_deckbuilding() -> DesignerSection {
             },
             ReferenceEntry {
                 name: "Shelved Cards".to_string(),
-                description: "Cards with shelved count > (deck + hand + discard) have \
-                    copies on the shelf. These are owned but not in the active cycle. Shelved \
+                description: "Cards with shelved count > 0 have copies on the shelf. \
+                    These are owned but not in the active cycle. Shelved \
                     cards can be moved into the deck via ReplaceCard."
                     .to_string(),
             },

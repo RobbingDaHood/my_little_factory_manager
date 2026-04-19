@@ -223,14 +223,9 @@ fn replace_card_allows_sacrifice_is_target_with_enough_copies() {
         let state = get_state(&client);
         if state["active_contract"].is_null() {
             let cards = state["cards"].as_array().expect("cards");
-            let has_shelved = cards.iter().any(|c| {
-                let counts = &c["counts"];
-                let lib = counts["shelved"].as_u64().unwrap_or(0);
-                let active = counts["deck"].as_u64().unwrap_or(0)
-                    + counts["hand"].as_u64().unwrap_or(0)
-                    + counts["discard"].as_u64().unwrap_or(0);
-                lib > active
-            });
+            let has_shelved = cards
+                .iter()
+                .any(|c| c["counts"]["shelved"].as_u64().unwrap_or(0) > 0);
             if has_shelved {
                 break;
             }
@@ -246,28 +241,18 @@ fn replace_card_allows_sacrifice_is_target_with_enough_copies() {
     let state = get_state(&client);
     let cards = state["cards"].as_array().expect("cards");
 
-    // Find a card with shelved >= 2, deck copies, AND shelf-only copies
-    // (shelved > active). This ensures it can be used as both target and sacrifice.
+    // Find a card with shelved >= 1, and deck copies.
+    // This ensures it can be used as both target and sacrifice.
     let target_idx = cards.iter().enumerate().find(|(_, c)| {
         let counts = &c["counts"];
         let shelved = counts["shelved"].as_u64().unwrap_or(0);
-        let active = counts["deck"].as_u64().unwrap_or(0)
-            + counts["hand"].as_u64().unwrap_or(0)
-            + counts["discard"].as_u64().unwrap_or(0);
-        shelved >= 2 && counts["deck"].as_u64().unwrap_or(0) > 0 && shelved > active
+        shelved >= 1 && counts["deck"].as_u64().unwrap_or(0) > 0
     });
 
     let shelved_idx = cards
         .iter()
         .enumerate()
-        .find(|(_, c)| {
-            let counts = &c["counts"];
-            let lib = counts["shelved"].as_u64().unwrap_or(0);
-            let active = counts["deck"].as_u64().unwrap_or(0)
-                + counts["hand"].as_u64().unwrap_or(0)
-                + counts["discard"].as_u64().unwrap_or(0);
-            lib > active
-        })
+        .find(|(_, c)| c["counts"]["shelved"].as_u64().unwrap_or(0) > 0)
         .map(|(i, _)| i);
 
     if let (Some((target, _)), Some(replacement)) = (target_idx, shelved_idx) {
@@ -276,16 +261,7 @@ fn replace_card_allows_sacrifice_is_target_with_enough_copies() {
             cards
                 .iter()
                 .enumerate()
-                .find(|(i, c)| {
-                    *i != target && {
-                        let counts = &c["counts"];
-                        let lib = counts["shelved"].as_u64().unwrap_or(0);
-                        let active = counts["deck"].as_u64().unwrap_or(0)
-                            + counts["hand"].as_u64().unwrap_or(0)
-                            + counts["discard"].as_u64().unwrap_or(0);
-                        lib > active
-                    }
-                })
+                .find(|(i, c)| *i != target && c["counts"]["shelved"].as_u64().unwrap_or(0) > 0)
                 .map(|(i, _)| i)
         } else {
             Some(replacement)
@@ -332,14 +308,9 @@ fn replace_card_swaps_deck_card_with_shelved_card() {
         if state["active_contract"].is_null() {
             // Check if any card has shelved copies
             let cards = state["cards"].as_array().expect("cards");
-            let has_shelved = cards.iter().any(|c| {
-                let counts = &c["counts"];
-                let lib = counts["shelved"].as_u64().unwrap_or(0);
-                let active = counts["deck"].as_u64().unwrap_or(0)
-                    + counts["hand"].as_u64().unwrap_or(0)
-                    + counts["discard"].as_u64().unwrap_or(0);
-                lib > active
-            });
+            let has_shelved = cards
+                .iter()
+                .any(|c| c["counts"]["shelved"].as_u64().unwrap_or(0) > 0);
             if has_shelved {
                 break;
             }
@@ -360,14 +331,7 @@ fn replace_card_swaps_deck_card_with_shelved_card() {
     let shelved_idx = cards
         .iter()
         .enumerate()
-        .find(|(_, c)| {
-            let counts = &c["counts"];
-            let lib = counts["shelved"].as_u64().unwrap_or(0);
-            let active = counts["deck"].as_u64().unwrap_or(0)
-                + counts["hand"].as_u64().unwrap_or(0)
-                + counts["discard"].as_u64().unwrap_or(0);
-            lib > active
-        })
+        .find(|(_, c)| c["counts"]["shelved"].as_u64().unwrap_or(0) > 0)
         .map(|(i, _)| i);
 
     // Find a card with deck copies for target
@@ -381,14 +345,7 @@ fn replace_card_swaps_deck_card_with_shelved_card() {
     let sacrifice_idx = cards
         .iter()
         .enumerate()
-        .find(|(i, c)| {
-            let counts = &c["counts"];
-            let lib = counts["shelved"].as_u64().unwrap_or(0);
-            let active = counts["deck"].as_u64().unwrap_or(0)
-                + counts["hand"].as_u64().unwrap_or(0)
-                + counts["discard"].as_u64().unwrap_or(0);
-            lib > active && Some(*i) != target_idx
-        })
+        .find(|(i, c)| c["counts"]["shelved"].as_u64().unwrap_or(0) > 0 && Some(*i) != target_idx)
         .map(|(i, _)| i);
 
     if let (Some(target), Some(replacement), Some(sacrifice)) =

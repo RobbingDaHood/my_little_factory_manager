@@ -130,7 +130,7 @@ curl -s "${BASE_URL}/docs/tutorial" | jq '[ .steps[] | .title ]'
 echo
 
 echo "Hints — tier strategies covered:"
-curl -s "${BASE_URL}/docs/hints" | jq '{ general_tips: (.general_tips | length), tiers: [ .tier_strategies[] | .tier ] }'
+curl -s "${BASE_URL}/docs/hints" | jq '{ general_tips: (.general_tips | length), tiers: [ .tiers[] | .tier ] }'
 echo
 
 echo "Designer guide — sections:"

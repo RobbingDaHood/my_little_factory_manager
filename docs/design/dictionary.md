@@ -21,4 +21,10 @@ Canonical definitions for game terms used throughout the codebase, documentation
 | **Starter Deck** | The initial set of pure-production cards placed directly into the Deck at game start (`shelved: 0, deck: N`). |
 | **Target** | The Deck or Discard card being swapped out during a ReplaceCard action. It moves to the Shelf. |
 | **Tier** | A progression level for contracts and card effects. Higher tiers unlock stronger effects and harder contracts. |
-| **Token** | A resource produced or consumed by card effects. Types include `ProductionUnit`, `QualityPoint`, `TransformationCharge`, and `SystemAdjustmentUnit`. |
+| **Token** | A resource produced or consumed by card effects. Beneficial types: `ProductionUnit`, `Energy`, `QualityPoint`, `Innovation`. Harmful types: `Heat`, `Waste`, `Pollution`. Progression types: `ContractsTierCompleted`, `DeckSlots`. |
+| **MainEffectDirection** | Whether a card effect type's primary token is an output (Producer) or an input (Consumer/Remover). |
+| **VariationDirection** | Whether a variation's secondary token is an Input or Output on the card effect. |
+| **Direction Sign** | +1 if the secondary token represents a player tradeoff (harmful output, beneficial input) → boosts primary. −1 if it represents a player advantage (harmful input, beneficial output) → penalizes primary. |
+| **Proportional Model** | The system where secondary token amounts are derived as ratios of the unmodified primary output, ensuring consistent scaling across tiers. |
+| **Self-Consuming Variation** | A variation where the secondary token is the same type as the primary. The secondary direction is opposite to the main (producer self-consuming = input, consumer self-consuming = output). |
+| **Cross-Token Variation** | A variation pairing two different token types. Placed on the earlier token's mains to prevent duplicates. |

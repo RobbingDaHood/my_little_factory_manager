@@ -97,7 +97,7 @@ fn build_tutorial() -> Tutorial {
                 method: "GET".to_string(),
                 example_body: None,
                 tips: vec![
-                    "Tier 1 contracts require producing a certain number of ProductionUnits.".to_string(),
+                    "Tier 0 contracts require producing a certain number of ProductionUnits.".to_string(),
                     "The reward card preview shows exactly what card you'll get.".to_string(),
                     "3 contracts are offered per unlocked tier.".to_string(),
                 ],

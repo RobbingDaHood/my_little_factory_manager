@@ -6,7 +6,7 @@ A deterministic, turn-based deckbuilding game where the player acts as a factory
 
 The core mechanic revolves around **contracts** drawn from a tiered market. Each contract defines production requirements that must be satisfied by playing action cards from your hand. Cards cycle through locations: **Library → Deck → Hand → Discard**, and the hand persists between contracts.
 
-Tokens represent persistent resources — **beneficial** (ProductionUnit, Energy, RawMaterial), **harmful** (Heat, CO2, Waste, Pollution), and **progression** (ContractsTierCompleted, DeckSlots). Managing token balances is the strategic heart of the game.
+Tokens represent persistent resources — **beneficial** (ProductionUnit, Energy, QualityPoint, Innovation), **harmful** (Heat, Waste, Pollution), and **progression** (ContractsTierCompleted, DeckSlots). Managing token balances is the strategic heart of the game.
 
 ## Features
 
@@ -14,7 +14,7 @@ Tokens represent persistent resources — **beneficial** (ProductionUnit, Energy
 - Tiered contract system with formula-based balance scaling
 - Deckbuilding via ReplaceCard action — reshape your active cycle by swapping and sacrificing cards
 - Active cycle size controlled by DeckSlots progression token
-- Config-driven card effect types (`configurations/card_effects/effect_types.json`)
+- Config-driven card effect types (`configurations/card_effects/token_definitions.json`)
 - Deterministic replay via seed + action log (save/load)
 - Externalized game-rules configuration (`configurations/general/game_rules.json`)
 - Self-documenting API: `/docs/tutorial`, `/docs/hints`, `/docs/designer`
@@ -185,7 +185,7 @@ configurations/             # JSON game content (embedded at compile time)
 ├── general/
 │   └── game_rules.json     # Game-wide mechanics constants
 └── card_effects/
-    └── effect_types.json   # Card effect type definitions per tier
+    └── token_definitions.json   # Token definitions and variation defaults
 
 src/
 ├── lib.rs                  # Library entry point, route mounting
@@ -194,8 +194,8 @@ src/
 ├── game_state.rs           # GameState struct, game mechanics, action dispatch
 ├── types.rs                # Core enums and structs (TokenType, CardEffect, Contract)
 ├── action_log.rs           # PlayerAction enum, ActionEntry, ActionLog
-├── contract_generation.rs  # Formula-based contract and reward card generation
-├── starter_cards.rs        # Starter deck card definitions
+├── contract_generation.rs  # Combinatorial effect type generator and contract generation
+├── starter_cards.rs        # Starter deck generation from generated effect types
 ├── config.rs               # Config struct definitions (GameRulesConfig)
 ├── config_loader.rs        # JSON config embedding and loading
 ├── version.rs              # GET /version endpoint
@@ -213,6 +213,7 @@ tests/
 ├── game_loop_test.rs           # Core gameplay loop tests
 ├── smoke_test.rs               # Basic server endpoint tests
 ├── starter_cards_test.rs       # Starter deck validation tests
+├── tier_progression_test.rs    # Phase 6 tier progression and proportional model tests
 └── types_serialization_test.rs # Type serialization roundtrip tests
 
 docs/
@@ -227,8 +228,8 @@ docs/
 
 Card, effect, and game-rules definitions are externalized as JSON in `configurations/`. Files are embedded at compile time via `include_str!()` — no runtime file I/O is needed.
 
-- **`general/game_rules.json`** — Game-wide constants (hand size, market size, discard bonus, tier progression thresholds, deck slot reward chance, scaling formulas)
-- **`card_effects/effect_types.json`** — Card effect type definitions with per-tier gating, input/output formulas, and tag assignments
+- **`general/game_rules.json`** — Game-wide constants (hand size, market size, discard bonus, tier progression thresholds, deck slot reward chance, scaling formulas for output_threshold and harmful_token_limit)
+- **`card_effects/token_definitions.json`** — Defines all 7 game tokens with primary formulas, tags, and beneficial/harmful classification. The combinatorial generator auto-produces 98 card effect types (13 mains + 85 variations) from ~5 parameters per token.
 
 To modify game content, edit the JSON files and recompile. See `GET /docs/designer` for the full authoring reference.
 

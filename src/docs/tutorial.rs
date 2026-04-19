@@ -157,7 +157,7 @@ fn build_tutorial() -> Tutorial {
                 title: "Contract Completion and Rewards".to_string(),
                 description: "When all requirements are met, the contract auto-completes. \
                     The required tokens are subtracted, you earn the reward card, and the \
-                    market refills. Reward cards always go to your library shelf — they \
+                    market refills. Reward cards always go to the shelf — they \
                     are owned but not in the active cycle until you use ReplaceCard to \
                     bring them in."
                     .to_string(),
@@ -175,7 +175,7 @@ fn build_tutorial() -> Tutorial {
                 title: "Manage Your Deck (Deckbuilding)".to_string(),
                 description: "Between contracts, you can use ReplaceCard to swap a card \
                     in your deck or discard (auto-selected: deck first, then discard) \
-                    with a shelved card from your library. The cost is permanently \
+                    with a shelved card. The cost is permanently \
                     destroying a third card (sacrifice from shelved copies). This is the \
                     only way to change your active deck composition."
                     .to_string(),
@@ -186,7 +186,7 @@ fn build_tutorial() -> Tutorial {
                 ),
                 tips: vec![
                     "ReplaceCard is only available between contracts (no active contract).".to_string(),
-                    "The replacement card must have shelved copies (library > deck+hand+discard).".to_string(),
+                    "The replacement card must have shelved copies (shelved > deck+hand+discard).".to_string(),
                     "The sacrifice must also come from shelved copies — you cannot sacrifice active cards.".to_string(),
                     "You cannot sacrifice the same card you are replacing.".to_string(),
                     "The target location is auto-selected: deck first, then discard.".to_string(),
@@ -206,7 +206,7 @@ fn build_tutorial() -> Tutorial {
                 tips: vec![
                     "Use ?tag=Production to see only production cards.".to_string(),
                     "Card counts show how many copies are in each location.".to_string(),
-                    "library count = total owned; deck+hand+discard = in active cycle; shelved = library - active.".to_string(),
+                    "shelved count = total owned; deck+hand+discard = non-shelved (in active cycle).".to_string(),
                 ],
             },
             TutorialStep {

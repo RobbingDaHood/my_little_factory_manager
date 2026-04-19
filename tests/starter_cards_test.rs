@@ -9,7 +9,7 @@ use rand_pcg::Pcg64;
 fn starter_deck_has_correct_size() {
     let mut rng = Pcg64::seed_from_u64(42);
     let entries = create_starter_deck(50, &mut rng);
-    let total_cards: u32 = entries.iter().map(|e| e.counts.library).sum();
+    let total_cards: u32 = entries.iter().map(|e| e.counts.shelved).sum();
     assert_eq!(total_cards, 50, "starter deck should have 50 total cards");
 }
 
@@ -18,7 +18,7 @@ fn all_copies_start_in_deck() {
     let mut rng = Pcg64::seed_from_u64(42);
     let entries = create_starter_deck(50, &mut rng);
     for entry in &entries {
-        assert_eq!(entry.counts.deck, entry.counts.library);
+        assert_eq!(entry.counts.deck, entry.counts.shelved);
         assert_eq!(entry.counts.hand, 0);
         assert_eq!(entry.counts.discard, 0);
     }

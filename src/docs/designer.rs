@@ -115,7 +115,7 @@ fn build_token_types() -> DesignerSection {
                 name: "DeckSlots (Progression)".to_string(),
                 description: "Fixed deck size limit (deck + hand + discard). Initialized \
                     to starting_deck_size (default: 50) and never changes. Reward cards \
-                    always go to the library shelf — use ReplaceCard to bring them into \
+                    always go to the shelf — use ReplaceCard to bring them into \
                     the active cycle."
                     .to_string(),
             },
@@ -264,11 +264,11 @@ fn build_card_locations() -> DesignerSection {
             .to_string(),
         entries: vec![
             ReferenceEntry {
-                name: "Library".to_string(),
+                name: "Shelved".to_string(),
                 description: "The total number of copies of this card the player owns. \
-                    Grows when reward cards are earned. library >= deck + hand + discard. \
-                    The difference (library - active) represents shelved copies — owned but \
-                    not in the active deck cycle."
+                    Grows when reward cards are earned. shelved >= deck + hand + discard. \
+                    The difference (shelved - non-shelved) represents copies on the shelf — \
+                    owned but not in the active deck cycle."
                     .to_string(),
             },
             ReferenceEntry {
@@ -299,7 +299,7 @@ fn build_deckbuilding() -> DesignerSection {
         title: "Deckbuilding".to_string(),
         description: "Between contracts, players can reshape their active deck using the \
             ReplaceCard action. The active cycle (deck + hand + discard) is fixed at 50 \
-            cards. Reward cards always enter the library shelf and must be explicitly \
+            cards. Reward cards always enter the shelf and must be explicitly \
             swapped in via ReplaceCard."
             .to_string(),
         entries: vec![
@@ -311,8 +311,8 @@ fn build_deckbuilding() -> DesignerSection {
             },
             ReferenceEntry {
                 name: "Shelved Cards".to_string(),
-                description: "Cards with library count > (deck + hand + discard) have \
-                    shelved copies. These are owned but not in the active cycle. Shelved \
+                description: "Cards with shelved count > (deck + hand + discard) have \
+                    copies on the shelf. These are owned but not in the active cycle. Shelved \
                     cards can be moved into the deck via ReplaceCard."
                     .to_string(),
             },
@@ -328,7 +328,7 @@ fn build_deckbuilding() -> DesignerSection {
             ReferenceEntry {
                 name: "Reward Card Placement".to_string(),
                 description: "When a contract is completed, the reward card always enters \
-                    the library shelf only (never auto-enters the deck). Use ReplaceCard \
+                    the shelf only (never auto-enters the deck). Use ReplaceCard \
                     to bring reward cards into the active cycle."
                     .to_string(),
             },

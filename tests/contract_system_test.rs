@@ -364,7 +364,7 @@ fn all_generated_contracts_are_valid_across_seeds() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn reward_card_added_to_library_on_completion() {
+fn reward_card_added_to_shelved_on_completion() {
     let client = client();
     post_action(&client, r#"{"action_type":"NewGame","seed":100}"#);
 
@@ -373,7 +373,7 @@ fn reward_card_added_to_library_on_completion() {
         .as_array()
         .expect("cards")
         .iter()
-        .map(|e| e["counts"]["library"].as_u64().unwrap_or(0) as usize)
+        .map(|e| e["counts"]["shelved"].as_u64().unwrap_or(0) as usize)
         .sum();
 
     post_action(
@@ -396,13 +396,13 @@ fn reward_card_added_to_library_on_completion() {
         .as_array()
         .expect("cards")
         .iter()
-        .map(|e| e["counts"]["library"].as_u64().unwrap_or(0) as usize)
+        .map(|e| e["counts"]["shelved"].as_u64().unwrap_or(0) as usize)
         .sum();
 
     assert_eq!(
         cards_after,
         cards_before + 1,
-        "completing a contract should add 1 reward card to the library"
+        "completing a contract should add 1 reward card to shelved"
     );
 
     assert_eq!(

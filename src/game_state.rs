@@ -54,7 +54,7 @@ pub enum ActionSuccess {
         #[serde(skip_serializing_if = "Option::is_none")]
         contract_completed: Option<Contract>,
     },
-    /// A deck/discard card was replaced with a library card; sacrifice destroyed.
+    /// A deck/discard card was replaced with a shelved card; sacrifice destroyed.
     CardReplaced,
 }
 
@@ -91,7 +91,7 @@ pub enum ActionError {
     InvalidReplacementCardIndex {
         index: usize,
     },
-    /// Replacement card has no shelved copies (library - deck - hand - discard = 0).
+    /// Replacement card has no shelved copies (shelved - deck - hand - discard = 0).
     NoShelvedCopies {
         index: usize,
     },
@@ -390,12 +390,12 @@ impl GameState {
 
     /// Adds a single ReplaceCard action descriptor with valid index sets.
     fn add_replace_card_action(&self, actions: &mut Vec<PossibleAction>) {
-        // Collect shelved card indices (cards with library > deck+hand+discard)
+        // Collect shelved card indices (cards with shelved > deck+hand+discard)
         let shelved_indices: Vec<usize> = self
             .cards
             .iter()
             .enumerate()
-            .filter(|(_, e)| e.counts.library > e.counts.deck + e.counts.hand + e.counts.discard)
+            .filter(|(_, e)| e.counts.shelved > e.counts.deck + e.counts.hand + e.counts.discard)
             .map(|(i, _)| i)
             .collect();
 
@@ -589,7 +589,7 @@ impl GameState {
         // Validate replacement has shelved copies
         let replacement = &self.cards[replacement_card_index].counts;
         let shelved = replacement
-            .library
+            .shelved
             .saturating_sub(replacement.deck + replacement.hand + replacement.discard);
         if shelved == 0 {
             return ActionResult::Error(ActionError::NoShelvedCopies {
@@ -614,7 +614,7 @@ impl GameState {
         // Sacrifice must come from shelved copies (Thread 11)
         let sac = &self.cards[sacrifice_card_index].counts;
         let sac_shelved = sac
-            .library
+            .shelved
             .saturating_sub(sac.deck + sac.hand + sac.discard);
         if sac_shelved == 0 {
             return ActionResult::Error(ActionError::NoSacrificeCopies {
@@ -638,12 +638,12 @@ impl GameState {
             self.cards[replacement_card_index].counts.discard += 1;
         }
 
-        // Destroy sacrifice (permanently remove from library)
-        self.cards[sacrifice_card_index].counts.library -= 1;
+        // Destroy sacrifice (permanently remove from shelved)
+        self.cards[sacrifice_card_index].counts.shelved -= 1;
 
         // Clean up entries where all counts are zero
         self.cards.retain(|e| {
-            e.counts.library > 0 || e.counts.deck > 0 || e.counts.hand > 0 || e.counts.discard > 0
+            e.counts.shelved > 0 || e.counts.deck > 0 || e.counts.hand > 0 || e.counts.discard > 0
         });
 
         ActionResult::Success(ActionSuccess::CardReplaced)
@@ -764,7 +764,7 @@ impl GameState {
         self.subtract_contract_tokens(&contract);
         self.add_tokens(&TokenType::ContractsTierCompleted(contract.tier.0), 1);
 
-        // Add reward card to library
+        // Add reward card to shelved
         self.add_reward_card(&contract.reward_card);
 
         self.active_contract = None;
@@ -775,12 +775,12 @@ impl GameState {
 
     fn add_reward_card(&mut self, card: &PlayerActionCard) {
         if let Some(entry) = self.cards.iter_mut().find(|e| e.card == *card) {
-            entry.counts.library += 1;
+            entry.counts.shelved += 1;
         } else {
             self.cards.push(CardEntry {
                 card: card.clone(),
                 counts: CardCounts {
-                    library: 1,
+                    shelved: 1,
                     deck: 0,
                     hand: 0,
                     discard: 0,

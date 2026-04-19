@@ -225,7 +225,7 @@ fn replace_card_fails_when_sacrifice_is_target() {
             let cards = state["cards"].as_array().expect("cards");
             let has_shelved = cards.iter().any(|c| {
                 let counts = &c["counts"];
-                let lib = counts["library"].as_u64().unwrap_or(0);
+                let lib = counts["shelved"].as_u64().unwrap_or(0);
                 let active = counts["deck"].as_u64().unwrap_or(0)
                     + counts["hand"].as_u64().unwrap_or(0)
                     + counts["discard"].as_u64().unwrap_or(0);
@@ -258,7 +258,7 @@ fn replace_card_fails_when_sacrifice_is_target() {
         .enumerate()
         .find(|(_, c)| {
             let counts = &c["counts"];
-            let lib = counts["library"].as_u64().unwrap_or(0);
+            let lib = counts["shelved"].as_u64().unwrap_or(0);
             let active = counts["deck"].as_u64().unwrap_or(0)
                 + counts["hand"].as_u64().unwrap_or(0)
                 + counts["discard"].as_u64().unwrap_or(0);
@@ -291,7 +291,7 @@ fn replace_card_swaps_deck_card_with_shelved_card() {
     // Use a seed and complete contracts until a reward card is shelved
     post_action(&client, r#"{"action_type":"NewGame","seed":100}"#);
 
-    // Complete contracts until we have a reward card in library
+    // Complete contracts until we have a shelved reward card
     for _ in 0..15 {
         let state = get_state(&client);
         if state["active_contract"].is_null() {
@@ -299,7 +299,7 @@ fn replace_card_swaps_deck_card_with_shelved_card() {
             let cards = state["cards"].as_array().expect("cards");
             let has_shelved = cards.iter().any(|c| {
                 let counts = &c["counts"];
-                let lib = counts["library"].as_u64().unwrap_or(0);
+                let lib = counts["shelved"].as_u64().unwrap_or(0);
                 let active = counts["deck"].as_u64().unwrap_or(0)
                     + counts["hand"].as_u64().unwrap_or(0)
                     + counts["discard"].as_u64().unwrap_or(0);
@@ -327,7 +327,7 @@ fn replace_card_swaps_deck_card_with_shelved_card() {
         .enumerate()
         .find(|(_, c)| {
             let counts = &c["counts"];
-            let lib = counts["library"].as_u64().unwrap_or(0);
+            let lib = counts["shelved"].as_u64().unwrap_or(0);
             let active = counts["deck"].as_u64().unwrap_or(0)
                 + counts["hand"].as_u64().unwrap_or(0)
                 + counts["discard"].as_u64().unwrap_or(0);
@@ -348,7 +348,7 @@ fn replace_card_swaps_deck_card_with_shelved_card() {
         .enumerate()
         .find(|(i, c)| {
             let counts = &c["counts"];
-            let lib = counts["library"].as_u64().unwrap_or(0);
+            let lib = counts["shelved"].as_u64().unwrap_or(0);
             let active = counts["deck"].as_u64().unwrap_or(0)
                 + counts["hand"].as_u64().unwrap_or(0)
                 + counts["discard"].as_u64().unwrap_or(0);
@@ -359,7 +359,7 @@ fn replace_card_swaps_deck_card_with_shelved_card() {
     if let (Some(target), Some(replacement), Some(sacrifice)) =
         (target_idx, shelved_idx, sacrifice_idx)
     {
-        let before_library_total: u64 = card_count_total(&state, "library");
+        let before_shelved_total: u64 = card_count_total(&state, "shelved");
 
         let action = format!(
             r#"{{"action_type":"ReplaceCard","target_card_index":{target},"replacement_card_index":{replacement},"sacrifice_card_index":{sacrifice}}}"#,
@@ -370,13 +370,13 @@ fn replace_card_swaps_deck_card_with_shelved_card() {
         assert_eq!(detail(&result)["result_type"], "CardReplaced");
 
         let after_state = get_state(&client);
-        let after_library_total: u64 = card_count_total(&after_state, "library");
+        let after_shelved_total: u64 = card_count_total(&after_state, "shelved");
 
-        // Sacrifice destroys one library copy
+        // Sacrifice destroys one shelved copy
         assert_eq!(
-            after_library_total,
-            before_library_total - 1,
-            "one library copy should be destroyed by sacrifice"
+            after_shelved_total,
+            before_shelved_total - 1,
+            "one shelved copy should be destroyed by sacrifice"
         );
     }
     // If we couldn't set up the scenario, the test is inconclusive but not failing.
@@ -388,7 +388,7 @@ fn replace_card_swaps_deck_card_with_shelved_card() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn reward_card_goes_to_library_only() {
+fn reward_card_goes_to_shelved_only() {
     let client = client();
     post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
 
@@ -398,13 +398,13 @@ fn reward_card_goes_to_library_only() {
     complete_one_contract(&client);
 
     let state_after = get_state(&client);
-    let lib_after = card_count_total(&state_after, "library");
-    let lib_before = card_count_total(&state_before, "library");
+    let lib_after = card_count_total(&state_after, "shelved");
+    let lib_before = card_count_total(&state_before, "shelved");
 
     // Library should have increased (reward card added)
     assert!(
         lib_after > lib_before,
-        "library count should increase after completing a contract"
+        "shelved count should increase after completing a contract"
     );
 
     // Active cycle (deck+hand+discard) should NOT have changed

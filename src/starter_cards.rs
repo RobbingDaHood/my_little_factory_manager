@@ -62,13 +62,13 @@ pub fn create_starter_deck(count: u32, rng: &mut Pcg64) -> Vec<CardEntry> {
         let card = production_card(amount);
 
         if let Some(entry) = entries.iter_mut().find(|e| e.card == card) {
-            entry.counts.library += 1;
+            entry.counts.shelved += 1;
             entry.counts.deck += 1;
         } else {
             entries.push(CardEntry {
                 card,
                 counts: CardCounts {
-                    library: 1,
+                    shelved: 1,
                     deck: 1,
                     hand: 0,
                     discard: 0,

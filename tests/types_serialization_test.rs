@@ -248,7 +248,7 @@ fn contract_tier_serialization_roundtrip() {
 #[test]
 fn card_location_serialization_roundtrip() {
     let locations = vec![
-        CardLocation::Library,
+        CardLocation::Shelved,
         CardLocation::Deck,
         CardLocation::Hand,
         CardLocation::Discard,

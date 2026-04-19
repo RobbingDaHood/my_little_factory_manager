@@ -138,12 +138,12 @@ impl<'de> Deserialize<'de> for CardEffect {
 
 /// Where card copies reside during gameplay.
 ///
-/// Cards move: Library → Deck → Hand → Discard → (shuffle back to Deck).
+/// Cards move: Shelved → Deck → Hand → Discard → (shuffle back to Deck).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(crate = "rocket::serde")]
 pub enum CardLocation {
-    /// The complete catalogue of available actions.
-    Library,
+    /// The complete catalogue of available actions — owned but not in the active cycle.
+    Shelved,
     /// The player's current operational toolset (shuffled into hand).
     Deck,
     /// Actions available for the current turn.
@@ -154,14 +154,15 @@ pub enum CardLocation {
 
 /// Per-location copy counts for a single card type.
 ///
-/// `library` is the total copies owned (grows when reward cards are earned).
-/// `deck + hand + discard <= library` at all times.
-/// The difference `library - deck - hand - discard` represents copies
-/// "shelved" in the library — owned but not in the active deck cycle.
+/// `shelved` is the total copies owned (grows when reward cards are earned).
+/// `deck + hand + discard <= shelved` at all times.
+/// The difference `shelved - deck - hand - discard` represents copies
+/// on the shelf — owned but not in the active deck cycle.
+/// `deck + hand + discard` are collectively "non-shelved" (in active play).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(crate = "rocket::serde")]
 pub struct CardCounts {
-    pub library: u32,
+    pub shelved: u32,
     pub deck: u32,
     pub hand: u32,
     pub discard: u32,

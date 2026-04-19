@@ -83,6 +83,7 @@ Key project files
 - `.github/workflows/ci.yml` — GitHub Actions CI pipeline
 - `README.md` — project overview, API endpoint table, usage examples
 - `docs/examples/api_examples.sh` — curl-based gameplay walkthrough
+- `docs/design/dictionary.md` — canonical game terminology definitions
 - `tests/smoke_test.rs` — smoke tests for server endpoints
 - `tests/types_serialization_test.rs` — serialization roundtrip tests for core types
 - `tests/contract_system_test.rs` — integration tests for contract generation, market mechanics, and reward cards
@@ -108,6 +109,7 @@ All documentation must stay in sync with the code. When making changes, follow t
   - `src/docs/tutorial.rs` — new-player walkthrough steps
   - `src/docs/hints.rs` — per-contract-tier strategies, tips, and pitfalls
   - `src/docs/designer.rs` — contract/card/token/effect authoring reference
+- **Non-design docs describe current implementation**: The self-documenting endpoints (`tutorial.rs`, `hints.rs`, `designer.rs`) must always describe the **current** implementation of the code, not aspirational or planned behavior. When changing code, review these docs and update them to match. Design docs (`docs/design/`) describe intent and may be forward-looking.
 - **README.md**: When adding new endpoints, add them to the API endpoint table and describe their purpose. Fix any outdated endpoint references.
 - **Examples**: Keep `docs/examples/api_examples.sh` working — update curl commands when endpoints or payloads change.
 - **Metrics**: The `/metrics` endpoint content updates automatically from gameplay data; no manual documentation updates needed for it.

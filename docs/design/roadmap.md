@@ -121,9 +121,10 @@ The existing [my_little_card_game](https://github.com/RobbingDaHood/my_little_ca
 **Deliverables**:
 - `src/contract_generation.rs` — formula-based contract and reward card generation using `TierScalingFormula`:
     - Each contract has a list of enum-based requirements
-    - Tier 1 contracts: 1 requirement (OutputThreshold for ProductionUnit, range [5,15])
+    - Requirement count per contract: `max(1, tier−1)` to `tier+1`, capped by available types
+    - Each requirement's tier rolled independently: `max(1, contract_tier−1)` to `contract_tier+1`, filtered by `unlocked_at_tier`
     - Concrete requirement values generated from tier-based formulas with deterministic randomization
-    - `min_tier` field on each formula gates when requirement/effect types become available
+    - `unlocked_at_tier` field on each formula gates when requirement/effect types become available
 - Contract reward cards generated at contract creation time:
     - Reward card has same number of card effects as contract has requirements
     - Each effect matches the tier of a corresponding requirement
@@ -199,6 +200,8 @@ The existing [my_little_card_game](https://github.com/RobbingDaHood/my_little_ca
 
 **Deliverables**:
 - Tier tracking via tokens (ContractsTier1Completed, etc.)
+- **Requirement count formula**: `max(1, contract_tier − 1)` to `contract_tier + 1` requirements per contract (capped by available requirement types)
+- **Per-requirement tier formula**: Each requirement's tier is rolled independently from `max(1, contract_tier − 1)` to `contract_tier + 1`, filtered by `unlocked_at_tier` — a requirement type is only eligible if its `unlocked_at_tier ≤ rolled_tier`
 - Tier 2 contracts: 1–3 requirements, new requirement types (e.g., harmful token limits)
 - Tier 2 card effects: boosted_production (ProductionUnit + Heat output), heat_removal (consumes Heat)
 - Tier 3 contracts: 2–4 requirements, new card effect types

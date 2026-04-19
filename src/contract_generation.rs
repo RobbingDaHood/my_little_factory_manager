@@ -71,18 +71,32 @@ fn roll_requirement_count(tier: u32, available_types: usize, rng: &mut Pcg64) ->
     min_reqs + (rng.next_u32() as usize % range)
 }
 
+/// Roll the tier for a single requirement. Each requirement's tier is
+/// rolled independently from `max(1, contract_tier − 1)` to `contract_tier + 1`.
+fn roll_requirement_tier(contract_tier: u32, rng: &mut Pcg64) -> u32 {
+    let min_tier = contract_tier.saturating_sub(1).max(1);
+    let max_tier = contract_tier + 1;
+    let range = max_tier - min_tier + 1;
+    min_tier + (rng.next_u32() % range)
+}
+
 /// Generate a single contract for the given tier.
 pub fn generate_contract(
     tier: ContractTier,
     rng: &mut Pcg64,
     formulas: &ContractFormulasConfig,
 ) -> Contract {
-    let generators = available_requirement_generators(tier.0, formulas);
-    let req_count = roll_requirement_count(tier.0, generators.len(), rng);
+    let generators_at_contract_tier = available_requirement_generators(tier.0, formulas);
+    let req_count = roll_requirement_count(tier.0, generators_at_contract_tier.len(), rng);
 
     let mut requirements = Vec::with_capacity(req_count);
-    for i in 0..req_count {
-        let gen_idx = i % generators.len();
+    for _ in 0..req_count {
+        let req_tier = roll_requirement_tier(tier.0, rng);
+        let generators = available_requirement_generators(req_tier, formulas);
+        if generators.is_empty() {
+            continue;
+        }
+        let gen_idx = rng.next_u32() as usize % generators.len();
         requirements.push(generators[gen_idx](rng));
     }
 

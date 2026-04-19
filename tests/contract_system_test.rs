@@ -109,9 +109,11 @@ fn tier1_contracts_have_valid_requirements() {
         );
 
         let min_amount = reqs[0]["min_amount"].as_u64().expect("min_amount");
+        // Tier-1 contracts roll each requirement's tier independently from
+        // max(1, 1-1)=1 to 1+1=2. At tier 1: [5,15], at tier 2: [6,20].
         assert!(
-            (5..=15).contains(&min_amount),
-            "contract {} min_amount {} should be in [5, 15]",
+            (5..=20).contains(&min_amount),
+            "contract {} min_amount {} should be in [5, 20]",
             i,
             min_amount
         );

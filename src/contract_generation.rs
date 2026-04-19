@@ -43,7 +43,7 @@ fn available_requirement_generators(
 ) -> Vec<RequirementGenerator> {
     let mut generators: Vec<RequirementGenerator> = Vec::new();
 
-    if tier >= formulas.output_threshold.min_tier {
+    {
         let formula = formulas.output_threshold.clone();
         generators.push(Box::new(move |rng: &mut Pcg64| {
             ContractRequirementKind::OutputThreshold {
@@ -74,7 +74,7 @@ fn roll_requirement_count(tier: u32, available_types: usize, rng: &mut Pcg64) ->
 /// Roll the tier for a single requirement. Each requirement's tier is
 /// rolled independently from `max(1, contract_tier − 1)` to `contract_tier + 1`.
 fn roll_requirement_tier(contract_tier: u32, rng: &mut Pcg64) -> u32 {
-    let min_tier = contract_tier.saturating_sub(1).max(1);
+    let min_tier = contract_tier.saturating_sub(1);
     let max_tier = contract_tier + 1;
     let range = max_tier - min_tier + 1;
     min_tier + (rng.next_u32() % range)

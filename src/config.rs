@@ -39,20 +39,13 @@ pub struct ContractFormulasConfig {
 
 /// A linear tier-scaling formula: for a given tier, produces a range
 /// `[base_min + tier × per_tier_min, base_max + tier × per_tier_max]`.
-/// Only active for tiers ≥ `min_tier` (defaults to 0 when omitted).
 #[derive(Debug, Clone, Deserialize)]
 #[serde(crate = "rocket::serde")]
 pub struct TierScalingFormula {
-    #[serde(default = "default_min_tier")]
-    pub min_tier: u32,
     pub base_min: u32,
     pub base_max: u32,
     pub per_tier_min: u32,
     pub per_tier_max: u32,
-}
-
-fn default_min_tier() -> u32 {
-    0
 }
 
 // ---------------------------------------------------------------------------

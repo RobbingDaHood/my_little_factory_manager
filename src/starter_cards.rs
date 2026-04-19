@@ -10,7 +10,7 @@ use crate::contract_generation::{parse_card_tag, roll_base_effect};
 use crate::types::{add_card_to_entries, CardEntry, CardLocation, CardTag, PlayerActionCard};
 
 /// Build the starter deck by round-robin rolling `count` cards from all
-/// effect types unlocked at tier ≤ 1.
+/// effect types unlocked at tier 0.
 ///
 /// Duplicate cards (same effects and tags) are grouped into a single
 /// `CardEntry` with the appropriate copy count.
@@ -19,12 +19,12 @@ pub fn create_starter_deck(count: u32, rng: &mut Pcg64) -> Vec<CardEntry> {
 
     let available: Vec<_> = effect_types
         .iter()
-        .filter(|et| et.unlocked_at_tier <= 1)
+        .filter(|et| et.unlocked_at_tier == 0)
         .collect();
 
     assert!(
         !available.is_empty(),
-        "at least one effect type must be unlocked at tier 1"
+        "at least one effect type must be unlocked at tier 0"
     );
 
     let mut entries: Vec<CardEntry> = Vec::new();
@@ -32,7 +32,7 @@ pub fn create_starter_deck(count: u32, rng: &mut Pcg64) -> Vec<CardEntry> {
     for i in 0..count {
         let selected = available[i as usize % available.len()];
 
-        let effect = roll_base_effect(1, selected, rng);
+        let effect = roll_base_effect(0, selected, rng);
 
         let tags: Vec<CardTag> = selected
             .tags

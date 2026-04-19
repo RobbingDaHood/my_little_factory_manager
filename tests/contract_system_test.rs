@@ -57,7 +57,7 @@ fn token_amount(state: &serde_json::Value, token_type_json: &str) -> u64 {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn market_has_three_tier1_contracts_on_start() {
+fn market_has_three_tier0_contracts_on_start() {
     let client = client();
     post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
 
@@ -66,7 +66,7 @@ fn market_has_three_tier1_contracts_on_start() {
         .as_array()
         .expect("offered_contracts");
     assert_eq!(tiers.len(), 1, "should have exactly 1 tier group");
-    assert_eq!(tiers[0]["tier"], 1);
+    assert_eq!(tiers[0]["tier"], 0);
 
     let contracts = tiers[0]["contracts"].as_array().expect("contracts array");
     assert_eq!(contracts.len(), 3, "should offer 3 contracts per tier");
@@ -93,7 +93,7 @@ fn tier1_contracts_have_valid_requirements() {
         assert_eq!(
             reqs.len(),
             1,
-            "tier 1 contract {} should have exactly 1 requirement",
+            "tier 0 contract {} should have exactly 1 requirement",
             i
         );
 
@@ -109,11 +109,11 @@ fn tier1_contracts_have_valid_requirements() {
         );
 
         let min_amount = reqs[0]["min_amount"].as_u64().expect("min_amount");
-        // Tier-1 contracts roll each requirement's tier independently from
-        // max(1, 1-1)=1 to 1+1=2. At tier 1: [5,15], at tier 2: [6,20].
+        // Tier-0 contracts roll each requirement's tier independently from
+        // 0.saturating_sub(1)=0 to 0+1=1. At tier 0: [4,10], at tier 1: [5,15].
         assert!(
-            (5..=20).contains(&min_amount),
-            "contract {} min_amount {} should be in [5, 20]",
+            (4..=15).contains(&min_amount),
+            "contract {} min_amount {} should be in [4, 15]",
             i,
             min_amount
         );
@@ -408,23 +408,23 @@ fn reward_card_added_to_shelved_on_completion() {
     );
 
     assert_eq!(
-        token_amount(&state_after, r#"{"ContractsTierCompleted":1}"#),
+        token_amount(&state_after, r#"{"ContractsTierCompleted":0}"#),
         1
     );
 }
 
 // ---------------------------------------------------------------------------
-// Config validation: effect_types.json must include at least one tier-1 entry
+// Config validation: effect_types.json must include at least one tier-0 entry
 // ---------------------------------------------------------------------------
 
 #[test]
-fn effect_types_config_has_tier1_entry() {
+fn effect_types_config_has_tier0_entry() {
     let effect_types =
         my_little_factory_manager::config_loader::load_effect_types().expect("config must parse");
 
-    let has_tier1 = effect_types.iter().any(|et| et.unlocked_at_tier <= 1);
+    let has_tier0 = effect_types.iter().any(|et| et.unlocked_at_tier == 0);
     assert!(
-        has_tier1,
-        "effect_types.json must contain at least one entry with unlocked_at_tier <= 1"
+        has_tier0,
+        "effect_types.json must contain at least one entry with unlocked_at_tier == 0"
     );
 }

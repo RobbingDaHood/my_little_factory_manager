@@ -629,6 +629,16 @@ impl GameState {
             });
         }
 
+        // Sacrifice == replacement requires at least 2 shelved copies
+        // (one consumed by replacement move, one destroyed by sacrifice).
+        if sacrifice_card_index == replacement_card_index
+            && self.cards[sacrifice_card_index].counts.shelved < 2
+        {
+            return ActionResult::Error(ActionError::NoSacrificeCopies {
+                index: sacrifice_card_index,
+            });
+        }
+
         // --- Apply the replacement ---
 
         // Remove target from deck (preferred) or discard, move to shelf
@@ -737,12 +747,12 @@ impl GameState {
     }
 
     /// Returns the list of unlocked tier numbers.
-    /// Tier 1 is always unlocked. Tier N+1 unlocks when
+    /// Tier 0 is always unlocked. Tier N+1 unlocks when
     /// `ContractsTierCompleted(N) >= contracts_per_tier_to_advance`.
     fn unlocked_tiers(&self) -> Vec<u32> {
         let threshold = self.rules.general.contracts_per_tier_to_advance;
-        let mut tiers = vec![1u32];
-        for tier in 1.. {
+        let mut tiers = vec![0u32];
+        for tier in 0.. {
             let completed = self
                 .tokens
                 .get(&TokenType::ContractsTierCompleted(tier))

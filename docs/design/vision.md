@@ -180,8 +180,8 @@ A card's primary value (e.g. ProductionUnit output) uses an absolute formula, an
 ### Progressive Tier Introduction
 
 * All possible card effect types and contract requirement types have an **unlock tier** where they first appear.
-* **Tier 1** has only pure output production cards and basic output threshold contracts.
-* **Each subsequent tier introduces a small group of new effects and requirements.** For example, tier 2 introduces energy production and consumption (as card effects) and a "max energy use" contract requirement.
+* **Tier 0** has only pure output production cards and basic output threshold contracts.
+* **New card effect types and requirement types are introduced at specific tiers.** For example, tier 1 introduces heat production and removal (as card effects) and a "max heat" contract requirement.
 
 ---
 

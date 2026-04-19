@@ -341,12 +341,20 @@ fn replace_card_swaps_deck_card_with_shelved_card() {
         .find(|(_, c)| c["counts"]["deck"].as_u64().unwrap_or(0) > 0)
         .map(|(i, _)| i);
 
-    // Find a sacrifice candidate (card with shelved copies, not the target)
+    // Find a sacrifice candidate (card with shelved copies, not the target or replacement)
     let sacrifice_idx = cards
         .iter()
         .enumerate()
-        .find(|(i, c)| c["counts"]["shelved"].as_u64().unwrap_or(0) > 0 && Some(*i) != target_idx)
-        .map(|(i, _)| i);
+        .find(|(i, c)| {
+            c["counts"]["shelved"].as_u64().unwrap_or(0) > 0
+                && Some(*i) != target_idx
+                && Some(*i) != shelved_idx
+        })
+        .map(|(i, _)| i)
+        .or_else(|| {
+            // If no separate sacrifice exists, use replacement if it has >= 2 shelved copies
+            shelved_idx.filter(|&idx| cards[idx]["counts"]["shelved"].as_u64().unwrap_or(0) >= 2)
+        });
 
     if let (Some(target), Some(replacement), Some(sacrifice)) =
         (target_idx, shelved_idx, sacrifice_idx)
@@ -435,7 +443,7 @@ fn possible_actions_do_not_include_replace_card_at_game_start() {
 }
 
 // ---------------------------------------------------------------------------
-// Config-driven reward generation produces PureProduction at Tier 1
+// Config-driven reward generation produces PureProduction at Tier 0
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -449,7 +457,7 @@ fn tier1_reward_cards_are_pure_production() {
     let state = get_state(&client);
     let cards = state["cards"].as_array().expect("cards array");
 
-    // Reward cards should only have Production tags at tier 1
+    // Reward cards should only have Production tags at tier 0
     for card_entry in cards {
         let tags = card_entry["card"]["tags"].as_array();
         if let Some(tags) = tags {
@@ -457,7 +465,7 @@ fn tier1_reward_cards_are_pure_production() {
                 assert_eq!(
                     tag.as_str().unwrap_or(""),
                     "Production",
-                    "tier 1 reward cards should only have Production tags"
+                    "tier 0 reward cards should only have Production tags"
                 );
             }
         }

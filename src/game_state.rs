@@ -416,12 +416,28 @@ impl GameState {
             return;
         }
 
-        // Sacrifice candidates are shelved cards (same criteria as replacement)
-        // The constraint sacrifice != target is enforced at dispatch time.
+        // Sacrifice candidates include shelved-only cards plus cards with
+        // shelved >= 2 (allowing sacrifice == target when enough copies exist).
+        let sacrifice_indices: Vec<usize> = self
+            .cards
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| {
+                let shelf_only =
+                    e.counts.shelved - (e.counts.deck + e.counts.hand + e.counts.discard);
+                shelf_only > 0
+            })
+            .map(|(i, _)| i)
+            .collect();
+
+        if sacrifice_indices.is_empty() {
+            return;
+        }
+
         actions.push(PossibleAction::ReplaceCard {
             valid_target_card_indices: target_indices,
-            valid_replacement_card_indices: shelved_indices.clone(),
-            valid_sacrifice_card_indices: shelved_indices,
+            valid_replacement_card_indices: shelved_indices,
+            valid_sacrifice_card_indices: sacrifice_indices,
         });
     }
 
@@ -604,11 +620,15 @@ impl GameState {
             });
         }
 
-        // Cannot sacrifice the card being replaced (Thread 8)
+        // Sacrifice == target is allowed when the card has ≥ 2 total shelved
+        // copies (one will be destroyed, one remains to maintain the card entry).
         if sacrifice_card_index == target_card_index {
-            return ActionResult::Error(ActionError::SacrificeIsTarget {
-                index: sacrifice_card_index,
-            });
+            let total_shelved = self.cards[sacrifice_card_index].counts.shelved;
+            if total_shelved < 2 {
+                return ActionResult::Error(ActionError::SacrificeIsTarget {
+                    index: sacrifice_card_index,
+                });
+            }
         }
 
         // Sacrifice must come from shelved copies (Thread 11)

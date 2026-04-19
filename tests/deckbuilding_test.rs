@@ -214,11 +214,11 @@ fn replace_card_fails_when_no_shelved_copies() {
 }
 
 #[test]
-fn replace_card_fails_when_sacrifice_is_target() {
+fn replace_card_allows_sacrifice_is_target_with_enough_copies() {
     let client = client();
     post_action(&client, r#"{"action_type":"NewGame","seed":100}"#);
 
-    // Complete contracts to get a shelved reward card
+    // Complete contracts to get a shelved reward card for replacement
     for _ in 0..15 {
         let state = get_state(&client);
         if state["active_contract"].is_null() {
@@ -246,12 +246,16 @@ fn replace_card_fails_when_sacrifice_is_target() {
     let state = get_state(&client);
     let cards = state["cards"].as_array().expect("cards");
 
-    // Find a card in deck to use as both target and sacrifice
-    let target_idx = cards
-        .iter()
-        .enumerate()
-        .find(|(_, c)| c["counts"]["deck"].as_u64().unwrap_or(0) > 0)
-        .map(|(i, _)| i);
+    // Find a card with shelved >= 2, deck copies, AND shelf-only copies
+    // (shelved > active). This ensures it can be used as both target and sacrifice.
+    let target_idx = cards.iter().enumerate().find(|(_, c)| {
+        let counts = &c["counts"];
+        let shelved = counts["shelved"].as_u64().unwrap_or(0);
+        let active = counts["deck"].as_u64().unwrap_or(0)
+            + counts["hand"].as_u64().unwrap_or(0)
+            + counts["discard"].as_u64().unwrap_or(0);
+        shelved >= 2 && counts["deck"].as_u64().unwrap_or(0) > 0 && shelved > active
+    });
 
     let shelved_idx = cards
         .iter()
@@ -266,18 +270,49 @@ fn replace_card_fails_when_sacrifice_is_target() {
         })
         .map(|(i, _)| i);
 
-    if let (Some(target), Some(replacement)) = (target_idx, shelved_idx) {
-        let action = format!(
-            r#"{{"action_type":"ReplaceCard","target_card_index":{target},"replacement_card_index":{replacement},"sacrifice_card_index":{target}}}"#,
-        );
-        let (status, result) = post_action(&client, &action);
-        assert_eq!(status, Status::Ok);
-        assert_eq!(result["outcome"], "Error");
-        assert_eq!(
-            detail(&result)["error_type"],
-            "SacrificeIsTarget",
-            "should not allow sacrificing the target card"
-        );
+    if let (Some((target, _)), Some(replacement)) = (target_idx, shelved_idx) {
+        // replacement must differ from target for this test to isolate sacrifice==target
+        let replacement = if replacement == target {
+            cards
+                .iter()
+                .enumerate()
+                .find(|(i, c)| {
+                    *i != target && {
+                        let counts = &c["counts"];
+                        let lib = counts["shelved"].as_u64().unwrap_or(0);
+                        let active = counts["deck"].as_u64().unwrap_or(0)
+                            + counts["hand"].as_u64().unwrap_or(0)
+                            + counts["discard"].as_u64().unwrap_or(0);
+                        lib > active
+                    }
+                })
+                .map(|(i, _)| i)
+        } else {
+            Some(replacement)
+        };
+
+        if let Some(replacement) = replacement {
+            let before_shelved_total: u64 = card_count_total(&state, "shelved");
+
+            let action = format!(
+                r#"{{"action_type":"ReplaceCard","target_card_index":{target},"replacement_card_index":{replacement},"sacrifice_card_index":{target}}}"#,
+            );
+            let (status, result) = post_action(&client, &action);
+            assert_eq!(status, Status::Ok);
+            assert_eq!(
+                result["outcome"], "Success",
+                "sacrifice == target should succeed when shelved >= 2"
+            );
+            assert_eq!(detail(&result)["result_type"], "CardReplaced");
+
+            let after_state = get_state(&client);
+            let after_shelved_total: u64 = card_count_total(&after_state, "shelved");
+            assert_eq!(
+                after_shelved_total,
+                before_shelved_total - 1,
+                "one shelved copy destroyed by sacrifice"
+            );
+        }
     }
 }
 

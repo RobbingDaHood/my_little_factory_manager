@@ -154,7 +154,11 @@ pub fn generate_reward_card_with_types(
 
 /// Roll a concrete `CardEffect` from a root effect type, possibly selecting
 /// a variation if one is unlocked at the given tier.
-fn roll_effect_from_type(tier: u32, root: &CardEffectTypeConfig, rng: &mut Pcg64) -> CardEffect {
+pub(crate) fn roll_effect_from_type(
+    tier: u32,
+    root: &CardEffectTypeConfig,
+    rng: &mut Pcg64,
+) -> CardEffect {
     let unlocked_variations: Vec<&CardEffectVariation> = root
         .variations
         .iter()
@@ -287,7 +291,7 @@ fn parse_token_type(s: &str) -> Option<TokenType> {
 }
 
 /// Parse a config string into a `CardTag`.
-fn parse_card_tag(s: &str) -> Option<CardTag> {
+pub(crate) fn parse_card_tag(s: &str) -> Option<CardTag> {
     match s {
         "Production" => Some(CardTag::Production),
         "QualityControl" => Some(CardTag::QualityControl),

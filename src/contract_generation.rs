@@ -129,17 +129,14 @@ pub fn generate_reward_card_with_types(
     _formulas: &ContractFormulasConfig,
     effect_types: &[CardEffectTypeConfig],
 ) -> PlayerActionCard {
-    let available: Vec<&CardEffectTypeConfig> = effect_types
-        .iter()
-        .filter(|et| et.unlocked_at_tier <= tier.0)
-        .collect();
+    let choices = build_effect_choices(tier.0, effect_types);
 
     let mut all_tags: Vec<CardTag> = Vec::new();
     let effects: Vec<CardEffect> = (0..num_effects)
         .map(|_| {
-            let selected = available[rng.next_u32() as usize % available.len()];
+            let selected = weighted_select(&choices, rng);
 
-            for tag_str in &selected.tags {
+            for tag_str in &selected.root.tags {
                 if let Some(tag) = parse_card_tag(tag_str) {
                     if !all_tags.contains(&tag) {
                         all_tags.push(tag);
@@ -147,7 +144,10 @@ pub fn generate_reward_card_with_types(
                 }
             }
 
-            roll_effect_from_type(tier.0, selected, rng)
+            match selected.variation {
+                Some(v) => roll_variation_effect(tier.0, selected.root, v, rng),
+                None => roll_base_effect(tier.0, selected.root, rng),
+            }
         })
         .collect();
 
@@ -161,37 +161,69 @@ pub fn generate_reward_card_with_types(
     }
 }
 
-/// Roll a concrete `CardEffect` from a root effect type, possibly selecting
-/// a variation if one is unlocked at the given tier.
-pub(crate) fn roll_effect_from_type(
+/// A flattened entry: either a root's base effect or one of its variations.
+struct EffectChoice<'a> {
+    root: &'a CardEffectTypeConfig,
+    variation: Option<&'a CardEffectVariation>,
+    unlocked_at_tier: u32,
+}
+
+/// Build a flat list of all available effect choices for the given tier.
+/// Each root's base effect and each unlocked variation are separate entries.
+fn build_effect_choices(tier: u32, effect_types: &[CardEffectTypeConfig]) -> Vec<EffectChoice<'_>> {
+    let mut choices = Vec::new();
+    for root in effect_types {
+        if root.unlocked_at_tier <= tier {
+            choices.push(EffectChoice {
+                root,
+                variation: None,
+                unlocked_at_tier: root.unlocked_at_tier,
+            });
+            for variation in &root.variations {
+                if variation.unlocked_at_tier <= tier {
+                    choices.push(EffectChoice {
+                        root,
+                        variation: Some(variation),
+                        unlocked_at_tier: variation.unlocked_at_tier,
+                    });
+                }
+            }
+        }
+    }
+    choices
+}
+
+/// Weighted random selection: lower `unlocked_at_tier` gets higher weight.
+/// Weight = current_max_tier - unlocked_at_tier + 1.
+fn weighted_select<'a>(choices: &'a [EffectChoice<'a>], rng: &mut Pcg64) -> &'a EffectChoice<'a> {
+    let max_tier = choices
+        .iter()
+        .map(|c| c.unlocked_at_tier)
+        .max()
+        .unwrap_or(1);
+
+    let weights: Vec<u32> = choices
+        .iter()
+        .map(|c| max_tier - c.unlocked_at_tier + 1)
+        .collect();
+    let total_weight: u32 = weights.iter().sum();
+
+    let mut roll = rng.next_u32() % total_weight;
+    for (choice, &w) in choices.iter().zip(&weights) {
+        if roll < w {
+            return choice;
+        }
+        roll -= w;
+    }
+    choices.last().expect("choices must not be empty")
+}
+
+/// Roll the base (unmodified) root effect.
+pub(crate) fn roll_base_effect(
     tier: u32,
     root: &CardEffectTypeConfig,
     rng: &mut Pcg64,
 ) -> CardEffect {
-    let unlocked_variations: Vec<&CardEffectVariation> = root
-        .variations
-        .iter()
-        .filter(|v| v.unlocked_at_tier <= tier)
-        .collect();
-
-    if unlocked_variations.is_empty() {
-        return roll_base_effect(tier, root, rng);
-    }
-
-    // Choose between base (index 0) and each variation (indices 1..=N)
-    let choice_count = 1 + unlocked_variations.len();
-    let choice = rng.next_u32() as usize % choice_count;
-
-    if choice == 0 {
-        roll_base_effect(tier, root, rng)
-    } else {
-        let variation = unlocked_variations[choice - 1];
-        roll_variation_effect(tier, root, variation, rng)
-    }
-}
-
-/// Roll the base (unmodified) root effect.
-fn roll_base_effect(tier: u32, root: &CardEffectTypeConfig, rng: &mut Pcg64) -> CardEffect {
     let inputs = roll_effect_formulas(tier, &root.inputs, rng);
     let outputs = roll_effect_formulas(tier, &root.outputs, rng);
     CardEffect::new(inputs, outputs).expect("config-driven effect should be valid")

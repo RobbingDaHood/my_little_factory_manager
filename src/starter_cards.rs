@@ -6,7 +6,7 @@
 use rand_pcg::Pcg64;
 
 use crate::config_loader::load_effect_types;
-use crate::contract_generation::{parse_card_tag, roll_effect_from_type};
+use crate::contract_generation::{parse_card_tag, roll_base_effect};
 use crate::types::{add_card_to_entries, CardEntry, CardLocation, CardTag, PlayerActionCard};
 
 /// Build the starter deck by round-robin rolling `count` cards from all
@@ -32,7 +32,7 @@ pub fn create_starter_deck(count: u32, rng: &mut Pcg64) -> Vec<CardEntry> {
     for i in 0..count {
         let selected = available[i as usize % available.len()];
 
-        let effect = roll_effect_from_type(1, selected, rng);
+        let effect = roll_base_effect(1, selected, rng);
 
         let tags: Vec<CardTag> = selected
             .tags

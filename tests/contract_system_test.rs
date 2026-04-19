@@ -77,7 +77,7 @@ fn market_has_three_tier0_contracts_on_start() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn tier1_contracts_have_valid_requirements() {
+fn tier0_contracts_have_valid_requirements() {
     let client = client();
     post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
 
@@ -97,31 +97,47 @@ fn tier1_contracts_have_valid_requirements() {
             i
         );
 
-        assert_eq!(
-            reqs[0]["requirement_type"], "OutputThreshold",
-            "contract {} requirement should be OutputThreshold",
-            i
-        );
-        assert_eq!(
-            reqs[0]["token_type"], "ProductionUnit",
-            "contract {} should require ProductionUnit",
-            i
-        );
-
-        let min_amount = reqs[0]["min_amount"].as_u64().expect("min_amount");
-        // Tier-0 contracts roll each requirement's tier independently from
-        // 0.saturating_sub(1)=0 to 0+1=1. At tier 0: [4,10], at tier 1: [5,15].
-        assert!(
-            (4..=15).contains(&min_amount),
-            "contract {} min_amount {} should be in [4, 15]",
-            i,
-            min_amount
-        );
+        let req_type = reqs[0]["requirement_type"]
+            .as_str()
+            .expect("requirement_type");
+        // Tier 0 requirement tier ranges from 0 to 1.
+        // At tier 0: only PU OutputThreshold.
+        // At tier 1: PU OutputThreshold or Heat HarmfulTokenLimit.
+        match req_type {
+            "OutputThreshold" => {
+                assert_eq!(
+                    reqs[0]["token_type"], "ProductionUnit",
+                    "contract {} OutputThreshold should require ProductionUnit",
+                    i
+                );
+                let min_amount = reqs[0]["min_amount"].as_u64().expect("min_amount");
+                assert!(
+                    (4..=15).contains(&min_amount),
+                    "contract {} min_amount {} should be in [4, 15]",
+                    i,
+                    min_amount
+                );
+            }
+            "HarmfulTokenLimit" => {
+                assert_eq!(
+                    reqs[0]["token_type"], "Heat",
+                    "contract {} HarmfulTokenLimit should target Heat",
+                    i
+                );
+                let max_amount = reqs[0]["max_amount"].as_u64().expect("max_amount");
+                assert!(
+                    max_amount > 0,
+                    "contract {} max_amount should be positive",
+                    i
+                );
+            }
+            other => panic!("contract {} unexpected requirement type: {}", i, other),
+        }
     }
 }
 
 #[test]
-fn tier1_reward_cards_match_requirements() {
+fn tier0_reward_cards_have_effects() {
     let client = client();
     post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
 
@@ -146,30 +162,19 @@ fn tier1_reward_cards_match_requirements() {
 
         let tags = reward["tags"].as_array().expect("tags array");
         assert!(
-            tags.contains(&serde_json::json!("Production")),
-            "contract {} reward card should have Production tag",
+            !tags.is_empty(),
+            "contract {} reward card should have at least one tag",
             i
         );
 
         for (j, effect) in effects.iter().enumerate() {
+            let has_inputs = !effect["inputs"].as_array().expect("inputs").is_empty();
+            let has_outputs = !effect["outputs"].as_array().expect("outputs").is_empty();
             assert!(
-                effect["inputs"].as_array().expect("inputs").is_empty(),
-                "contract {} effect {} should be pure production (no inputs)",
+                has_inputs || has_outputs,
+                "contract {} effect {} must have at least one input or output",
                 i,
                 j
-            );
-
-            let outputs = effect["outputs"].as_array().expect("outputs");
-            assert_eq!(outputs.len(), 1);
-            assert_eq!(outputs[0]["token_type"], "ProductionUnit");
-
-            let amount = outputs[0]["amount"].as_u64().expect("amount");
-            assert!(
-                (2..=7).contains(&amount),
-                "contract {} effect {} production amount {} should be in [2, 7]",
-                i,
-                j,
-                amount
             );
         }
     }
@@ -414,17 +419,19 @@ fn reward_card_added_to_shelved_on_completion() {
 }
 
 // ---------------------------------------------------------------------------
-// Config validation: effect_types.json must include at least one tier-0 entry
+// Config validation: token_definitions.json must produce at least one tier-0 effect
 // ---------------------------------------------------------------------------
 
 #[test]
-fn effect_types_config_has_tier0_entry() {
+fn generated_effect_types_have_tier0_entry() {
+    let token_defs = my_little_factory_manager::config_loader::load_token_definitions()
+        .expect("config must parse");
     let effect_types =
-        my_little_factory_manager::config_loader::load_effect_types().expect("config must parse");
+        my_little_factory_manager::contract_generation::generate_effect_types(&token_defs);
 
-    let has_tier0 = effect_types.iter().any(|et| et.unlocked_at_tier == 0);
+    let has_tier0 = effect_types.iter().any(|et| et.available_at_tier == 0);
     assert!(
         has_tier0,
-        "effect_types.json must contain at least one entry with unlocked_at_tier == 0"
+        "generated effect types must contain at least one entry with available_at_tier == 0"
     );
 }

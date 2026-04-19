@@ -1,13 +1,13 @@
 //! Starter deck generation.
 //!
 //! Generates the starting deck by round-robin rolling cards from all
-//! effect types unlocked at tier ≤ 1, using the game's seeded RNG.
+//! effect types unlocked at tier 0, using the game's seeded RNG.
 
 use rand_pcg::Pcg64;
 
-use crate::config_loader::load_effect_types;
-use crate::contract_generation::{parse_card_tag, roll_base_effect};
-use crate::types::{add_card_to_entries, CardEntry, CardLocation, CardTag, PlayerActionCard};
+use crate::config_loader::load_token_definitions;
+use crate::contract_generation::{generate_effect_types, roll_base_effect};
+use crate::types::{add_card_to_entries, CardEntry, CardLocation, PlayerActionCard};
 
 /// Build the starter deck by round-robin rolling `count` cards from all
 /// effect types unlocked at tier 0.
@@ -15,11 +15,12 @@ use crate::types::{add_card_to_entries, CardEntry, CardLocation, CardTag, Player
 /// Duplicate cards (same effects and tags) are grouped into a single
 /// `CardEntry` with the appropriate copy count.
 pub fn create_starter_deck(count: u32, rng: &mut Pcg64) -> Vec<CardEntry> {
-    let effect_types = load_effect_types().expect("embedded effect types must parse");
+    let token_defs = load_token_definitions().expect("embedded token definitions must parse");
+    let effect_types = generate_effect_types(&token_defs);
 
     let available: Vec<_> = effect_types
         .iter()
-        .filter(|et| et.unlocked_at_tier == 0)
+        .filter(|et| et.available_at_tier == 0)
         .collect();
 
     assert!(
@@ -34,18 +35,8 @@ pub fn create_starter_deck(count: u32, rng: &mut Pcg64) -> Vec<CardEntry> {
 
         let effect = roll_base_effect(0, selected, rng);
 
-        let tags: Vec<CardTag> = selected
-            .tags
-            .iter()
-            .filter_map(|s| parse_card_tag(s))
-            .collect();
-
         let card = PlayerActionCard {
-            tags: if tags.is_empty() {
-                vec![CardTag::Production]
-            } else {
-                tags
-            },
+            tags: selected.tags.clone(),
             effects: vec![effect],
         };
 

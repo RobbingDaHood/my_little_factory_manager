@@ -13,11 +13,11 @@
             "per_tier_min": 1,
             "per_tier_max": 5
         },
-        "reward_production": {
-            "base_min": 0,
-            "base_max": 1,
-            "per_tier_min": 1,
-            "per_tier_max": 2
+        "harmful_token_limit": {
+            "base_min": 5,
+            "base_max": 15,
+            "per_tier_min": 2,
+            "per_tier_max": 4
         }
     }
 }

@@ -75,9 +75,9 @@ fn build_token_types() -> DesignerSection {
                     .to_string(),
             },
             ReferenceEntry {
-                name: "RawMaterial (Beneficial)".to_string(),
-                description: "Basic material input for transformation effects. Converted \
-                    into other beneficial tokens at favorable ratios."
+                name: "QualityPoint (Beneficial)".to_string(),
+                description: "Quality measure produced by quality-focused operations. \
+                    Used as input for advanced card effects in higher tiers."
                     .to_string(),
             },
             ReferenceEntry {
@@ -87,9 +87,9 @@ fn build_token_types() -> DesignerSection {
                     .to_string(),
             },
             ReferenceEntry {
-                name: "CO2 (Harmful)".to_string(),
-                description: "Carbon emissions from factory operations. Higher-output \
-                    production cards may produce CO2 as a tradeoff."
+                name: "Innovation (Beneficial)".to_string(),
+                description: "Research and development output produced by \
+                    innovation-focused cards. Available at higher tiers."
                     .to_string(),
             },
             ReferenceEntry {
@@ -148,7 +148,7 @@ fn build_card_effects() -> DesignerSection {
             },
             ReferenceEntry {
                 name: "WasteRemoval".to_string(),
-                description: "Consumes harmful tokens (Heat, CO2, Waste, Pollution) and \
+                description: "Consumes harmful tokens (Heat, Waste, Pollution) and \
                     produces nothing or a small amount of beneficial output. Removing \
                     harmful tokens is its own reward — these effects have intentionally \
                     lower beneficial output."
@@ -348,17 +348,17 @@ fn build_configuration() -> DesignerSection {
                     starting_deck_size, contracts_per_tier_to_advance, \
                     contract_market_size_per_tier, discard_production_unit_bonus) \
                     and contract formula parameters (output_threshold, \
-                    reward_production scaling formulas)."
+                    harmful_token_limit scaling formulas)."
                     .to_string(),
             },
             ReferenceEntry {
-                name: "configurations/card_effects/effect_types.json".to_string(),
-                description: "Defines root card effect types with per-tier availability. Each \
-                    type specifies: unlocked_at_tier, tags, input/output formulas, and an \
-                    optional variations array. Variations modify the root's primary output \
-                    by a modifier_range multiplier and add extra token exchanges. Tier 1 \
-                    has pure production. Tier 2 adds a boosted-production variation \
-                    (Heat output) and heat removal."
+                name: "configurations/card_effects/token_definitions.json".to_string(),
+                description: "Defines the 7 game tokens with their primary formulas, tags, \
+                    and classification (beneficial/harmful). The combinatorial generator \
+                    auto-produces all card effect types (13 mains + 85 variations = 98 items) \
+                    from these ~5 parameters per token, plus global variation defaults \
+                    (ratio_range, efficiency_per_tier, boost_factor, items_per_tier). \
+                    2 items are unlocked per tier, spanning tiers 0–48."
                     .to_string(),
             },
             ReferenceEntry {
@@ -367,9 +367,7 @@ fn build_configuration() -> DesignerSection {
                     base_min, base_max (constant component), per_tier_min, \
                     per_tier_max (linear scaling per tier). Value range = \
                     [base_min + tier × per_tier_min, base_max + tier × per_tier_max]. \
-                    Contract formulas also have min_tier (when the formula activates, \
-                    defaults to 0 = always active); \
-                    effect type formulas inherit gating from the parent unlocked_at_tier."
+                    Effect type formulas inherit gating from the parent available_at_tier."
                     .to_string(),
             },
         ],

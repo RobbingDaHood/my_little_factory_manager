@@ -134,11 +134,6 @@ pub fn generate_reward_card_with_types(
         .filter(|et| et.unlocked_at_tier <= tier.0)
         .collect();
 
-    // Fallback to hardcoded pure production if no config types available
-    if available.is_empty() {
-        return generate_fallback_reward_card(tier, num_effects, rng);
-    }
-
     let mut all_tags: Vec<CardTag> = Vec::new();
     let effects: Vec<CardEffect> = (0..num_effects)
         .map(|_| {
@@ -257,39 +252,6 @@ fn roll_effect_formulas(
             })
         })
         .collect()
-}
-
-/// Fallback reward card when no effect types are configured for the tier.
-fn generate_fallback_reward_card(
-    tier: ContractTier,
-    num_effects: usize,
-    rng: &mut Pcg64,
-) -> PlayerActionCard {
-    let formula = TierScalingFormula {
-        min_tier: 1,
-        base_min: 0,
-        base_max: 1,
-        per_tier_min: 1,
-        per_tier_max: 2,
-    };
-    let effects: Vec<CardEffect> = (0..num_effects)
-        .map(|_| {
-            let amount = roll_from_formula(tier.0, &formula, rng);
-            CardEffect::new(
-                vec![],
-                vec![TokenAmount {
-                    token_type: TokenType::ProductionUnit,
-                    amount,
-                }],
-            )
-            .expect("fallback effect is always valid")
-        })
-        .collect();
-
-    PlayerActionCard {
-        tags: vec![CardTag::Production],
-        effects,
-    }
 }
 
 /// Parse a config string into a `TokenType`.

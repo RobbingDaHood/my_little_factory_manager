@@ -412,3 +412,19 @@ fn reward_card_added_to_shelved_on_completion() {
         1
     );
 }
+
+// ---------------------------------------------------------------------------
+// Config validation: effect_types.json must include at least one tier-1 entry
+// ---------------------------------------------------------------------------
+
+#[test]
+fn effect_types_config_has_tier1_entry() {
+    let effect_types =
+        my_little_factory_manager::config_loader::load_effect_types().expect("config must parse");
+
+    let has_tier1 = effect_types.iter().any(|et| et.unlocked_at_tier <= 1);
+    assert!(
+        has_tier1,
+        "effect_types.json must contain at least one entry with unlocked_at_tier <= 1"
+    );
+}

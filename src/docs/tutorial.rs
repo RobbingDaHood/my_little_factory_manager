@@ -167,7 +167,7 @@ fn build_tutorial() -> Tutorial {
                 tips: vec![
                     "Reward cards make your deck stronger over time.".to_string(),
                     "Completing 10 contracts in a tier unlocks the next tier.".to_string(),
-                    "Use ReplaceCard between contracts to bring reward cards into your active deck.".to_string(),
+                    "Use ReplaceCard between contracts to bring reward cards into your active cycle.".to_string(),
                 ],
             },
             TutorialStep {
@@ -177,7 +177,7 @@ fn build_tutorial() -> Tutorial {
                     in your deck or discard (auto-selected: deck first, then discard) \
                     with a shelved card. The cost is permanently \
                     destroying a third card (sacrifice from shelved copies). This is the \
-                    only way to change your active deck composition."
+                    only way to change your active cycle composition."
                     .to_string(),
                 endpoint: "/action".to_string(),
                 method: "POST".to_string(),

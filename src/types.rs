@@ -37,7 +37,7 @@ pub enum TokenType {
     // Progression tracking
     /// Number of contracts completed for a given tier (1-based, unbounded).
     ContractsTierCompleted(u32),
-    /// Current deck size limit — cards in deck+hand+discard cannot exceed this.
+    /// Current active cycle size limit — cards in deck+hand+discard cannot exceed this.
     DeckSlots,
 }
 

@@ -113,7 +113,7 @@ fn build_token_types() -> DesignerSection {
             },
             ReferenceEntry {
                 name: "DeckSlots (Progression)".to_string(),
-                description: "Fixed deck size limit (deck + hand + discard). Initialized \
+                description: "Fixed active cycle size limit (deck + hand + discard). Initialized \
                     to starting_deck_size (default: 50) and never changes. Reward cards \
                     always go to the shelf — use ReplaceCard to bring them into \
                     the active cycle."
@@ -296,7 +296,7 @@ fn build_card_locations() -> DesignerSection {
 fn build_deckbuilding() -> DesignerSection {
     DesignerSection {
         title: "Deckbuilding".to_string(),
-        description: "Between contracts, players can reshape their active deck using the \
+        description: "Between contracts, players can reshape their active cycle using the \
             ReplaceCard action. The active cycle (deck + hand + discard) is fixed at 50 \
             cards. Reward cards always enter the shelf and must be explicitly \
             swapped in via ReplaceCard."

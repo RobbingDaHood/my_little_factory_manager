@@ -81,11 +81,11 @@ When the deck is empty and a draw is required, the entire discard pile is shuffl
 
 ### Card Replacement (Deckbuilding)
 
-Players can replace a card in the **Deck** or **Discard** (auto-selected: Deck first, then Discard) with a different card from the **Shelf**, but at a cost: doing so **destroys** another shelved card. This creates a meaningful tradeoff — improving the active deck requires permanently reducing the total card pool.
+Players can replace a card in the **Deck** or **Discard** (auto-selected: Deck first, then Discard) with a different card from the **Shelf**, but at a cost: doing so **destroys** another shelved card. This creates a meaningful tradeoff — improving the active cycle requires permanently reducing the total card pool.
 
 The sacrifice card must have copies on the shelf. It may be the same card as the target if it has at least 1 shelved copy. The active cycle (deck + hand + discard) is fixed at the starting deck size (50 cards) and never changes.
 
-**Hand cards cannot be replaced directly.** The hand must always be the result of random draws from the deck, preserving the core randomness of the draw mechanic. The only way to influence hand composition is by shaping which cards are in the deck.
+**Hand cards cannot be replaced directly.** The hand must always be the result of random draws from the Deck, preserving the core randomness of the draw mechanic. The only way to influence hand composition is by shaping which cards are in the Deck.
 
 ---
 

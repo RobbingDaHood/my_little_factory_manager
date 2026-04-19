@@ -45,7 +45,7 @@ fn build_hints() -> HintsGuide {
             "The seed + action log is your save file — use GET /actions/history to export it.".to_string(),
             "Between contracts, use ReplaceCard to swap weak deck cards for strong shelved reward cards.".to_string(),
             "ReplaceCard costs a sacrifice from shelved copies — choose carefully which card to permanently destroy.".to_string(),
-            "Reward cards always go to the shelf — use ReplaceCard to bring them into your active deck.".to_string(),
+            "Reward cards always go to the shelf — use ReplaceCard to bring them into your active cycle.".to_string(),
         ],
         tiers: vec![
             build_tier1_hints(),
@@ -78,7 +78,7 @@ fn build_tier1_hints() -> TierHints {
                 name: "Build your deck through rewards".to_string(),
                 description: "Each completed contract adds its reward card to the \
                     shelf. Use ReplaceCard between contracts to swap these stronger cards \
-                    into your active deck."
+                    into your active cycle."
                     .to_string(),
             },
             Strategy {

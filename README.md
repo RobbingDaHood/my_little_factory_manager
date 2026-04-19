@@ -12,8 +12,8 @@ Tokens represent persistent resources — **beneficial** (ProductionUnit, Energy
 
 - RESTful API with 12 endpoints for full gameplay
 - Tiered contract system with formula-based balance scaling
-- Deckbuilding via ReplaceCard action — reshape your active deck by swapping and sacrificing cards
-- Deck size limits controlled by DeckSlots progression token
+- Deckbuilding via ReplaceCard action — reshape your active cycle by swapping and sacrificing cards
+- Active cycle size controlled by DeckSlots progression token
 - Config-driven card effect types (`configurations/card_effects/effect_types.json`)
 - Deterministic replay via seed + action log (save/load)
 - Externalized game-rules configuration (`configurations/general/game_rules.json`)
@@ -238,16 +238,16 @@ Cards transition through locations during gameplay:
 - **Library** — the complete catalogue of owned cards (library ≥ deck + hand + discard)
 - **Deck** — the player's current operational toolset
 - **Hand** — actions available for the current turn
-- **Discard** — used actions awaiting recycling back into the deck
+- **Discard** — used actions awaiting recycling back into the Deck
 - **Shelved** — library copies not in the active cycle (library − deck − hand − discard)
 
-When the deck is empty, the discard pile is shuffled back into the deck.
+When the Deck is empty, the discard pile is shuffled back into the Deck.
 
 ## Deckbuilding
 
-Between contracts, the **ReplaceCard** action lets you swap a card in your deck or discard pile (auto-selected: deck first, then discard) with a shelved library card. A third shelved card is permanently destroyed as the cost (sacrifice). The sacrifice cannot be the same card as the target. This is the only way to change your active deck composition.
+Between contracts, the **ReplaceCard** action lets you swap a card in your Deck or Discard pile (auto-selected: Deck first, then Discard) with a shelved library card. A third shelved card is permanently destroyed as the cost (sacrifice). The sacrifice cannot be the same card as the target. This is the only way to change your active cycle composition.
 
-The active cycle (deck + hand + discard) is fixed at 50 cards and never changes. Reward cards always go to the library shelf — use ReplaceCard to bring them into the active deck.
+The active cycle (Deck + Hand + Discard) is fixed at 50 cards and never changes. Reward cards always go to the library shelf — use ReplaceCard to bring them into the active cycle.
 
 ## Design Philosophy
 

@@ -631,12 +631,9 @@ impl GameState {
             self.cards[target_card_index].counts.discard -= 1;
         }
 
-        // Move replacement from shelf to the same location
-        if use_deck {
-            self.cards[replacement_card_index].counts.deck += 1;
-        } else {
-            self.cards[replacement_card_index].counts.discard += 1;
-        }
+        // Move replacement from shelf to the deck (always deck, regardless
+        // of where the target was)
+        self.cards[replacement_card_index].counts.deck += 1;
 
         // Destroy sacrifice (permanently remove from shelved)
         self.cards[sacrifice_card_index].counts.shelved -= 1;

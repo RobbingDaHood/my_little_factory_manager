@@ -832,9 +832,7 @@ impl GameState {
                     token_type,
                     max_amount,
                 } => {
-                    let entry = harmful_limits
-                        .entry(token_type.clone())
-                        .or_insert(u32::MAX);
+                    let entry = harmful_limits.entry(token_type.clone()).or_insert(u32::MAX);
                     *entry = (*entry).min(*max_amount);
                 }
                 ContractRequirementKind::CardTagRestriction { .. }

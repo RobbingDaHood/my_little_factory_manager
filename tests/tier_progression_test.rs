@@ -149,22 +149,14 @@ fn beneficial_tokens_have_producer_and_consumer() {
     ];
 
     for token in &beneficial_tokens {
-        let has_producer = effect_types
-            .iter()
-            .any(|et| et.primary_token == *token && et.main_direction == MainEffectDirection::Producer);
-        let has_consumer = effect_types
-            .iter()
-            .any(|et| et.primary_token == *token && et.main_direction == MainEffectDirection::Consumer);
-        assert!(
-            has_producer,
-            "{:?} should have a producer main",
-            token
-        );
-        assert!(
-            has_consumer,
-            "{:?} should have a consumer main",
-            token
-        );
+        let has_producer = effect_types.iter().any(|et| {
+            et.primary_token == *token && et.main_direction == MainEffectDirection::Producer
+        });
+        let has_consumer = effect_types.iter().any(|et| {
+            et.primary_token == *token && et.main_direction == MainEffectDirection::Consumer
+        });
+        assert!(has_producer, "{:?} should have a producer main", token);
+        assert!(has_consumer, "{:?} should have a consumer main", token);
     }
 }
 
@@ -176,12 +168,12 @@ fn harmful_tokens_have_producer_and_remover() {
     let harmful_tokens = [TokenType::Heat, TokenType::Waste, TokenType::Pollution];
 
     for token in &harmful_tokens {
-        let has_producer = effect_types
-            .iter()
-            .any(|et| et.primary_token == *token && et.main_direction == MainEffectDirection::Producer);
-        let has_consumer = effect_types
-            .iter()
-            .any(|et| et.primary_token == *token && et.main_direction == MainEffectDirection::Consumer);
+        let has_producer = effect_types.iter().any(|et| {
+            et.primary_token == *token && et.main_direction == MainEffectDirection::Producer
+        });
+        let has_consumer = effect_types.iter().any(|et| {
+            et.primary_token == *token && et.main_direction == MainEffectDirection::Consumer
+        });
         assert!(has_producer, "{:?} should have a producer main", token);
         assert!(has_consumer, "{:?} should have a remover main", token);
     }
@@ -210,11 +202,7 @@ fn self_consuming_variations_exist_for_all_mains() {
     let effect_types = generate_effect_types(&token_defs);
 
     for et in &effect_types {
-        let self_consuming = et
-            .variations
-            .iter()
-            .filter(|v| v.is_self_consuming)
-            .count();
+        let self_consuming = et.variations.iter().filter(|v| v.is_self_consuming).count();
         assert_eq!(
             self_consuming, 1,
             "main '{}' should have exactly 1 self-consuming variation",
@@ -264,11 +252,12 @@ fn direction_sign_positive_for_harmful_output_variation() {
     let effect_types = generate_effect_types(&token_defs);
 
     // Find a variation with harmful token as output (should boost: +1)
-    let found = effect_types.iter().flat_map(|et| et.variations.iter()).find(
-        |v| {
+    let found = effect_types
+        .iter()
+        .flat_map(|et| et.variations.iter())
+        .find(|v| {
             v.secondary_token.is_harmful() && matches!(v.direction, VariationDirection::Output)
-        },
-    );
+        });
 
     let v = found.expect("should have at least one harmful output variation");
     assert_eq!(
@@ -282,13 +271,14 @@ fn direction_sign_positive_for_beneficial_input_variation() {
     let token_defs = load_token_definitions().expect("config");
     let effect_types = generate_effect_types(&token_defs);
 
-    let found = effect_types.iter().flat_map(|et| et.variations.iter()).find(
-        |v| {
+    let found = effect_types
+        .iter()
+        .flat_map(|et| et.variations.iter())
+        .find(|v| {
             v.secondary_token.is_beneficial()
                 && matches!(v.direction, VariationDirection::Input)
                 && !v.is_self_consuming
-        },
-    );
+        });
 
     let v = found.expect("should have at least one beneficial input variation");
     assert_eq!(
@@ -302,13 +292,14 @@ fn direction_sign_negative_for_harmful_input_variation() {
     let token_defs = load_token_definitions().expect("config");
     let effect_types = generate_effect_types(&token_defs);
 
-    let found = effect_types.iter().flat_map(|et| et.variations.iter()).find(
-        |v| {
+    let found = effect_types
+        .iter()
+        .flat_map(|et| et.variations.iter())
+        .find(|v| {
             v.secondary_token.is_harmful()
                 && matches!(v.direction, VariationDirection::Input)
                 && !v.is_self_consuming
-        },
-    );
+        });
 
     let v = found.expect("should have at least one harmful input variation");
     assert_eq!(
@@ -322,13 +313,14 @@ fn direction_sign_negative_for_beneficial_output_variation() {
     let token_defs = load_token_definitions().expect("config");
     let effect_types = generate_effect_types(&token_defs);
 
-    let found = effect_types.iter().flat_map(|et| et.variations.iter()).find(
-        |v| {
+    let found = effect_types
+        .iter()
+        .flat_map(|et| et.variations.iter())
+        .find(|v| {
             v.secondary_token.is_beneficial()
                 && matches!(v.direction, VariationDirection::Output)
                 && !v.is_self_consuming
-        },
-    );
+        });
 
     let v = found.expect("should have at least one beneficial output variation");
     assert_eq!(
@@ -351,8 +343,13 @@ fn reward_card_variation_has_both_primary_and_secondary_tokens() {
     let mut found_variation = false;
 
     for _ in 0..50 {
-        let card =
-            generate_reward_card_with_types(ContractTier(5), 3, &mut rng, &token_defs, &effect_types);
+        let card = generate_reward_card_with_types(
+            ContractTier(5),
+            3,
+            &mut rng,
+            &token_defs,
+            &effect_types,
+        );
 
         for effect in &card.effects {
             let total_entries = effect.inputs.len() + effect.outputs.len();
@@ -380,8 +377,13 @@ fn reward_card_amounts_scale_with_tier() {
     let mut rng_low = Pcg64::seed_from_u64(42);
     let mut rng_high = Pcg64::seed_from_u64(42);
 
-    let low_tier_card =
-        generate_reward_card_with_types(ContractTier(0), 1, &mut rng_low, &token_defs, &effect_types);
+    let low_tier_card = generate_reward_card_with_types(
+        ContractTier(0),
+        1,
+        &mut rng_low,
+        &token_defs,
+        &effect_types,
+    );
     let high_tier_card = generate_reward_card_with_types(
         ContractTier(20),
         1,

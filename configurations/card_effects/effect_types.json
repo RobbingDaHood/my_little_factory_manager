@@ -1,13 +1,12 @@
 [
     {
-        "min_tier": 1,
+        "unlocked_at_tier": 1,
         "tags": ["Production"],
         "inputs": [],
         "outputs": [
             {
                 "token_type": "ProductionUnit",
                 "formula": {
-                    "min_tier": 1,
                     "base_min": 1,
                     "base_max": 5,
                     "per_tier_min": 1,
@@ -17,14 +16,13 @@
         ]
     },
     {
-        "min_tier": 2,
+        "unlocked_at_tier": 2,
         "tags": ["Production"],
         "inputs": [],
         "outputs": [
             {
                 "token_type": "ProductionUnit",
                 "formula": {
-                    "min_tier": 1,
                     "base_min": 3,
                     "base_max": 7,
                     "per_tier_min": 2,
@@ -34,7 +32,6 @@
             {
                 "token_type": "Heat",
                 "formula": {
-                    "min_tier": 1,
                     "base_min": 1,
                     "base_max": 2,
                     "per_tier_min": 0,
@@ -44,13 +41,12 @@
         ]
     },
     {
-        "min_tier": 2,
+        "unlocked_at_tier": 2,
         "tags": ["QualityControl"],
         "inputs": [
             {
                 "token_type": "Heat",
                 "formula": {
-                    "min_tier": 1,
                     "base_min": 1,
                     "base_max": 3,
                     "per_tier_min": 1,

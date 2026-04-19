@@ -39,15 +39,20 @@ pub struct ContractFormulasConfig {
 
 /// A linear tier-scaling formula: for a given tier, produces a range
 /// `[base_min + tier × per_tier_min, base_max + tier × per_tier_max]`.
-/// Only active for tiers ≥ `min_tier`.
+/// Only active for tiers ≥ `min_tier` (defaults to 1 when omitted).
 #[derive(Debug, Clone, Deserialize)]
 #[serde(crate = "rocket::serde")]
 pub struct TierScalingFormula {
+    #[serde(default = "default_min_tier")]
     pub min_tier: u32,
     pub base_min: u32,
     pub base_max: u32,
     pub per_tier_min: u32,
     pub per_tier_max: u32,
+}
+
+fn default_min_tier() -> u32 {
+    1
 }
 
 // ---------------------------------------------------------------------------
@@ -60,7 +65,7 @@ pub struct TierScalingFormula {
 #[serde(crate = "rocket::serde")]
 pub struct CardEffectTypeConfig {
     /// Minimum contract tier where this effect type appears as a reward.
-    pub min_tier: u32,
+    pub unlocked_at_tier: u32,
     /// Tags assigned to cards generated with this effect type.
     pub tags: Vec<String>,
     /// Token inputs consumed when the card is played.

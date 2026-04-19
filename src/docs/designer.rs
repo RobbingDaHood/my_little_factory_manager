@@ -232,8 +232,8 @@ fn build_tier_system() -> DesignerSection {
                 name: "TierScalingFormula".to_string(),
                 description: "Each effect/requirement type uses a linear scaling formula: \
                     range = [base_min + tier × per_tier_min, base_max + tier × per_tier_max]. \
-                    Concrete values are rolled deterministically within this range. The \
-                    formula has a min_tier gate — types only appear at or above their min_tier."
+                    Concrete values are rolled deterministically within this range. Effect \
+                    types have an unlocked_at_tier gate — they only appear at or above their unlock tier."
                     .to_string(),
             },
             ReferenceEntry {
@@ -355,17 +355,19 @@ fn build_configuration() -> DesignerSection {
             ReferenceEntry {
                 name: "configurations/card_effects/effect_types.json".to_string(),
                 description: "Defines card effect types with per-tier availability. Each \
-                    type specifies: min_tier, tags, input formulas, and output \
+                    type specifies: unlocked_at_tier, tags, input formulas, and output \
                     formulas. Tier 1 has pure production only. Tier 2 adds \
                     boosted production (with Heat output) and heat removal."
                     .to_string(),
             },
             ReferenceEntry {
                 name: "TierScalingFormula fields".to_string(),
-                description: "Each formula has: min_tier (when it activates), \
+                description: "Each formula has: \
                     base_min, base_max (constant component), per_tier_min, \
                     per_tier_max (linear scaling per tier). Value range = \
-                    [base_min + tier × per_tier_min, base_max + tier × per_tier_max]."
+                    [base_min + tier × per_tier_min, base_max + tier × per_tier_max]. \
+                    Contract formulas also have min_tier (when the formula activates); \
+                    effect type formulas inherit gating from the parent unlocked_at_tier."
                     .to_string(),
             },
         ],

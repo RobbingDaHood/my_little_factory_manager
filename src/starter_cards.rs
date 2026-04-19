@@ -46,10 +46,10 @@ pub fn create_starter_deck(count: u32, rng: &mut Pcg64) -> Vec<CardEntry> {
     let effect_types = load_effect_types().expect("embedded effect types must parse");
 
     // Find the tier 1 pure-production output formula (first effect type
-    // with min_tier <= 1 that has a ProductionUnit output).
+    // with unlocked_at_tier <= 1 that has a ProductionUnit output).
     let output_formula = effect_types
         .iter()
-        .filter(|et| et.min_tier <= 1)
+        .filter(|et| et.unlocked_at_tier <= 1)
         .flat_map(|et| et.outputs.iter())
         .find(|ef| ef.token_type == "ProductionUnit")
         .map(|ef| ef.formula.clone())

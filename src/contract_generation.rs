@@ -33,7 +33,7 @@ fn roll_from_formula(tier: u32, formula: &TierScalingFormula, rng: &mut Pcg64) -
 
 /// Returns the requirement types available at the given tier, paired with
 /// a generator function. Currently only OutputThreshold is implemented;
-/// Phase 6 will add more types gated by `min_tier`.
+/// Phase 6 will add more types gated by `unlocked_at_tier`.
 fn available_requirement_generators(
     tier: u32,
     formulas: &ContractFormulasConfig,
@@ -114,7 +114,7 @@ pub fn generate_reward_card_with_types(
 ) -> PlayerActionCard {
     let available: Vec<&CardEffectTypeConfig> = effect_types
         .iter()
-        .filter(|et| et.min_tier <= tier.0)
+        .filter(|et| et.unlocked_at_tier <= tier.0)
         .collect();
 
     // Fallback to hardcoded pure production if no config types available

@@ -219,24 +219,21 @@ The existing [my_little_card_game](https://github.com/RobbingDaHood/my_little_ca
 
 ---
 
-## Phase 7: Statistics & Metrics
+## Phase 7: Statistics & Metrics ✅
 
 **Goal**: Comprehensive gameplay statistics tracking and reporting.
 
 **Deliverables**:
-- `src/metrics.rs` — metrics computation
+- `src/metrics.rs` — `MetricsTracker` (live counters) and `SessionMetrics` response type
 - `GET /metrics` endpoint with:
-  - Total contracts completed/failed (per tier)
-  - Completion rates
-  - Cards played (total and per tag)
-  - Efficiency metrics (cards per contract, tokens spent per output)
-  - Streaks (consecutive successes)
-  - Strategy frequency analysis
-- Action log integration (action log already exists from Phase 2)
-
-**Reference files from card game**:
-- `src/library/metrics.rs` — metrics endpoint pattern
-- `src/library/action_log.rs` — action logging
+  - Total contracts completed (per tier) with completion rates
+  - Cards played (total and per tag) and cards discarded
+  - Efficiency metrics (avg cards per contract, token flow per type)
+  - Streaks (consecutive contract completions)
+  - Strategy analysis (dominant tag, diversity score via Shannon entropy)
+  - Deckbuilding stats (cards replaced)
+- Live tracking integrated into `GameState` action handlers (O(1) per action)
+- Metrics reset on NewGame
 
 ---
 

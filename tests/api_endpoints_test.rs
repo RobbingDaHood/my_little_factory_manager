@@ -178,12 +178,12 @@ fn actions_possible_without_contract_shows_accept() {
 
     let has_new_game = actions
         .iter()
-        .any(|a| a["action"]["action_type"].as_str() == Some("NewGame"));
+        .any(|a| a["action_type"].as_str() == Some("NewGame"));
     assert!(has_new_game, "NewGame should always be possible");
 
     let has_accept = actions
         .iter()
-        .any(|a| a["action"]["action_type"].as_str() == Some("AcceptContract"));
+        .any(|a| a["action_type"].as_str() == Some("AcceptContract"));
     assert!(
         has_accept,
         "AcceptContract should be possible when no active contract"
@@ -191,7 +191,7 @@ fn actions_possible_without_contract_shows_accept() {
 
     let has_play = actions
         .iter()
-        .any(|a| a["action"]["action_type"].as_str() == Some("PlayCard"));
+        .any(|a| a["action_type"].as_str() == Some("PlayCard"));
     assert!(
         !has_play,
         "PlayCard should not be possible without active contract"
@@ -213,12 +213,12 @@ fn actions_possible_with_contract_shows_play_and_discard() {
 
     let has_play = actions
         .iter()
-        .any(|a| a["action"]["action_type"].as_str() == Some("PlayCard"));
+        .any(|a| a["action_type"].as_str() == Some("PlayCard"));
     assert!(has_play, "PlayCard should be possible with active contract");
 
     let has_discard = actions
         .iter()
-        .any(|a| a["action"]["action_type"].as_str() == Some("DiscardCard"));
+        .any(|a| a["action_type"].as_str() == Some("DiscardCard"));
     assert!(
         has_discard,
         "DiscardCard should be possible with active contract"
@@ -226,7 +226,7 @@ fn actions_possible_with_contract_shows_play_and_discard() {
 
     let has_accept = actions
         .iter()
-        .any(|a| a["action"]["action_type"].as_str() == Some("AcceptContract"));
+        .any(|a| a["action_type"].as_str() == Some("AcceptContract"));
     assert!(
         !has_accept,
         "AcceptContract should not be possible with active contract"

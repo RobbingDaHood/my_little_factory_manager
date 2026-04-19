@@ -23,6 +23,15 @@ pub enum PlayerAction {
     PlayCard { hand_index: usize },
     /// Discard a card from hand for a small baseline production bonus.
     DiscardCard { hand_index: usize },
+    /// Replace a card in the active cycle (deck or discard, auto-selected)
+    /// with a shelved card. The replacement always enters the deck.
+    /// A third card is permanently destroyed as the cost.
+    /// Only available between contracts.
+    ReplaceCard {
+        target_card_index: usize,
+        replacement_card_index: usize,
+        sacrifice_card_index: usize,
+    },
 }
 
 /// A single entry in the action log.

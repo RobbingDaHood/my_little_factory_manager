@@ -19,7 +19,7 @@ High-level architecture
 
 Key conventions and repository-specific notes
 
-- "Everything is a deck" design: core game state is modelled as decks of player action cards and cards move between Deck, Hand, Discard, and Library states.
+- "Everything is a deck" design: core game state is modelled as decks of player action cards and cards move between Shelved, Deck, Hand, and Discard states.
 - Tests: place tests in separate files under the top-level `tests/` directory (do not put tests inline in `src` files). Prefer integration tests that exercise the public HTTP API. Do not make items `pub` solely to enable unit testing — keep as much of the program private as possible and test through integration tests instead. Aim for at least 90% test coverage before committing; ensure coverage is measured and enforced in CI.
 - OpenAPI/Swagger is enabled using `rocket_okapi`; when the server is running, view Swagger UI at `/swagger/`.
 - No unwraps and zero Clippy warnings policy: avoid adding unwrap() in production code; prefer Result propagation and explicit error handling.
@@ -55,6 +55,7 @@ Key conventions and repository-specific notes
 Files to check for agent config
 
 - Always respect everything written in the files in the `docs/design` folder; treat those files as authoritative guidance for the repository and follow them without contradiction.
+- **`docs/design/vision.md` is final-destination only.** It describes the game as it will exist when complete — never reference current implementation state, future plans, phased rollouts, or "not yet implemented" language. If something is in the vision, write it as if it already exists. Implementation sequencing and current-state notes belong in `docs/design/roadmap.md`.
 
 Key project files
 
@@ -63,30 +64,33 @@ Key project files
 - `src/lib.rs` — library root, route mounting, `rocket_initialize()`
 - `src/version.rs` — `GET /version` endpoint
 - `src/types.rs` — core enums and structs (TokenType, CardEffect, Contract, etc.)
-- `src/config.rs` — config struct definitions (GameRulesConfig)
+- `src/config.rs` — config struct definitions (GameRulesConfig, CardEffectTypeConfig, CardEffectVariation, ModifierRange)
 - `src/config_loader.rs` — JSON config embedding and loading
 - `src/game_state.rs` — `GameState` struct, game mechanics (card/token/contract operations), action dispatch
 - `src/action_log.rs` — `PlayerAction` enum, `ActionEntry`, `ActionLog` for deterministic replay
 - `src/contract_generation.rs` — formula-based contract and reward card generation (TierScalingFormula)
 - `src/endpoints.rs` — HTTP handlers: `POST /action`, `GET /state`, `GET /actions/history`, `GET /contracts/available`, `GET /library/cards`, `GET /player/tokens`, `GET /contracts/active`, `GET /actions/possible`
-- `src/starter_cards.rs` — starter deck card definitions (3 pure production types)
+- `src/starter_cards.rs` — starter deck generation (round-robin all tier ≤ 1 effect types)
 - `src/docs/mod.rs` — documentation endpoint module declarations
 - `src/docs/tutorial.rs` — `GET /docs/tutorial` new-player walkthrough
 - `src/docs/hints.rs` — `GET /docs/hints` per-tier strategy tips
 - `src/docs/designer.rs` — `GET /docs/designer` token/card/contract authoring reference
 - `configurations/general/game_rules.json` — externalized game constants
+- `configurations/card_effects/effect_types.json` — card effect type definitions with per-tier gating
 - `Makefile` — `check`, `coverage`, `install-hooks` targets
 - `scripts/check_all.sh` — unified validation script (fmt, clippy, build, test, coverage)
 - `rust-toolchain.toml` — nightly Rust toolchain config
 - `.github/workflows/ci.yml` — GitHub Actions CI pipeline
 - `README.md` — project overview, API endpoint table, usage examples
 - `docs/examples/api_examples.sh` — curl-based gameplay walkthrough
+- `docs/design/dictionary.md` — canonical game terminology definitions
 - `tests/smoke_test.rs` — smoke tests for server endpoints
 - `tests/types_serialization_test.rs` — serialization roundtrip tests for core types
 - `tests/contract_system_test.rs` — integration tests for contract generation, market mechanics, and reward cards
 - `tests/game_loop_test.rs` — integration tests for the basic game loop (full cycle, errors, persistence)
 - `tests/determinism_test.rs` — deterministic replay and seed reproducibility tests
 - `tests/api_endpoints_test.rs` — integration tests for query and documentation endpoints
+- `tests/deckbuilding_test.rs` — integration tests for deckbuilding mechanics (ReplaceCard, DeckSlots, rewards)
 
 Suggest changes to vision.md and roadmap.md
 
@@ -105,6 +109,7 @@ All documentation must stay in sync with the code. When making changes, follow t
   - `src/docs/tutorial.rs` — new-player walkthrough steps
   - `src/docs/hints.rs` — per-contract-tier strategies, tips, and pitfalls
   - `src/docs/designer.rs` — contract/card/token/effect authoring reference
+- **Non-design docs describe current implementation**: The self-documenting endpoints (`tutorial.rs`, `hints.rs`, `designer.rs`) must always describe the **current** implementation of the code, not aspirational or planned behavior. When changing code, review these docs and update them to match. Design docs (`docs/design/`) describe intent and may be forward-looking.
 - **README.md**: When adding new endpoints, add them to the API endpoint table and describe their purpose. Fix any outdated endpoint references.
 - **Examples**: Keep `docs/examples/api_examples.sh` working — update curl commands when endpoints or payloads change.
 - **Metrics**: The `/metrics` endpoint content updates automatically from gameplay data; no manual documentation updates needed for it.

@@ -6,18 +6,21 @@ A deterministic, turn-based deckbuilding game where the player acts as a factory
 
 The core mechanic revolves around **contracts** drawn from a tiered market. Each contract defines production requirements that must be satisfied by playing action cards from your hand. Cards cycle through locations: **Library → Deck → Hand → Discard**, and the hand persists between contracts.
 
-Tokens represent persistent resources — **beneficial** (ProductionUnit, Energy, RawMaterial), **harmful** (Heat, CO2, Waste, Pollution), and **progression** (ContractsTierCompleted). Managing token balances is the strategic heart of the game.
+Tokens represent persistent resources — **beneficial** (ProductionUnit, Energy, RawMaterial), **harmful** (Heat, CO2, Waste, Pollution), and **progression** (ContractsTierCompleted, DeckSlots). Managing token balances is the strategic heart of the game.
 
 ## Features
 
 - RESTful API with 12 endpoints for full gameplay
 - Tiered contract system with formula-based balance scaling
+- Deckbuilding via ReplaceCard action — reshape your active cycle by swapping and sacrificing cards
+- Active cycle size controlled by DeckSlots progression token
+- Config-driven card effect types (`configurations/card_effects/effect_types.json`)
 - Deterministic replay via seed + action log (save/load)
 - Externalized game-rules configuration (`configurations/general/game_rules.json`)
 - Self-documenting API: `/docs/tutorial`, `/docs/hints`, `/docs/designer`
 - Version fingerprint via `GET /version` (game version + config hash)
 - OpenAPI/Swagger documentation at `/swagger/`
-- Comprehensive test coverage (76+ integration tests, ≥80% line coverage)
+- Comprehensive test coverage (integration tests, ≥80% line coverage)
 - Input validation and descriptive error messages
 
 ## Prerequisites
@@ -75,8 +78,8 @@ The game also provides self-documenting endpoints:
 #### Game Actions
 | Endpoint | Purpose |
 |----------|---------|
-| `POST /action` | Submit a player action (NewGame, AcceptContract, PlayCard, DiscardCard) |
-| `GET /actions/possible` | List currently valid actions with descriptions |
+| `POST /action` | Submit a player action (NewGame, AcceptContract, PlayCard, DiscardCard, ReplaceCard) |
+| `GET /actions/possible` | List currently valid actions with index ranges |
 | `GET /actions/history` | Full action history for deterministic replay |
 
 #### Game State
@@ -125,6 +128,11 @@ curl -X POST http://localhost:8000/action \
 
 # Check token balances
 curl http://localhost:8000/player/tokens
+
+# Replace a deck card with a shelved library card (between contracts)
+curl -X POST http://localhost:8000/action \
+  -H "Content-Type: application/json" \
+  -d '{"action_type": "ReplaceCard", "target_card_index": 0, "replacement_card_index": 3, "sacrifice_card_index": 1}'
 ```
 
 See `docs/examples/api_examples.sh` for a complete gameplay walkthrough.
@@ -174,8 +182,10 @@ cargo llvm-cov --workspace --fail-under-lines 80
 
 ```
 configurations/             # JSON game content (embedded at compile time)
-└── general/
-    └── game_rules.json     # Game-wide mechanics constants
+├── general/
+│   └── game_rules.json     # Game-wide mechanics constants
+└── card_effects/
+    └── effect_types.json   # Card effect type definitions per tier
 
 src/
 ├── lib.rs                  # Library entry point, route mounting
@@ -198,6 +208,7 @@ src/
 tests/
 ├── api_endpoints_test.rs       # New endpoint integration tests
 ├── contract_system_test.rs     # Contract generation and market tests
+├── deckbuilding_test.rs        # Deckbuilding mechanics tests
 ├── determinism_test.rs         # Seed reproducibility tests
 ├── game_loop_test.rs           # Core gameplay loop tests
 ├── smoke_test.rs               # Basic server endpoint tests
@@ -216,19 +227,27 @@ docs/
 
 Card, effect, and game-rules definitions are externalized as JSON in `configurations/`. Files are embedded at compile time via `include_str!()` — no runtime file I/O is needed.
 
-- **`general/game_rules.json`** — Game-wide constants (hand size, market size, discard bonus, tier progression thresholds, scaling formulas)
+- **`general/game_rules.json`** — Game-wide constants (hand size, market size, discard bonus, tier progression thresholds, deck slot reward chance, scaling formulas)
+- **`card_effects/effect_types.json`** — Card effect type definitions with per-tier gating, input/output formulas, and tag assignments
 
 To modify game content, edit the JSON files and recompile. See `GET /docs/designer` for the full authoring reference.
 
 ## Card Locations
 
 Cards transition through locations during gameplay:
-- **Library** — the complete catalogue of available actions
+- **Library** — the complete catalogue of owned cards (library ≥ deck + hand + discard)
 - **Deck** — the player's current operational toolset
 - **Hand** — actions available for the current turn
-- **Discard** — used actions awaiting recycling back into the deck
+- **Discard** — used actions awaiting recycling back into the Deck
+- **Shelved** — library copies not in the active cycle (library − deck − hand − discard)
 
-When the deck is empty, the discard pile is shuffled back into the deck.
+When the Deck is empty, the discard pile is shuffled back into the Deck.
+
+## Deckbuilding
+
+Between contracts, the **ReplaceCard** action lets you swap a card in your Deck or Discard pile (auto-selected: Deck first, then Discard) with a shelved library card. A third shelved card is permanently destroyed as the cost (sacrifice). The sacrifice cannot be the same card as the target. This is the only way to change your active cycle composition.
+
+The active cycle (Deck + Hand + Discard) is fixed at 50 cards and never changes. Reward cards always go to the library shelf — use ReplaceCard to bring them into the active cycle.
 
 ## Design Philosophy
 
@@ -255,7 +274,7 @@ make install-hooks
 
 ## License
 
-Apache-2.0
+MIT — see [LICENSE](LICENSE) for details.
 
 ## Author
 

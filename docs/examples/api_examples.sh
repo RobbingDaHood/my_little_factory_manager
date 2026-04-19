@@ -4,7 +4,7 @@
 # Requires: curl, jq
 #
 # This script demonstrates a complete gameplay loop:
-#   NewGame → view market → accept contract → play cards → complete → tokens
+#   NewGame → view market → accept contract → play cards → complete → deckbuilding → tokens
 
 set -euo pipefail
 BASE_URL="http://localhost:8000"
@@ -83,6 +83,24 @@ echo
 # ── Step 10: Check tokens after contract ──────────────────────────
 echo "10. Token balances after contract:"
 curl -s "${BASE_URL}/player/tokens" | jq '.'
+echo
+
+# ── Step 10b: Deckbuilding — ReplaceCard (if available) ───────────
+echo "10b. Check for ReplaceCard opportunities:"
+POSSIBLE=$(curl -s "${BASE_URL}/actions/possible")
+HAS_REPLACE=$(echo "$POSSIBLE" | jq '[ .[] | select(.action_type == "ReplaceCard") ] | length')
+echo "   ReplaceCard available: $([ "$HAS_REPLACE" -gt 0 ] && echo 'yes' || echo 'no')"
+if [ "$HAS_REPLACE" -gt 0 ]; then
+  REPLACE_INFO=$(echo "$POSSIBLE" | jq -c '[ .[] | select(.action_type == "ReplaceCard") ] | .[0]')
+  echo "   ReplaceCard ranges: $REPLACE_INFO"
+  echo "   Example ReplaceCard (first valid indices):"
+  TARGET=$(echo "$REPLACE_INFO" | jq '.valid_target_card_indices[0]')
+  REPLACEMENT=$(echo "$REPLACE_INFO" | jq '.valid_replacement_card_indices[0]')
+  SACRIFICE=$(echo "$REPLACE_INFO" | jq '.valid_sacrifice_card_indices[0]')
+  curl -s -X POST "${BASE_URL}/action" \
+    -H "Content-Type: application/json" \
+    -d "{\"action_type\": \"ReplaceCard\", \"target_card_index\": $TARGET, \"replacement_card_index\": $REPLACEMENT, \"sacrifice_card_index\": $SACRIFICE}" | jq '.'
+fi
 echo
 
 # ── Step 11: Browse card catalogue ────────────────────────────────

@@ -109,9 +109,11 @@ fn tier1_contracts_have_valid_requirements() {
         );
 
         let min_amount = reqs[0]["min_amount"].as_u64().expect("min_amount");
+        // Tier-1 contracts roll each requirement's tier independently from
+        // max(1, 1-1)=1 to 1+1=2. At tier 1: [5,15], at tier 2: [6,20].
         assert!(
-            (5..=15).contains(&min_amount),
-            "contract {} min_amount {} should be in [5, 15]",
+            (5..=20).contains(&min_amount),
+            "contract {} min_amount {} should be in [5, 20]",
             i,
             min_amount
         );
@@ -163,8 +165,8 @@ fn tier1_reward_cards_match_requirements() {
 
             let amount = outputs[0]["amount"].as_u64().expect("amount");
             assert!(
-                (1..=3).contains(&amount),
-                "contract {} effect {} production amount {} should be in [1, 3]",
+                (2..=7).contains(&amount),
+                "contract {} effect {} production amount {} should be in [2, 7]",
                 i,
                 j,
                 amount
@@ -364,7 +366,7 @@ fn all_generated_contracts_are_valid_across_seeds() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn reward_card_added_to_library_on_completion() {
+fn reward_card_added_to_shelved_on_completion() {
     let client = client();
     post_action(&client, r#"{"action_type":"NewGame","seed":100}"#);
 
@@ -373,7 +375,7 @@ fn reward_card_added_to_library_on_completion() {
         .as_array()
         .expect("cards")
         .iter()
-        .map(|e| e["counts"]["library"].as_u64().unwrap_or(0) as usize)
+        .map(|e| e["counts"]["shelved"].as_u64().unwrap_or(0) as usize)
         .sum();
 
     post_action(
@@ -396,17 +398,33 @@ fn reward_card_added_to_library_on_completion() {
         .as_array()
         .expect("cards")
         .iter()
-        .map(|e| e["counts"]["library"].as_u64().unwrap_or(0) as usize)
+        .map(|e| e["counts"]["shelved"].as_u64().unwrap_or(0) as usize)
         .sum();
 
     assert_eq!(
         cards_after,
         cards_before + 1,
-        "completing a contract should add 1 reward card to the library"
+        "completing a contract should add 1 reward card to shelved"
     );
 
     assert_eq!(
         token_amount(&state_after, r#"{"ContractsTierCompleted":1}"#),
         1
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Config validation: effect_types.json must include at least one tier-1 entry
+// ---------------------------------------------------------------------------
+
+#[test]
+fn effect_types_config_has_tier1_entry() {
+    let effect_types =
+        my_little_factory_manager::config_loader::load_effect_types().expect("config must parse");
+
+    let has_tier1 = effect_types.iter().any(|et| et.unlocked_at_tier <= 1);
+    assert!(
+        has_tier1,
+        "effect_types.json must contain at least one entry with unlocked_at_tier <= 1"
     );
 }

@@ -37,6 +37,8 @@ pub enum TokenType {
     // Progression tracking
     /// Number of contracts completed for a given tier (1-based, unbounded).
     ContractsTierCompleted(u32),
+    /// Current active cycle size limit — cards in deck+hand+discard cannot exceed this.
+    DeckSlots,
 }
 
 /// Classification tags for token types.
@@ -57,7 +59,7 @@ impl TokenType {
         match self {
             Self::ProductionUnit | Self::Energy | Self::RawMaterial => &[TokenTag::Beneficial],
             Self::Heat | Self::CO2 | Self::Waste | Self::Pollution => &[TokenTag::Harmful],
-            Self::ContractsTierCompleted(_) => &[TokenTag::Progression],
+            Self::ContractsTierCompleted(_) | Self::DeckSlots => &[TokenTag::Progression],
         }
     }
 }
@@ -136,12 +138,12 @@ impl<'de> Deserialize<'de> for CardEffect {
 
 /// Where card copies reside during gameplay.
 ///
-/// Cards move: Library → Deck → Hand → Discard → (shuffle back to Deck).
+/// Cards move: Shelved → Deck → Hand → Discard → (shuffle back to Deck).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(crate = "rocket::serde")]
 pub enum CardLocation {
-    /// The complete catalogue of available actions.
-    Library,
+    /// The complete catalogue of available actions — owned but not in the active cycle.
+    Shelved,
     /// The player's current operational toolset (shuffled into hand).
     Deck,
     /// Actions available for the current turn.
@@ -152,15 +154,36 @@ pub enum CardLocation {
 
 /// Per-location copy counts for a single card type.
 ///
-/// Invariant: `deck + hand + discard == library` at all times.
-/// `library` is the total copies owned (grows when reward cards are earned).
+/// Each field independently tracks copies at that location:
+/// - `shelved` — copies on the shelf (owned but not in the active cycle).
+/// - `deck` + `hand` + `discard` — copies in the active cycle.
+///
+/// Total owned = `shelved + deck + hand + discard`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(crate = "rocket::serde")]
 pub struct CardCounts {
-    pub library: u32,
+    pub shelved: u32,
     pub deck: u32,
     pub hand: u32,
     pub discard: u32,
+}
+
+impl CardCounts {
+    pub fn has_shelved(&self) -> bool {
+        self.shelved > 0
+    }
+
+    pub fn has_non_shelved(&self) -> bool {
+        self.deck + self.hand + self.discard > 0
+    }
+
+    pub fn non_shelved(&self) -> u32 {
+        self.deck + self.hand + self.discard
+    }
+
+    pub fn total(&self) -> u32 {
+        self.shelved + self.deck + self.hand + self.discard
+    }
 }
 
 /// A card type with its per-location copy counts.
@@ -169,6 +192,42 @@ pub struct CardCounts {
 pub struct CardEntry {
     pub card: PlayerActionCard,
     pub counts: CardCounts,
+}
+
+/// Add a copy of `card` to `entries`, placing it at the given `location`.
+///
+/// If an identical card already exists, its counts are incremented.
+/// Otherwise a new `CardEntry` is appended.
+/// Only the specified location's count is incremented.
+pub fn add_card_to_entries(
+    entries: &mut Vec<CardEntry>,
+    card: &PlayerActionCard,
+    location: CardLocation,
+) {
+    if let Some(entry) = entries.iter_mut().find(|e| e.card == *card) {
+        increment_location_count(&mut entry.counts, &location);
+    } else {
+        let mut counts = CardCounts {
+            shelved: 0,
+            deck: 0,
+            hand: 0,
+            discard: 0,
+        };
+        increment_location_count(&mut counts, &location);
+        entries.push(CardEntry {
+            card: card.clone(),
+            counts,
+        });
+    }
+}
+
+fn increment_location_count(counts: &mut CardCounts, location: &CardLocation) {
+    match location {
+        CardLocation::Shelved => counts.shelved += 1,
+        CardLocation::Deck => counts.deck += 1,
+        CardLocation::Hand => counts.hand += 1,
+        CardLocation::Discard => counts.discard += 1,
+    }
 }
 
 /// A concrete player action card with tags and effects.

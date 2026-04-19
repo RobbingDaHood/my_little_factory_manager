@@ -121,9 +121,10 @@ The existing [my_little_card_game](https://github.com/RobbingDaHood/my_little_ca
 **Deliverables**:
 - `src/contract_generation.rs` — formula-based contract and reward card generation using `TierScalingFormula`:
     - Each contract has a list of enum-based requirements
-    - Tier 1 contracts: 1 requirement (OutputThreshold for ProductionUnit, range [5,15])
+    - Requirement count per contract: `max(1, tier−1)` to `tier+1`, capped by available types
+    - Each requirement's tier rolled independently: `max(1, contract_tier−1)` to `contract_tier+1`, filtered by `unlocked_at_tier`
     - Concrete requirement values generated from tier-based formulas with deterministic randomization
-    - `min_tier` field on each formula gates when requirement/effect types become available
+    - `unlocked_at_tier` field on each formula gates when requirement/effect types become available
 - Contract reward cards generated at contract creation time:
     - Reward card has same number of card effects as contract has requirements
     - Each effect matches the tier of a corresponding requirement
@@ -171,18 +172,21 @@ The existing [my_little_card_game](https://github.com/RobbingDaHood/my_little_ca
 
 ---
 
-## Phase 5: Deckbuilding
+## Phase 5: Deckbuilding ✅
 
 **Goal**: Players acquire new player action cards from contract rewards and can manage their deck composition.
 
 **Deliverables**:
-- Contract rewards add new player action cards to library (basic version already in Phase 2)
-- Player can move cards between Library and Deck
-- Card replacement: replacing a card in Deck or Discard with a different card from the Library costs destroying another Library card. Hand cards cannot be replaced — the hand must always reflect random draws from the deck.
-- Deck size limits enforced via token system
-- Card variety: different card effect combinations and tag sets
-- `configurations/card_effects/` — card effect type definitions with tier formulas
-- Integration tests for deck management actions
+- ✅ Contract rewards add new player action cards to library shelf (never auto-enter deck)
+- ✅ ReplaceCard action: swap a card in Deck or Discard (auto-selected: Deck first) with a shelved Library card, destroying a third shelved card as sacrifice
+- ✅ Sacrifice cannot be the same card as the target
+- ✅ Fixed 50-card active cycle (deck + hand + discard) — DeckSlots initialized to starting_deck_size and never changes
+- ✅ Starter deck: 50 cards generated via tier 1 pure_production formula (output range [2,7])
+- ✅ Card variety infrastructure: config-driven effect types (`configurations/card_effects/effect_types.json`)
+- ✅ Tier 1 has only `pure_production`; `boosted_production` (Production+Heat) and `heat_removal` (QualityControl, consumes Heat) defined at min_tier=2 for Phase 6
+- ✅ `possible_actions()` returns range-based descriptors (one entry per action type with valid index ranges) instead of enumerating all concrete combinations
+- ✅ Integration tests for deckbuilding mechanics
+- ✅ Updated tutorial, hints, designer docs, README
 
 **Reference files from card game**:
 - Card location system (Library → Deck → Hand → Discard cycle) — count-based tracking already implemented in Phase 2
@@ -196,11 +200,15 @@ The existing [my_little_card_game](https://github.com/RobbingDaHood/my_little_ca
 
 **Deliverables**:
 - Tier tracking via tokens (ContractsTier1Completed, etc.)
+- **Requirement count formula**: `max(1, contract_tier − 1)` to `contract_tier + 1` requirements per contract (capped by available requirement types)
+- **Per-requirement tier formula**: Each requirement's tier is rolled independently from `max(1, contract_tier − 1)` to `contract_tier + 1`, filtered by `unlocked_at_tier` — a requirement type is only eligible if its `unlocked_at_tier ≤ rolled_tier`
 - Tier 2 contracts: 1–3 requirements, new requirement types (e.g., harmful token limits)
-- Tier 3 contracts: 2–4 requirements, new card effect types (e.g., boosted production with harmful outputs)
+- Tier 2 card effects: boosted_production (ProductionUnit + Heat output), heat_removal (consumes Heat)
+- Tier 3 contracts: 2–4 requirements, new card effect types
 - Progressive introduction: each tier unlocks a small group of new effects and requirements
 - Stronger player action cards available at higher tiers
 - Formula-based scaling: tier X effects/requirements are usually better/harder than tier X−1
+- Proportional cost model: secondary token values expressed as ratios of the primary output, reducing balance parameters to ~5-10 design-intent numbers per effect type
 - Integration tests for tier progression and new mechanics per tier
 
 **Reference files from card game**:

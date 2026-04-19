@@ -156,8 +156,10 @@ fn build_tutorial() -> Tutorial {
                 step: 8,
                 title: "Contract Completion and Rewards".to_string(),
                 description: "When all requirements are met, the contract auto-completes. \
-                    The required tokens are subtracted, you earn the reward card (added to \
-                    your library and deck), and the market refills."
+                    The required tokens are subtracted, you earn the reward card, and the \
+                    market refills. Reward cards always go to the shelf — they \
+                    are owned but not in the active cycle until you use ReplaceCard to \
+                    bring them in."
                     .to_string(),
                 endpoint: "/state".to_string(),
                 method: "GET".to_string(),
@@ -165,11 +167,35 @@ fn build_tutorial() -> Tutorial {
                 tips: vec![
                     "Reward cards make your deck stronger over time.".to_string(),
                     "Completing 10 contracts in a tier unlocks the next tier.".to_string(),
-                    "Check /contracts/active to verify no contract is active after completion.".to_string(),
+                    "Use ReplaceCard between contracts to bring reward cards into your active cycle.".to_string(),
                 ],
             },
             TutorialStep {
                 step: 9,
+                title: "Manage Your Deck (Deckbuilding)".to_string(),
+                description: "Between contracts, you can use ReplaceCard to swap a card \
+                    in your deck or discard (auto-selected: deck first, then discard) \
+                    with a shelved card. The cost is permanently \
+                    destroying a third card (sacrifice from shelved copies). This is the \
+                    only way to change your active cycle composition."
+                    .to_string(),
+                endpoint: "/action".to_string(),
+                method: "POST".to_string(),
+                example_body: Some(
+                    r#"{"action_type": "ReplaceCard", "target_card_index": 0, "replacement_card_index": 3, "sacrifice_card_index": 1}"#.to_string(),
+                ),
+                tips: vec![
+                    "ReplaceCard is only available between contracts (no active contract).".to_string(),
+                    "The replacement card must have copies on the shelf (shelved > 0).".to_string(),
+                    "The sacrifice must also come from shelved copies — you cannot sacrifice active cards.".to_string(),
+                    "You cannot sacrifice the same card you are replacing.".to_string(),
+                    "The target location is auto-selected: deck first, then discard.".to_string(),
+                    "Use /actions/possible to see valid ReplaceCard index ranges.".to_string(),
+                    "Improve your deck quality by replacing weak starter cards with strong reward cards.".to_string(),
+                ],
+            },
+            TutorialStep {
+                step: 10,
                 title: "Browse Your Card Catalogue".to_string(),
                 description: "View all your cards and their location counts. Filter by \
                     tag to find specific card types."
@@ -180,11 +206,11 @@ fn build_tutorial() -> Tutorial {
                 tips: vec![
                     "Use ?tag=Production to see only production cards.".to_string(),
                     "Card counts show how many copies are in each location.".to_string(),
-                    "library count = total owned; deck+hand+discard = current distribution.".to_string(),
+                    "shelved = copies on the shelf; deck+hand+discard = copies in the active cycle.".to_string(),
                 ],
             },
             TutorialStep {
-                step: 10,
+                step: 11,
                 title: "Save and Replay".to_string(),
                 description: "The action history endpoint returns every action taken. \
                     Combined with the seed from /state, replaying these actions on a \

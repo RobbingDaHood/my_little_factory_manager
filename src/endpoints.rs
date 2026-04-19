@@ -67,7 +67,7 @@ pub fn get_contracts_available(game_state: &State<Mutex<GameState>>) -> Json<Vec
 /// Card catalogue with optional tag filter.
 ///
 /// Returns all player action cards in the game with their per-location copy
-/// counts (library, deck, hand, discard). Use the optional `?tag=` query
+/// counts (shelved, deck, hand, discard). Use the optional `?tag=` query
 /// parameter to filter by card tag (e.g., `Production`, `Transformation`,
 /// `QualityControl`, `SystemAdjustment`).
 #[openapi]

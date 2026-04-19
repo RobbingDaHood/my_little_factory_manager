@@ -248,7 +248,7 @@ fn contract_tier_serialization_roundtrip() {
 #[test]
 fn card_location_serialization_roundtrip() {
     let locations = vec![
-        CardLocation::Library,
+        CardLocation::Shelved,
         CardLocation::Deck,
         CardLocation::Hand,
         CardLocation::Discard,
@@ -361,7 +361,7 @@ fn contract_serialization_roundtrip() {
 fn load_embedded_game_rules() {
     let config = load_game_rules().expect("load embedded game rules");
     assert_eq!(config.general.starting_hand_size, 5);
-    assert_eq!(config.general.starting_deck_size, 10);
+    assert_eq!(config.general.starting_deck_size, 50);
     assert_eq!(config.general.contracts_per_tier_to_advance, 10);
     assert_eq!(config.general.contract_market_size_per_tier, 3);
     assert_eq!(config.general.discard_production_unit_bonus, 1);

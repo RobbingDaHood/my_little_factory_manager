@@ -45,6 +45,7 @@ fn build_designer_guide() -> DesignerGuide {
             build_contract_requirements(),
             build_tier_system(),
             build_card_locations(),
+            build_deckbuilding(),
             build_configuration(),
             build_determinism(),
         ],
@@ -108,6 +109,14 @@ fn build_token_types() -> DesignerSection {
                 description: "Tracks the number of contracts completed at tier N. \
                     When this reaches the advancement threshold (default: 10), the next \
                     tier unlocks."
+                    .to_string(),
+            },
+            ReferenceEntry {
+                name: "DeckSlots (Progression)".to_string(),
+                description: "Fixed active cycle size limit (deck + hand + discard). Initialized \
+                    to starting_deck_size (default: 50) and never changes. Reward cards \
+                    always go to the shelf — use ReplaceCard to bring them into \
+                    the active cycle."
                     .to_string(),
             },
         ],
@@ -223,8 +232,8 @@ fn build_tier_system() -> DesignerSection {
                 name: "TierScalingFormula".to_string(),
                 description: "Each effect/requirement type uses a linear scaling formula: \
                     range = [base_min + tier × per_tier_min, base_max + tier × per_tier_max]. \
-                    Concrete values are rolled deterministically within this range. The \
-                    formula has a min_tier gate — types only appear at or above their min_tier."
+                    Concrete values are rolled deterministically within this range. Effect \
+                    types have an unlocked_at_tier gate — they only appear at or above their unlock tier."
                     .to_string(),
             },
             ReferenceEntry {
@@ -255,9 +264,10 @@ fn build_card_locations() -> DesignerSection {
             .to_string(),
         entries: vec![
             ReferenceEntry {
-                name: "Library".to_string(),
-                description: "The total number of copies of this card the player owns. \
-                    Grows when reward cards are earned. library = deck + hand + discard."
+                name: "Shelved".to_string(),
+                description: "Copies on the shelf — owned but not in the active cycle. \
+                    Grows when reward cards are earned. Use ReplaceCard to move shelved \
+                    copies into the deck."
                     .to_string(),
             },
             ReferenceEntry {
@@ -283,6 +293,48 @@ fn build_card_locations() -> DesignerSection {
     }
 }
 
+fn build_deckbuilding() -> DesignerSection {
+    DesignerSection {
+        title: "Deckbuilding".to_string(),
+        description: "Between contracts, players can reshape their active cycle using the \
+            ReplaceCard action. The active cycle (deck + hand + discard) is fixed at 50 \
+            cards. Reward cards always enter the shelf and must be explicitly \
+            swapped in via ReplaceCard."
+            .to_string(),
+        entries: vec![
+            ReferenceEntry {
+                name: "DeckSlots".to_string(),
+                description: "Fixed at starting_deck_size (50). The active cycle never \
+                    grows or shrinks — ReplaceCard is a 1-for-1 swap."
+                    .to_string(),
+            },
+            ReferenceEntry {
+                name: "Shelved Cards".to_string(),
+                description: "Cards with shelved count > 0 have copies on the shelf. \
+                    These are owned but not in the active cycle. Shelved \
+                    cards can be moved into the deck via ReplaceCard."
+                    .to_string(),
+            },
+            ReferenceEntry {
+                name: "ReplaceCard Action".to_string(),
+                description: "The sole deckbuilding action. Swaps a target card (deck \
+                    first, then discard — auto-selected) with a shelved replacement card. \
+                    Permanently destroys a third sacrifice card from shelved copies. The \
+                    sacrifice cannot be the same card as the target. Only available \
+                    between contracts."
+                    .to_string(),
+            },
+            ReferenceEntry {
+                name: "Reward Card Placement".to_string(),
+                description: "When a contract is completed, the reward card always enters \
+                    the shelf only (never auto-enters the deck). Use ReplaceCard \
+                    to bring reward cards into the active cycle."
+                    .to_string(),
+            },
+        ],
+    }
+}
+
 fn build_configuration() -> DesignerSection {
     DesignerSection {
         title: "Game Configuration".to_string(),
@@ -300,11 +352,24 @@ fn build_configuration() -> DesignerSection {
                     .to_string(),
             },
             ReferenceEntry {
+                name: "configurations/card_effects/effect_types.json".to_string(),
+                description: "Defines root card effect types with per-tier availability. Each \
+                    type specifies: unlocked_at_tier, tags, input/output formulas, and an \
+                    optional variations array. Variations modify the root's primary output \
+                    by a modifier_range multiplier and add extra token exchanges. Tier 1 \
+                    has pure production. Tier 2 adds a boosted-production variation \
+                    (Heat output) and heat removal."
+                    .to_string(),
+            },
+            ReferenceEntry {
                 name: "TierScalingFormula fields".to_string(),
-                description: "Each formula has: min_tier (when it activates), \
+                description: "Each formula has: \
                     base_min, base_max (constant component), per_tier_min, \
                     per_tier_max (linear scaling per tier). Value range = \
-                    [base_min + tier × per_tier_min, base_max + tier × per_tier_max]."
+                    [base_min + tier × per_tier_min, base_max + tier × per_tier_max]. \
+                    Contract formulas also have min_tier (when the formula activates, \
+                    defaults to 0 = always active); \
+                    effect type formulas inherit gating from the parent unlocked_at_tier."
                     .to_string(),
             },
         ],

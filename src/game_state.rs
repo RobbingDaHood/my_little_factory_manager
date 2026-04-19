@@ -15,8 +15,8 @@ use crate::config_loader::load_game_rules;
 use crate::contract_generation::generate_contract;
 use crate::starter_cards::create_starter_deck;
 use crate::types::{
-    CardCounts, CardEffect, CardEntry, Contract, ContractRequirementKind, ContractTier,
-    PlayerActionCard, TierContracts, TokenAmount, TokenType,
+    add_card_to_entries, CardEffect, CardEntry, CardLocation, Contract, ContractRequirementKind,
+    ContractTier, PlayerActionCard, TierContracts, TokenAmount, TokenType,
 };
 
 use rocket::serde::Serialize;
@@ -54,6 +54,8 @@ pub enum ActionSuccess {
         #[serde(skip_serializing_if = "Option::is_none")]
         contract_completed: Option<Contract>,
     },
+    /// A deck/discard card was replaced with a shelved card; sacrifice destroyed.
+    CardReplaced,
 }
 
 /// Error outcomes — explicit variants for every failure mode.
@@ -74,6 +76,36 @@ pub enum ActionError {
     },
     InsufficientTokens {
         missing: Vec<TokenAmount>,
+    },
+    /// ReplaceCard attempted while a contract is active.
+    ContractActiveForDeckbuilding,
+    /// target_card_index is out of bounds.
+    InvalidTargetCardIndex {
+        index: usize,
+    },
+    /// Target card has no copies in the active cycle (deck or discard).
+    NoTargetCopies {
+        index: usize,
+    },
+    /// replacement_card_index is out of bounds.
+    InvalidReplacementCardIndex {
+        index: usize,
+    },
+    /// Replacement card has no copies on the shelf.
+    NoShelvedCopies {
+        index: usize,
+    },
+    /// sacrifice_card_index is out of bounds.
+    InvalidSacrificeCardIndex {
+        index: usize,
+    },
+    /// Sacrifice card has no shelved copies to destroy.
+    NoSacrificeCopies {
+        index: usize,
+    },
+    /// Cannot sacrifice the same card being replaced.
+    SacrificeIsTarget {
+        index: usize,
     },
 }
 
@@ -103,13 +135,44 @@ pub struct PlayerTokensView {
 
 /// A possible action the player can take in the current game state.
 ///
-/// Each entry describes an action variant and, for indexed actions,
-/// includes the concrete index values the player could use.
+/// An inclusive range of valid indices.
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 #[serde(crate = "rocket::serde")]
-pub struct PossibleAction {
-    pub action: PlayerAction,
-    pub description: String,
+pub struct IndexRange {
+    pub min: usize,
+    pub max: usize,
+}
+
+/// The valid contract index range within a single tier.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[serde(crate = "rocket::serde")]
+pub struct TierContractRange {
+    pub tier_index: usize,
+    pub valid_contract_index_range: IndexRange,
+}
+
+/// A compact descriptor of what actions the player can take.
+///
+/// Instead of enumerating every concrete action instance, each variant
+/// describes the valid parameter ranges for its action type.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[serde(tag = "action_type", crate = "rocket::serde")]
+pub enum PossibleAction {
+    NewGame,
+    PlayCard {
+        valid_hand_index_range: IndexRange,
+    },
+    DiscardCard {
+        valid_hand_index_range: IndexRange,
+    },
+    AcceptContract {
+        valid_tiers: Vec<TierContractRange>,
+    },
+    ReplaceCard {
+        valid_target_card_indices: Vec<usize>,
+        valid_replacement_card_indices: Vec<usize>,
+        valid_sacrifice_card_indices: Vec<usize>,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -164,7 +227,7 @@ impl GameState {
             0xa02b_dbf7_bb3c_0a7a_c28f_5c28_f5c2_8f5c,
         );
 
-        let mut cards = create_starter_deck();
+        let mut cards = create_starter_deck(rules.general.starting_deck_size, &mut rng);
 
         // Deal starting hand
         let hand_size = rules.general.starting_hand_size;
@@ -179,9 +242,12 @@ impl GameState {
             offered_contracts: Vec::new(),
             rng,
             seed: actual_seed,
-            rules,
+            rules: rules.clone(),
             action_log: ActionLog::new(),
         };
+
+        // Initialize deck slots to starting deck size
+        state.add_tokens(&TokenType::DeckSlots, rules.general.starting_deck_size);
 
         // Generate first offered contracts
         state.refill_contract_market();
@@ -280,45 +346,94 @@ impl GameState {
     pub fn possible_actions(&self) -> Vec<PossibleAction> {
         let mut actions = Vec::new();
 
-        actions.push(PossibleAction {
-            action: PlayerAction::NewGame { seed: None },
-            description: "Start a new game (optionally with a specific seed)".to_string(),
-        });
+        actions.push(PossibleAction::NewGame);
 
         if self.active_contract.is_some() {
             let hand_size = hand_total(&self.cards);
-            for i in 0..hand_size {
-                actions.push(PossibleAction {
-                    action: PlayerAction::PlayCard { hand_index: i },
-                    description: format!("Play the card at hand position {i}"),
+            if hand_size > 0 {
+                let range = IndexRange {
+                    min: 0,
+                    max: hand_size - 1,
+                };
+                actions.push(PossibleAction::PlayCard {
+                    valid_hand_index_range: range.clone(),
                 });
-            }
-            for i in 0..hand_size {
-                actions.push(PossibleAction {
-                    action: PlayerAction::DiscardCard { hand_index: i },
-                    description: format!(
-                        "Discard the card at hand position {i} for a small production bonus"
-                    ),
+                actions.push(PossibleAction::DiscardCard {
+                    valid_hand_index_range: range,
                 });
             }
         } else {
-            for (tier_idx, tier_contracts) in self.offered_contracts.iter().enumerate() {
-                for (contract_idx, _) in tier_contracts.contracts.iter().enumerate() {
-                    actions.push(PossibleAction {
-                        action: PlayerAction::AcceptContract {
-                            tier_index: tier_idx,
-                            contract_index: contract_idx,
-                        },
-                        description: format!(
-                            "Accept contract {contract_idx} from tier {}",
-                            tier_contracts.tier.0
-                        ),
-                    });
-                }
+            let valid_tiers: Vec<TierContractRange> = self
+                .offered_contracts
+                .iter()
+                .enumerate()
+                .filter(|(_, tc)| !tc.contracts.is_empty())
+                .map(|(tier_idx, tc)| TierContractRange {
+                    tier_index: tier_idx,
+                    valid_contract_index_range: IndexRange {
+                        min: 0,
+                        max: tc.contracts.len() - 1,
+                    },
+                })
+                .collect();
+
+            if !valid_tiers.is_empty() {
+                actions.push(PossibleAction::AcceptContract { valid_tiers });
             }
+
+            // List ReplaceCard options when shelved and sacrifice candidates exist
+            self.add_replace_card_action(&mut actions);
         }
 
         actions
+    }
+
+    /// Adds a single ReplaceCard action descriptor with valid index sets.
+    fn add_replace_card_action(&self, actions: &mut Vec<PossibleAction>) {
+        // Collect shelved card indices (cards with copies on the shelf)
+        let shelved_indices: Vec<usize> = self
+            .cards
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| e.counts.has_shelved())
+            .map(|(i, _)| i)
+            .collect();
+
+        if shelved_indices.is_empty() {
+            return;
+        }
+
+        // Target cards: any card with copies in deck or discard
+        let target_indices: Vec<usize> = self
+            .cards
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| e.counts.deck > 0 || e.counts.discard > 0)
+            .map(|(i, _)| i)
+            .collect();
+
+        if target_indices.is_empty() {
+            return;
+        }
+
+        // Sacrifice candidates: any card with copies on the shelf
+        let sacrifice_indices: Vec<usize> = self
+            .cards
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| e.counts.has_shelved())
+            .map(|(i, _)| i)
+            .collect();
+
+        if sacrifice_indices.is_empty() {
+            return;
+        }
+
+        actions.push(PossibleAction::ReplaceCard {
+            valid_target_card_indices: target_indices,
+            valid_replacement_card_indices: shelved_indices,
+            valid_sacrifice_card_indices: sacrifice_indices,
+        });
     }
 
     // -------------------------------------------------------------------
@@ -337,6 +452,15 @@ impl GameState {
             } => self.handle_accept_contract(tier_index, contract_index),
             PlayerAction::PlayCard { hand_index } => self.handle_play_card(hand_index),
             PlayerAction::DiscardCard { hand_index } => self.handle_discard_card(hand_index),
+            PlayerAction::ReplaceCard {
+                target_card_index,
+                replacement_card_index,
+                sacrifice_card_index,
+            } => self.handle_replace_card(
+                target_card_index,
+                replacement_card_index,
+                sacrifice_card_index,
+            ),
         }
     }
 
@@ -434,6 +558,98 @@ impl GameState {
 
         let contract_completed = self.try_complete_contract();
         ActionResult::Success(ActionSuccess::CardDiscarded { contract_completed })
+    }
+
+    fn handle_replace_card(
+        &mut self,
+        target_card_index: usize,
+        replacement_card_index: usize,
+        sacrifice_card_index: usize,
+    ) -> ActionResult {
+        // Must not have an active contract
+        if self.active_contract.is_some() {
+            return ActionResult::Error(ActionError::ContractActiveForDeckbuilding);
+        }
+
+        let card_count = self.cards.len();
+
+        // Validate target index
+        if target_card_index >= card_count {
+            return ActionResult::Error(ActionError::InvalidTargetCardIndex {
+                index: target_card_index,
+            });
+        }
+
+        // Auto-determine location: deck first, then discard
+        let target_entry = &self.cards[target_card_index];
+        let use_deck = target_entry.counts.deck > 0;
+        let use_discard = target_entry.counts.discard > 0;
+        if !use_deck && !use_discard {
+            return ActionResult::Error(ActionError::NoTargetCopies {
+                index: target_card_index,
+            });
+        }
+
+        // Validate replacement index
+        if replacement_card_index >= card_count {
+            return ActionResult::Error(ActionError::InvalidReplacementCardIndex {
+                index: replacement_card_index,
+            });
+        }
+
+        // Validate replacement has shelved copies
+        let replacement = &self.cards[replacement_card_index].counts;
+        if !replacement.has_shelved() {
+            return ActionResult::Error(ActionError::NoShelvedCopies {
+                index: replacement_card_index,
+            });
+        }
+
+        // Validate sacrifice index
+        if sacrifice_card_index >= card_count {
+            return ActionResult::Error(ActionError::InvalidSacrificeCardIndex {
+                index: sacrifice_card_index,
+            });
+        }
+
+        // Sacrifice == target is allowed when the card has shelved copies
+        // (one will be destroyed by the sacrifice).
+        if sacrifice_card_index == target_card_index
+            && !self.cards[sacrifice_card_index].counts.has_shelved()
+        {
+            return ActionResult::Error(ActionError::SacrificeIsTarget {
+                index: sacrifice_card_index,
+            });
+        }
+
+        // Sacrifice must come from shelved copies
+        if !self.cards[sacrifice_card_index].counts.has_shelved() {
+            return ActionResult::Error(ActionError::NoSacrificeCopies {
+                index: sacrifice_card_index,
+            });
+        }
+
+        // --- Apply the replacement ---
+
+        // Remove target from deck (preferred) or discard, move to shelf
+        if use_deck {
+            self.cards[target_card_index].counts.deck -= 1;
+        } else {
+            self.cards[target_card_index].counts.discard -= 1;
+        }
+        self.cards[target_card_index].counts.shelved += 1;
+
+        // Move replacement from shelf to the deck
+        self.cards[replacement_card_index].counts.shelved -= 1;
+        self.cards[replacement_card_index].counts.deck += 1;
+
+        // Destroy sacrifice (permanently remove from shelf)
+        self.cards[sacrifice_card_index].counts.shelved -= 1;
+
+        // Clean up entries where all counts are zero
+        self.cards.retain(|e| e.counts.total() > 0);
+
+        ActionResult::Success(ActionSuccess::CardReplaced)
     }
 
     // -------------------------------------------------------------------
@@ -551,7 +767,7 @@ impl GameState {
         self.subtract_contract_tokens(&contract);
         self.add_tokens(&TokenType::ContractsTierCompleted(contract.tier.0), 1);
 
-        // Add reward card to library and deck
+        // Add reward card to shelved
         self.add_reward_card(&contract.reward_card);
 
         self.active_contract = None;
@@ -561,21 +777,7 @@ impl GameState {
     }
 
     fn add_reward_card(&mut self, card: &PlayerActionCard) {
-        // Check if an identical card already exists in the library
-        if let Some(entry) = self.cards.iter_mut().find(|e| e.card == *card) {
-            entry.counts.library += 1;
-            entry.counts.deck += 1;
-        } else {
-            self.cards.push(CardEntry {
-                card: card.clone(),
-                counts: CardCounts {
-                    library: 1,
-                    deck: 1,
-                    hand: 0,
-                    discard: 0,
-                },
-            });
-        }
+        add_card_to_entries(&mut self.cards, card, CardLocation::Shelved);
     }
 
     fn all_requirements_met(&self, contract: &Contract) -> bool {

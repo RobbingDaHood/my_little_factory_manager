@@ -367,7 +367,8 @@ fn build_configuration() -> DesignerSection {
                     base_min, base_max (constant component), per_tier_min, \
                     per_tier_max (linear scaling per tier). Value range = \
                     [base_min + tier × per_tier_min, base_max + tier × per_tier_max]. \
-                    Contract formulas also have min_tier (when the formula activates); \
+                    Contract formulas also have min_tier (when the formula activates, \
+                    defaults to 0 = always active); \
                     effect type formulas inherit gating from the parent unlocked_at_tier."
                     .to_string(),
             },

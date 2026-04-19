@@ -10,7 +10,7 @@ Tokens represent persistent resources — **beneficial** (ProductionUnit, Energy
 
 ## Features
 
-- RESTful API with 12 endpoints for full gameplay
+- RESTful API with 13 endpoints for full gameplay
 - Tiered contract system with formula-based balance scaling
 - Deckbuilding via ReplaceCard action — reshape your active cycle by swapping and sacrificing cards
 - Active cycle size controlled by DeckSlots progression token
@@ -94,6 +94,11 @@ The game also provides self-documenting endpoints:
 | Endpoint | Purpose |
 |----------|---------|
 | `GET /library/cards` | Card catalogue with optional `?tag=` filter |
+
+#### Statistics
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /metrics` | Session gameplay statistics (completions, card usage, efficiency, streaks) |
 
 #### System
 | Endpoint | Purpose |

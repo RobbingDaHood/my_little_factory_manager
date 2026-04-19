@@ -137,6 +137,21 @@ echo "Designer guide — sections:"
 curl -s "${BASE_URL}/docs/designer" | jq '[ .sections[] | .title ]'
 echo
 
+# ── Step 14: Check gameplay metrics ───────────────────────────────
+echo "14. Gameplay metrics:"
+curl -s "${BASE_URL}/metrics" | jq '{
+  contracts_completed: .total_contracts_completed,
+  cards_played: .total_cards_played,
+  cards_discarded: .total_cards_discarded,
+  avg_cards_per_contract: .avg_cards_per_contract,
+  current_streak: .current_streak,
+  best_streak: .best_streak,
+  dominant_strategy: .dominant_strategy,
+  diversity_score: .strategy_diversity_score,
+  cards_replaced: .total_cards_replaced
+}'
+echo
+
 echo "=== Walkthrough complete ==="
 echo "Run the server (cargo run) and try these commands interactively!"
 echo "Interactive Swagger UI: ${BASE_URL}/swagger/"

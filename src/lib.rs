@@ -18,6 +18,7 @@ pub mod contract_generation;
 pub mod docs;
 pub mod endpoints;
 pub mod game_state;
+pub mod metrics;
 pub mod starter_cards;
 pub mod types;
 pub mod version;
@@ -27,14 +28,14 @@ use crate::docs::hints::{get_hints, okapi_add_operation_for_get_hints_};
 use crate::docs::tutorial::{get_tutorial, okapi_add_operation_for_get_tutorial_};
 use crate::endpoints::{
     get_actions_history, get_actions_possible, get_contracts_active, get_contracts_available,
-    get_library_cards, get_player_tokens, get_state, post_action,
+    get_library_cards, get_metrics, get_player_tokens, get_state, post_action,
 };
 use crate::endpoints::{
     okapi_add_operation_for_get_actions_history_, okapi_add_operation_for_get_actions_possible_,
     okapi_add_operation_for_get_contracts_active_,
     okapi_add_operation_for_get_contracts_available_, okapi_add_operation_for_get_library_cards_,
-    okapi_add_operation_for_get_player_tokens_, okapi_add_operation_for_get_state_,
-    okapi_add_operation_for_post_action_,
+    okapi_add_operation_for_get_metrics_, okapi_add_operation_for_get_player_tokens_,
+    okapi_add_operation_for_get_state_, okapi_add_operation_for_post_action_,
 };
 use crate::game_state::GameState;
 use crate::version::get_version;
@@ -62,6 +63,7 @@ pub fn rocket_initialize() -> rocket::Rocket<rocket::Build> {
                 get_player_tokens,
                 get_contracts_active,
                 get_actions_possible,
+                get_metrics,
                 get_tutorial,
                 get_hints,
                 get_designer_guide,

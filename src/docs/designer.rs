@@ -354,10 +354,12 @@ fn build_configuration() -> DesignerSection {
             },
             ReferenceEntry {
                 name: "configurations/card_effects/effect_types.json".to_string(),
-                description: "Defines card effect types with per-tier availability. Each \
-                    type specifies: unlocked_at_tier, tags, input formulas, and output \
-                    formulas. Tier 1 has pure production only. Tier 2 adds \
-                    boosted production (with Heat output) and heat removal."
+                description: "Defines root card effect types with per-tier availability. Each \
+                    type specifies: unlocked_at_tier, tags, input/output formulas, and an \
+                    optional variations array. Variations modify the root's primary output \
+                    by a modifier_range multiplier and add extra token exchanges. Tier 1 \
+                    has pure production. Tier 2 adds a boosted-production variation \
+                    (Heat output) and heat removal."
                     .to_string(),
             },
             ReferenceEntry {

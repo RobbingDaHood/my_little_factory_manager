@@ -11,7 +11,10 @@
 use rand::RngCore;
 use rand_pcg::Pcg64;
 
-use crate::config::{CardEffectTypeConfig, ContractFormulasConfig, TierScalingFormula};
+use crate::config::{
+    CardEffectTypeConfig, CardEffectVariation, ContractFormulasConfig, EffectFormula,
+    ModifierRange, TierScalingFormula,
+};
 use crate::config_loader::load_effect_types;
 use crate::types::{
     CardEffect, CardTag, Contract, ContractRequirementKind, ContractTier, PlayerActionCard,
@@ -127,7 +130,6 @@ pub fn generate_reward_card_with_types(
         .map(|_| {
             let selected = available[rng.next_u32() as usize % available.len()];
 
-            // Collect tags from selected effect type
             for tag_str in &selected.tags {
                 if let Some(tag) = parse_card_tag(tag_str) {
                     if !all_tags.contains(&tag) {
@@ -136,33 +138,7 @@ pub fn generate_reward_card_with_types(
                 }
             }
 
-            let inputs: Vec<TokenAmount> = selected
-                .inputs
-                .iter()
-                .filter_map(|ef| {
-                    let token = parse_token_type(&ef.token_type)?;
-                    let amount = roll_from_formula(tier.0, &ef.formula, rng);
-                    Some(TokenAmount {
-                        token_type: token,
-                        amount,
-                    })
-                })
-                .collect();
-
-            let outputs: Vec<TokenAmount> = selected
-                .outputs
-                .iter()
-                .filter_map(|ef| {
-                    let token = parse_token_type(&ef.token_type)?;
-                    let amount = roll_from_formula(tier.0, &ef.formula, rng);
-                    Some(TokenAmount {
-                        token_type: token,
-                        amount,
-                    })
-                })
-                .collect();
-
-            CardEffect::new(inputs, outputs).expect("config-driven effect should be valid")
+            roll_effect_from_type(tier.0, selected, rng)
         })
         .collect();
 
@@ -174,6 +150,95 @@ pub fn generate_reward_card_with_types(
         tags: all_tags,
         effects,
     }
+}
+
+/// Roll a concrete `CardEffect` from a root effect type, possibly selecting
+/// a variation if one is unlocked at the given tier.
+fn roll_effect_from_type(tier: u32, root: &CardEffectTypeConfig, rng: &mut Pcg64) -> CardEffect {
+    let unlocked_variations: Vec<&CardEffectVariation> = root
+        .variations
+        .iter()
+        .filter(|v| v.unlocked_at_tier <= tier)
+        .collect();
+
+    if unlocked_variations.is_empty() {
+        return roll_base_effect(tier, root, rng);
+    }
+
+    // Choose between base (index 0) and each variation (indices 1..=N)
+    let choice_count = 1 + unlocked_variations.len();
+    let choice = rng.next_u32() as usize % choice_count;
+
+    if choice == 0 {
+        roll_base_effect(tier, root, rng)
+    } else {
+        let variation = unlocked_variations[choice - 1];
+        roll_variation_effect(tier, root, variation, rng)
+    }
+}
+
+/// Roll the base (unmodified) root effect.
+fn roll_base_effect(tier: u32, root: &CardEffectTypeConfig, rng: &mut Pcg64) -> CardEffect {
+    let inputs = roll_effect_formulas(tier, &root.inputs, rng);
+    let outputs = roll_effect_formulas(tier, &root.outputs, rng);
+    CardEffect::new(inputs, outputs).expect("config-driven effect should be valid")
+}
+
+/// Roll a variation effect: roll root primary output, apply modifier, then
+/// add the variation's extra token exchanges.
+fn roll_variation_effect(
+    tier: u32,
+    root: &CardEffectTypeConfig,
+    variation: &CardEffectVariation,
+    rng: &mut Pcg64,
+) -> CardEffect {
+    let mut outputs = roll_effect_formulas(tier, &root.outputs, rng);
+
+    // Apply modifier to the primary (first) output
+    if let Some(primary) = outputs.first_mut() {
+        let modifier = roll_modifier(&variation.modifier_range, rng);
+        primary.amount = (primary.amount as f64 * modifier).round() as u32;
+        if primary.amount == 0 {
+            primary.amount = 1;
+        }
+    }
+
+    let mut inputs = roll_effect_formulas(tier, &root.inputs, rng);
+
+    // Append variation's extra exchanges
+    inputs.extend(roll_effect_formulas(tier, &variation.extra_inputs, rng));
+    outputs.extend(roll_effect_formulas(tier, &variation.extra_outputs, rng));
+
+    CardEffect::new(inputs, outputs).expect("variation effect should be valid")
+}
+
+/// Roll a modifier value uniformly within a `ModifierRange`.
+fn roll_modifier(range: &ModifierRange, rng: &mut Pcg64) -> f64 {
+    if range.min >= range.max {
+        return range.min;
+    }
+    let granularity = 10_000u32;
+    let t = (rng.next_u32() % granularity) as f64 / granularity as f64;
+    range.min + t * (range.max - range.min)
+}
+
+/// Roll concrete token amounts from a list of effect formulas.
+fn roll_effect_formulas(
+    tier: u32,
+    formulas: &[EffectFormula],
+    rng: &mut Pcg64,
+) -> Vec<TokenAmount> {
+    formulas
+        .iter()
+        .filter_map(|ef| {
+            let token = parse_token_type(&ef.token_type)?;
+            let amount = roll_from_formula(tier, &ef.formula, rng);
+            Some(TokenAmount {
+                token_type: token,
+                amount,
+            })
+        })
+        .collect()
 }
 
 /// Fallback reward card when no effect types are configured for the tier.

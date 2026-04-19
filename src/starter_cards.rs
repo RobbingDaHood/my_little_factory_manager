@@ -9,7 +9,8 @@ use rand_pcg::Pcg64;
 use crate::config::TierScalingFormula;
 use crate::config_loader::load_effect_types;
 use crate::types::{
-    CardCounts, CardEffect, CardEntry, CardTag, PlayerActionCard, TokenAmount, TokenType,
+    add_card_to_entries, CardEffect, CardEntry, CardLocation, CardTag, PlayerActionCard,
+    TokenAmount, TokenType,
 };
 
 fn production_card(output_amount: u32) -> PlayerActionCard {
@@ -60,21 +61,7 @@ pub fn create_starter_deck(count: u32, rng: &mut Pcg64) -> Vec<CardEntry> {
     for _ in 0..count {
         let amount = roll_from_formula(1, &output_formula, rng);
         let card = production_card(amount);
-
-        if let Some(entry) = entries.iter_mut().find(|e| e.card == card) {
-            entry.counts.shelved += 1;
-            entry.counts.deck += 1;
-        } else {
-            entries.push(CardEntry {
-                card,
-                counts: CardCounts {
-                    shelved: 1,
-                    deck: 1,
-                    hand: 0,
-                    discard: 0,
-                },
-            });
-        }
+        add_card_to_entries(&mut entries, &card, CardLocation::Deck);
     }
 
     entries

@@ -176,6 +176,45 @@ pub struct CardEntry {
     pub counts: CardCounts,
 }
 
+/// Add a copy of `card` to `entries`, placing it at the given `location`.
+///
+/// If an identical card already exists, its counts are incremented.
+/// Otherwise a new `CardEntry` is appended.
+/// `shelved` (total owned) is always incremented. The active-cycle field
+/// (`deck`, `hand`, or `discard`) is incremented only when `location` is
+/// not `Shelved`.
+pub fn add_card_to_entries(
+    entries: &mut Vec<CardEntry>,
+    card: &PlayerActionCard,
+    location: CardLocation,
+) {
+    if let Some(entry) = entries.iter_mut().find(|e| e.card == *card) {
+        entry.counts.shelved += 1;
+        increment_location_count(&mut entry.counts, &location);
+    } else {
+        let mut counts = CardCounts {
+            shelved: 1,
+            deck: 0,
+            hand: 0,
+            discard: 0,
+        };
+        increment_location_count(&mut counts, &location);
+        entries.push(CardEntry {
+            card: card.clone(),
+            counts,
+        });
+    }
+}
+
+fn increment_location_count(counts: &mut CardCounts, location: &CardLocation) {
+    match location {
+        CardLocation::Deck => counts.deck += 1,
+        CardLocation::Hand => counts.hand += 1,
+        CardLocation::Discard => counts.discard += 1,
+        CardLocation::Shelved => {} // shelved already incremented by caller
+    }
+}
+
 /// A concrete player action card with tags and effects.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(crate = "rocket::serde")]

@@ -15,8 +15,8 @@ use crate::config_loader::load_game_rules;
 use crate::contract_generation::generate_contract;
 use crate::starter_cards::create_starter_deck;
 use crate::types::{
-    CardCounts, CardEffect, CardEntry, Contract, ContractRequirementKind, ContractTier,
-    PlayerActionCard, TierContracts, TokenAmount, TokenType,
+    add_card_to_entries, CardEffect, CardEntry, CardLocation, Contract, ContractRequirementKind,
+    ContractTier, PlayerActionCard, TierContracts, TokenAmount, TokenType,
 };
 
 use rocket::serde::Serialize;
@@ -774,19 +774,7 @@ impl GameState {
     }
 
     fn add_reward_card(&mut self, card: &PlayerActionCard) {
-        if let Some(entry) = self.cards.iter_mut().find(|e| e.card == *card) {
-            entry.counts.shelved += 1;
-        } else {
-            self.cards.push(CardEntry {
-                card: card.clone(),
-                counts: CardCounts {
-                    shelved: 1,
-                    deck: 0,
-                    hand: 0,
-                    discard: 0,
-                },
-            });
-        }
+        add_card_to_entries(&mut self.cards, card, CardLocation::Shelved);
     }
 
     fn all_requirements_met(&self, contract: &Contract) -> bool {

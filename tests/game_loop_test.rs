@@ -272,7 +272,7 @@ fn contract_auto_completes_when_threshold_met() {
     let mut completed = false;
     for _ in 0..50 {
         let (_, result) = post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
-        if detail(&result)["contract_completed"].is_object() {
+        if detail(&result)["contract_resolution"]["resolution_type"] == "Completed" {
             completed = true;
             break;
         }
@@ -313,7 +313,7 @@ fn full_game_loop_two_contracts() {
         let mut completed = false;
         for _ in 0..100 {
             let (_, result) = post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
-            if detail(&result)["contract_completed"].is_object() {
+            if detail(&result)["contract_resolution"]["resolution_type"] == "Completed" {
                 completed = true;
                 break;
             }
@@ -343,7 +343,7 @@ fn tokens_persist_between_contracts() {
     let mut completed = false;
     for _ in 0..100 {
         let (_, result) = post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
-        if detail(&result)["contract_completed"].is_object() {
+        if detail(&result)["contract_resolution"]["resolution_type"] == "Completed" {
             completed = true;
             break;
         }
@@ -387,7 +387,7 @@ fn hand_persists_between_contracts() {
     let mut completed = false;
     for _ in 0..100 {
         let (_, result) = post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
-        if detail(&result)["contract_completed"].is_object() {
+        if detail(&result)["contract_resolution"]["resolution_type"] == "Completed" {
             completed = true;
             break;
         }
@@ -418,7 +418,7 @@ fn deck_recycles_discard_when_empty() {
     // Play more cards than the deck size to force a reshuffle
     for _ in 0..15 {
         let (_, result) = post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
-        if detail(&result)["contract_completed"].is_object() {
+        if detail(&result)["contract_resolution"]["resolution_type"] == "Completed" {
             // If contract completes, accept the new one and continue
             post_action(
                 &client,

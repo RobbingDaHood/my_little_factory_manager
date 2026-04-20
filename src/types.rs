@@ -321,12 +321,57 @@ pub enum ContractRequirementKind {
 ///
 /// The reward card is generated when the contract is generated — the player
 /// can see exactly what card they would earn before accepting.
+/// `adaptive_adjustments` shows how the adaptive balance system modified
+/// each requirement from its base-rolled value.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(crate = "rocket::serde")]
 pub struct Contract {
     pub tier: ContractTier,
     pub requirements: Vec<ContractRequirementKind>,
     pub reward_card: PlayerActionCard,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub adaptive_adjustments: Vec<AdaptiveAdjustment>,
+}
+
+/// Records how the adaptive balance system modified a single contract requirement.
+///
+/// Stored on the contract so the player can see exactly what was adjusted and by
+/// how much compared to the base-rolled value.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "rocket::serde")]
+pub struct AdaptiveAdjustment {
+    pub requirement_index: usize,
+    pub original_value: u32,
+    pub adjusted_value: u32,
+    /// Negative = tightened (harder), positive = eased (easier).
+    pub adjustment_percent: i32,
+}
+
+/// Outcome of a contract reaching resolution (success or failure).
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[serde(tag = "resolution_type", crate = "rocket::serde")]
+pub enum ContractResolution {
+    Completed {
+        contract: Contract,
+    },
+    Failed {
+        contract: Contract,
+        reason: ContractFailureReason,
+    },
+}
+
+/// Why a contract was failed.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[serde(tag = "failure_type", crate = "rocket::serde")]
+pub enum ContractFailureReason {
+    /// A harmful token exceeded its limit during gameplay.
+    HarmfulTokenLimitExceeded {
+        token_type: TokenType,
+        max_amount: u32,
+        current_amount: u32,
+    },
+    /// The contract's turn window expired.
+    TurnWindowExceeded { max_turn: u32, current_turn: u32 },
 }
 
 /// A group of contract offers for a single tier.

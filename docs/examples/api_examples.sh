@@ -141,6 +141,7 @@ echo
 echo "14. Gameplay metrics:"
 curl -s "${BASE_URL}/metrics" | jq '{
   contracts_completed: .total_contracts_completed,
+  contracts_failed: .total_contracts_failed,
   cards_played: .total_cards_played,
   cards_discarded: .total_cards_discarded,
   avg_cards_per_contract: .avg_cards_per_contract,
@@ -148,7 +149,8 @@ curl -s "${BASE_URL}/metrics" | jq '{
   best_streak: .best_streak,
   dominant_strategy: .dominant_strategy,
   diversity_score: .strategy_diversity_score,
-  cards_replaced: .total_cards_replaced
+  cards_replaced: .total_cards_replaced,
+  adaptive_pressure: .adaptive_pressure
 }'
 echo
 

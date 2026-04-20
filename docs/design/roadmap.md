@@ -237,32 +237,27 @@ The existing [my_little_card_game](https://github.com/RobbingDaHood/my_little_ca
 
 ---
 
-## Phase 8: Adaptive Balance System
+## Phase 8: Adaptive Balance System ✅
 
-**Goal**: Formula-based balance system that adjusts card effectiveness based on player behavior.
-
-**Important**: The formula-based approach is used from Phase 3 onward. This phase adds the adaptive layer on top.
+**Goal**: Contract-overlay adaptive balance system that adjusts contract difficulty based on player behavior, plus contract failure conditions.
 
 **Deliverables**:
-- Balance formula documentation in `docs/design/balances/`
-- Design-intent parameters (~5-10 numbers per effect/requirement type):
-  - Base token output per tier
-  - Input/output ratios for conversion effects
-  - Harmful token production/consumption tradeoff factors
-  - Requirement difficulty scaling factor
-- Adaptive modifiers based on player statistics:
-  - Frequently used card tags get diminishing returns
-  - Underused card tags get bonus effectiveness
-- Simulation test suite (behind `--features simulation` flag)
-- `make balance-check` target
-- `.github/skills/balance-tuning-tips/SKILL.md` — created at this point
-- `.github/skills/parallel-balance-tuning/SKILL.md` — created at this point
-
-**Reference files from card game**:
-- `docs/vision/balances/*.md` — balance documentation style
-- `tests/balance/` — simulation test pattern
-- `.github/skills/balance-tuning-tips/SKILL.md` — adapt for formula-based approach
-- `.github/skills/parallel-balance-tuning/SKILL.md` — worktree-based parallel tuning
+- ✅ `src/adaptive_balance.rs` — `AdaptiveBalanceTracker` with pressure tracking, decay, failure relaxation, and contract overlay
+- ✅ **Contract failure system**: `ContractResolution` enum (Completed/Failed) with `ContractFailureReason` (HarmfulTokenLimitExceeded, TurnWindowExceeded)
+- ✅ **Turn tracking**: `contract_turns_played` counter in `GameState`, exposed in state view
+- ✅ **Failure-first resolution**: if same action both completes and violates, failure takes precedence
+- ✅ **HarmfulTokenLimit enforcement**: after each card play/discard, token balances are checked against contract limits
+- ✅ **TurnWindow enforcement**: min_turn prevents premature completion; max_turn violation fails the contract
+- ✅ **Adaptive pressure tracking**: gross production per token type, EMA-based pressure accumulation
+- ✅ **Contract overlay**: HarmfulTokenLimit tightened (up to 30%), OutputThreshold increased (up to 20%) based on pressure
+- ✅ **Decay for unused strategies**: token pressure decays per contract when not produced
+- ✅ **Failure relaxation**: all pressures multiplied by relaxation factor on contract failure
+- ✅ **Transparency**: `adaptive_adjustments` field on each generated contract; `adaptive_pressure` in `/metrics`
+- ✅ **Metrics updates**: `contracts_failed`, `contracts_attempted_per_tier`, real `completion_rate`
+- ✅ **Configuration**: `adaptive_balance` section in `game_rules.json` (alpha, decay_rate, failure_relaxation, max_tightening_pct, max_increase_pct, normalization_factor)
+- ✅ **BREAKING API change**: `contract_completed` replaced with `contract_resolution` containing `ContractResolution` enum
+- ✅ Integration tests for contract failure, adaptive overlay, pressure mechanics
+- ✅ Updated documentation (tutorial, hints, designer, vision, roadmap)
 
 ---
 

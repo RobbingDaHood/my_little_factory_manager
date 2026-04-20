@@ -20,6 +20,9 @@ pub struct MetricsTracker {
     // Contract counters
     contracts_completed: u32,
     contracts_completed_per_tier: HashMap<u32, u32>,
+    contracts_failed: u32,
+    contracts_failed_per_tier: HashMap<u32, u32>,
+    contracts_attempted_per_tier: HashMap<u32, u32>,
 
     // Card counters
     total_cards_played: u32,
@@ -47,6 +50,9 @@ impl MetricsTracker {
         Self {
             contracts_completed: 0,
             contracts_completed_per_tier: HashMap::new(),
+            contracts_failed: 0,
+            contracts_failed_per_tier: HashMap::new(),
+            contracts_attempted_per_tier: HashMap::new(),
             total_cards_played: 0,
             total_cards_discarded: 0,
             cards_played_per_tag: HashMap::new(),
@@ -89,6 +95,11 @@ impl MetricsTracker {
         }
     }
 
+    /// Record a contract acceptance (increment attempts counter).
+    pub fn record_contract_accepted(&mut self, tier: u32) {
+        *self.contracts_attempted_per_tier.entry(tier).or_insert(0) += 1;
+    }
+
     /// Record a contract completion.
     pub fn record_contract_completed(&mut self, tier: u32) {
         self.contracts_completed += 1;
@@ -99,6 +110,14 @@ impl MetricsTracker {
         if self.current_streak > self.best_streak {
             self.best_streak = self.current_streak;
         }
+    }
+
+    /// Record a contract failure.
+    pub fn record_contract_failed(&mut self, tier: u32) {
+        self.contracts_failed += 1;
+        *self.contracts_failed_per_tier.entry(tier).or_insert(0) += 1;
+        self.cards_in_current_contract = 0;
+        self.current_streak = 0;
     }
 
     pub fn record_card_replaced(&mut self) {
@@ -122,6 +141,7 @@ impl MetricsTracker {
 
         SessionMetrics {
             total_contracts_completed: self.contracts_completed,
+            total_contracts_failed: self.contracts_failed,
             contracts_per_tier,
             total_cards_played: self.total_cards_played,
             total_cards_discarded: self.total_cards_discarded,
@@ -133,13 +153,22 @@ impl MetricsTracker {
             dominant_strategy,
             strategy_diversity_score,
             total_cards_replaced: self.total_cards_replaced,
+            adaptive_pressure: Vec::new(),
         }
     }
 
     fn build_tier_metrics(&self) -> Vec<TierCompletionMetrics> {
-        let mut tiers: Vec<u32> = self.contracts_completed_per_tier.keys().copied().collect();
-        tiers.sort();
-        tiers
+        let mut all_tiers: Vec<u32> = self
+            .contracts_attempted_per_tier
+            .keys()
+            .chain(self.contracts_completed_per_tier.keys())
+            .chain(self.contracts_failed_per_tier.keys())
+            .copied()
+            .collect();
+        all_tiers.sort();
+        all_tiers.dedup();
+
+        all_tiers
             .into_iter()
             .map(|tier| {
                 let completed = self
@@ -147,11 +176,27 @@ impl MetricsTracker {
                     .get(&tier)
                     .copied()
                     .unwrap_or(0);
+                let failed = self
+                    .contracts_failed_per_tier
+                    .get(&tier)
+                    .copied()
+                    .unwrap_or(0);
+                let attempted = self
+                    .contracts_attempted_per_tier
+                    .get(&tier)
+                    .copied()
+                    .unwrap_or(0);
+                let completion_rate = if attempted > 0 {
+                    completed as f64 / attempted as f64
+                } else {
+                    0.0
+                };
                 TierCompletionMetrics {
                     tier,
                     completed,
-                    // Contracts cannot currently fail; rate is always 100%.
-                    completion_rate: 1.0,
+                    failed,
+                    attempted,
+                    completion_rate,
                 }
             })
             .collect()
@@ -262,6 +307,8 @@ fn compute_strategy_analysis(tag_counts: &HashMap<CardTag, u32>) -> (Option<Stri
 pub struct SessionMetrics {
     /// Total contracts completed across all tiers.
     pub total_contracts_completed: u32,
+    /// Total contracts failed across all tiers.
+    pub total_contracts_failed: u32,
     /// Per-tier completion statistics.
     pub contracts_per_tier: Vec<TierCompletionMetrics>,
 
@@ -294,6 +341,12 @@ pub struct SessionMetrics {
 
     /// Total cards replaced via deckbuilding.
     pub total_cards_replaced: u32,
+
+    /// Current adaptive balance pressures per token type.
+    /// Shows how heavily the player relies on each token,
+    /// which influences how future contract requirements are adjusted.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub adaptive_pressure: Vec<crate::adaptive_balance::TokenPressure>,
 }
 
 /// Completion statistics for a single contract tier.
@@ -302,8 +355,9 @@ pub struct SessionMetrics {
 pub struct TierCompletionMetrics {
     pub tier: u32,
     pub completed: u32,
-    /// Completion rate (completed / total attempts). Currently always 1.0
-    /// since contracts cannot fail.
+    pub failed: u32,
+    pub attempted: u32,
+    /// Completion rate (completed / attempted). 0.0 if no attempts.
     pub completion_rate: f64,
 }
 

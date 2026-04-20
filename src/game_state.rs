@@ -10,14 +10,16 @@ use rand::RngCore;
 use rand_pcg::Pcg64;
 
 use crate::action_log::{ActionLog, PlayerAction};
+use crate::adaptive_balance::AdaptiveBalanceTracker;
 use crate::config::GameRulesConfig;
 use crate::config_loader::load_game_rules;
 use crate::contract_generation::generate_contract;
 use crate::metrics::{MetricsTracker, SessionMetrics};
 use crate::starter_cards::create_starter_deck;
 use crate::types::{
-    add_card_to_entries, CardEffect, CardEntry, CardLocation, Contract, ContractRequirementKind,
-    ContractTier, PlayerActionCard, TierContracts, TokenAmount, TokenType,
+    add_card_to_entries, CardEffect, CardEntry, CardLocation, Contract, ContractFailureReason,
+    ContractRequirementKind, ContractResolution, ContractTier, PlayerActionCard, TierContracts,
+    TokenAmount, TokenType,
 };
 
 use rocket::serde::Serialize;
@@ -49,11 +51,11 @@ pub enum ActionSuccess {
     ContractAccepted,
     CardPlayed {
         #[serde(skip_serializing_if = "Option::is_none")]
-        contract_completed: Option<Contract>,
+        contract_resolution: Option<ContractResolution>,
     },
     CardDiscarded {
         #[serde(skip_serializing_if = "Option::is_none")]
-        contract_completed: Option<Contract>,
+        contract_resolution: Option<ContractResolution>,
     },
     /// A deck/discard card was replaced with a shelved card; sacrifice destroyed.
     CardReplaced,
@@ -122,6 +124,7 @@ pub struct GameStateView {
     pub cards: Vec<CardEntry>,
     pub tokens: Vec<TokenAmount>,
     pub active_contract: Option<Contract>,
+    pub contract_turns_played: u32,
     pub offered_contracts: Vec<TierContracts>,
 }
 
@@ -190,6 +193,7 @@ pub struct GameState {
     // Contract state
     active_contract: Option<Contract>,
     offered_contracts: Vec<TierContracts>,
+    contract_turns_played: u32,
 
     // RNG and metadata
     rng: Pcg64,
@@ -203,6 +207,9 @@ pub struct GameState {
 
     // Gameplay statistics
     metrics_tracker: MetricsTracker,
+
+    // Adaptive balance
+    adaptive_tracker: AdaptiveBalanceTracker,
 }
 
 impl GameState {
@@ -244,11 +251,13 @@ impl GameState {
             tokens: HashMap::new(),
             active_contract: None,
             offered_contracts: Vec::new(),
+            contract_turns_played: 0,
             rng,
             seed: actual_seed,
             rules: rules.clone(),
             action_log: ActionLog::new(),
             metrics_tracker: MetricsTracker::new(),
+            adaptive_tracker: AdaptiveBalanceTracker::new(rules.adaptive_balance.clone()),
         };
 
         // Initialize deck slots to starting deck size
@@ -281,6 +290,7 @@ impl GameState {
                 t
             },
             active_contract: self.active_contract.clone(),
+            contract_turns_played: self.contract_turns_played,
             offered_contracts: self.offered_contracts.clone(),
         }
     }
@@ -290,7 +300,13 @@ impl GameState {
     }
 
     pub fn session_metrics(&self) -> SessionMetrics {
-        self.metrics_tracker.compute_session_metrics()
+        let mut metrics = self.metrics_tracker.compute_session_metrics();
+        metrics.adaptive_pressure = self.adaptive_tracker.pressure_snapshot();
+        metrics
+    }
+
+    pub fn adaptive_pressure(&self) -> Vec<crate::adaptive_balance::TokenPressure> {
+        self.adaptive_tracker.pressure_snapshot()
     }
 
     pub fn offered_contracts(&self) -> &[TierContracts] {
@@ -513,6 +529,9 @@ impl GameState {
         if self.offered_contracts[tier_index].contracts.is_empty() {
             self.offered_contracts.remove(tier_index);
         }
+        self.metrics_tracker
+            .record_contract_accepted(contract.tier.0);
+        self.contract_turns_played = 0;
         self.active_contract = Some(contract);
         ActionResult::Success(ActionSuccess::ContractAccepted)
     }
@@ -542,13 +561,23 @@ impl GameState {
         self.metrics_tracker
             .record_card_played(&card.tags, &produced, &consumed);
 
+        // Record gross production for adaptive balance
+        for (token_type, amount) in &produced {
+            self.adaptive_tracker
+                .record_token_produced(token_type, *amount);
+        }
+
         self.cards[entry_idx].counts.hand -= 1;
         self.cards[entry_idx].counts.discard += 1;
 
+        self.contract_turns_played += 1;
+
         draw_from_deck(&mut self.cards, &mut self.rng);
 
-        let contract_completed = self.try_complete_contract();
-        ActionResult::Success(ActionSuccess::CardPlayed { contract_completed })
+        let contract_resolution = self.try_resolve_contract();
+        ActionResult::Success(ActionSuccess::CardPlayed {
+            contract_resolution,
+        })
     }
 
     fn handle_discard_card(&mut self, hand_index: usize) -> ActionResult {
@@ -571,10 +600,18 @@ impl GameState {
         self.metrics_tracker
             .record_card_discarded(&[(TokenType::ProductionUnit, bonus)]);
 
+        // Record gross production for adaptive balance
+        self.adaptive_tracker
+            .record_token_produced(&TokenType::ProductionUnit, bonus);
+
+        self.contract_turns_played += 1;
+
         draw_from_deck(&mut self.cards, &mut self.rng);
 
-        let contract_completed = self.try_complete_contract();
-        ActionResult::Success(ActionSuccess::CardDiscarded { contract_completed })
+        let contract_resolution = self.try_resolve_contract();
+        ActionResult::Success(ActionSuccess::CardDiscarded {
+            contract_resolution,
+        })
     }
 
     fn handle_replace_card(
@@ -751,7 +788,14 @@ impl GameState {
             }
 
             let new_contracts: Vec<Contract> = (0..needed)
-                .map(|_| generate_contract(tier, &mut self.rng, &self.rules.contract_formulas))
+                .map(|_| {
+                    generate_contract(
+                        tier,
+                        &mut self.rng,
+                        &self.rules.contract_formulas,
+                        &self.adaptive_tracker,
+                    )
+                })
                 .collect();
 
             if let Some(tc) = self.offered_contracts.iter_mut().find(|tc| tc.tier == tier) {
@@ -786,9 +830,21 @@ impl GameState {
         tiers
     }
 
-    fn try_complete_contract(&mut self) -> Option<Contract> {
+    /// Check for contract failure (first) then completion. Failure takes precedence.
+    fn try_resolve_contract(&mut self) -> Option<ContractResolution> {
         let contract = self.active_contract.as_ref()?.clone();
 
+        // 1. Check failure conditions (failure-first ordering)
+        if let Some(reason) = self.check_contract_failure(&contract) {
+            self.metrics_tracker.record_contract_failed(contract.tier.0);
+            self.adaptive_tracker.on_contract_failed();
+            self.active_contract = None;
+            self.contract_turns_played = 0;
+            self.refill_contract_market();
+            return Some(ContractResolution::Failed { contract, reason });
+        }
+
+        // 2. Check completion
         if !self.all_requirements_met(&contract) {
             return None;
         }
@@ -797,14 +853,51 @@ impl GameState {
         self.add_tokens(&TokenType::ContractsTierCompleted(contract.tier.0), 1);
         self.metrics_tracker
             .record_contract_completed(contract.tier.0);
+        self.adaptive_tracker.on_contract_completed();
 
-        // Add reward card to shelved
         self.add_reward_card(&contract.reward_card);
 
         self.active_contract = None;
+        self.contract_turns_played = 0;
         self.refill_contract_market();
 
-        Some(contract)
+        Some(ContractResolution::Completed { contract })
+    }
+
+    /// Check all failure conditions on the active contract. Returns the first
+    /// violation found (deterministic order: harmful limits by token sort order,
+    /// then turn window).
+    fn check_contract_failure(&self, contract: &Contract) -> Option<ContractFailureReason> {
+        let (_, harmful_limits) = Self::aggregate_requirements(&contract.requirements);
+
+        // Check HarmfulTokenLimit violations (sorted by TokenType for determinism)
+        let mut sorted_limits: Vec<_> = harmful_limits.into_iter().collect();
+        sorted_limits.sort_by(|a, b| a.0.cmp(&b.0));
+
+        for (token_type, max_amount) in sorted_limits {
+            let current = self.tokens.get(&token_type).copied().unwrap_or(0);
+            if current > max_amount {
+                return Some(ContractFailureReason::HarmfulTokenLimitExceeded {
+                    token_type,
+                    max_amount,
+                    current_amount: current,
+                });
+            }
+        }
+
+        // Check TurnWindow max_turn
+        for req in &contract.requirements {
+            if let ContractRequirementKind::TurnWindow { max_turn, .. } = req {
+                if self.contract_turns_played > *max_turn {
+                    return Some(ContractFailureReason::TurnWindowExceeded {
+                        max_turn: *max_turn,
+                        current_turn: self.contract_turns_played,
+                    });
+                }
+            }
+        }
+
+        None
     }
 
     fn add_reward_card(&mut self, card: &PlayerActionCard) {
@@ -824,6 +917,15 @@ impl GameState {
         for (token_type, tightest_max) in &harmful_limits {
             if self.tokens.get(token_type).copied().unwrap_or(0) > *tightest_max {
                 return false;
+            }
+        }
+
+        // TurnWindow min_turn: prevent premature completion
+        for req in &contract.requirements {
+            if let ContractRequirementKind::TurnWindow { min_turn, .. } = req {
+                if self.contract_turns_played < *min_turn {
+                    return false;
+                }
             }
         }
 

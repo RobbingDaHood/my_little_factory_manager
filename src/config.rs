@@ -12,6 +12,7 @@ use rocket::serde::Deserialize;
 pub struct GameRulesConfig {
     pub general: GeneralRules,
     pub contract_formulas: ContractFormulasConfig,
+    pub adaptive_balance: AdaptiveBalanceConfig,
 }
 
 /// General (non-tier-specific) game constants.
@@ -123,4 +124,27 @@ pub struct CardEffectVariation {
     /// -1 = costs primary (removes harm / gets extra beneficial output).
     pub direction_sign: i8,
     pub unlock_tier: u32,
+}
+
+// ---------------------------------------------------------------------------
+// Adaptive balance configuration
+// ---------------------------------------------------------------------------
+
+/// Parameters for the adaptive balance system that adjusts contract difficulty
+/// based on player behaviour patterns.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(crate = "rocket::serde")]
+pub struct AdaptiveBalanceConfig {
+    /// Exponential moving average weight for new observations (0–1).
+    pub alpha: f64,
+    /// Per-contract decay multiplier for tokens not used (0–1).
+    pub decay_rate: f64,
+    /// Multiplier applied to ALL pressures on contract failure (0–1).
+    pub failure_relaxation: f64,
+    /// Maximum tightening percentage for HarmfulTokenLimit (0–1).
+    pub max_tightening_pct: f64,
+    /// Maximum increase percentage for OutputThreshold (0–1).
+    pub max_increase_pct: f64,
+    /// Normalization divisor to convert raw pressure into a 0–1 ratio.
+    pub normalization_factor: f64,
 }

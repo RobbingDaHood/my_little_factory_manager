@@ -19,5 +19,13 @@
             "per_tier_min": 2,
             "per_tier_max": 4
         }
+    },
+    "adaptive_balance": {
+        "alpha": 0.3,
+        "decay_rate": 0.9,
+        "failure_relaxation": 0.7,
+        "max_tightening_pct": 0.30,
+        "max_increase_pct": 0.20,
+        "normalization_factor": 50.0
     }
 }

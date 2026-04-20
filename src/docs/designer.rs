@@ -46,6 +46,7 @@ fn build_designer_guide() -> DesignerGuide {
             build_tier_system(),
             build_card_locations(),
             build_deckbuilding(),
+            build_metrics_system(),
             build_configuration(),
             build_determinism(),
         ],
@@ -329,6 +330,57 @@ fn build_deckbuilding() -> DesignerSection {
                 description: "When a contract is completed, the reward card always enters \
                     the shelf only (never auto-enters the deck). Use ReplaceCard \
                     to bring reward cards into the active cycle."
+                    .to_string(),
+            },
+        ],
+    }
+}
+
+fn build_metrics_system() -> DesignerSection {
+    DesignerSection {
+        title: "Statistics & Metrics".to_string(),
+        description: "The game tracks live gameplay statistics accessible via GET /metrics. \
+            Metrics accumulate during a session and reset on NewGame. They provide \
+            visibility into player performance, strategy patterns, and efficiency."
+            .to_string(),
+        entries: vec![
+            ReferenceEntry {
+                name: "Contract Metrics".to_string(),
+                description: "Total contracts completed, broken down per tier with \
+                    completion rates. Currently contracts cannot fail, so rate is always 100%."
+                    .to_string(),
+            },
+            ReferenceEntry {
+                name: "Card Usage".to_string(),
+                description: "Total cards played and discarded, with per-tag breakdown. \
+                    Tracks how often Production, Transformation, QualityControl, and \
+                    SystemAdjustment tagged cards are used."
+                    .to_string(),
+            },
+            ReferenceEntry {
+                name: "Token Flow".to_string(),
+                description: "Per-token-type production and consumption totals with net \
+                    flow. Shows overall resource throughput across the session."
+                    .to_string(),
+            },
+            ReferenceEntry {
+                name: "Efficiency".to_string(),
+                description: "Average cards (played + discarded) per completed contract. \
+                    Lower values indicate more efficient play. Only computed after \
+                    at least one contract is completed."
+                    .to_string(),
+            },
+            ReferenceEntry {
+                name: "Streaks".to_string(),
+                description: "Current and best consecutive contract completion streaks. \
+                    Tracks momentum across the session."
+                    .to_string(),
+            },
+            ReferenceEntry {
+                name: "Strategy Diversity".to_string(),
+                description: "Dominant strategy tag and a normalized Shannon entropy \
+                    diversity score (0.0 = single tag only, 1.0 = perfectly even). \
+                    Measures how varied the player's card usage is."
                     .to_string(),
             },
         ],

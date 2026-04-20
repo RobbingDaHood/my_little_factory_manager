@@ -13,6 +13,7 @@ use crate::action_log::{ActionLog, PlayerAction};
 use crate::config::GameRulesConfig;
 use crate::config_loader::load_game_rules;
 use crate::contract_generation::generate_contract;
+use crate::metrics::{MetricsTracker, SessionMetrics};
 use crate::starter_cards::create_starter_deck;
 use crate::types::{
     add_card_to_entries, CardEffect, CardEntry, CardLocation, Contract, ContractRequirementKind,
@@ -199,6 +200,9 @@ pub struct GameState {
 
     // Action log
     action_log: ActionLog,
+
+    // Gameplay statistics
+    metrics_tracker: MetricsTracker,
 }
 
 impl GameState {
@@ -244,6 +248,7 @@ impl GameState {
             seed: actual_seed,
             rules: rules.clone(),
             action_log: ActionLog::new(),
+            metrics_tracker: MetricsTracker::new(),
         };
 
         // Initialize deck slots to starting deck size
@@ -282,6 +287,10 @@ impl GameState {
 
     pub fn action_log(&self) -> &ActionLog {
         &self.action_log
+    }
+
+    pub fn session_metrics(&self) -> SessionMetrics {
+        self.metrics_tracker.compute_session_metrics()
     }
 
     pub fn offered_contracts(&self) -> &[TierContracts] {
@@ -528,6 +537,11 @@ impl GameState {
 
         self.apply_effects(&card.effects);
 
+        // Record metrics: tag counts and token flow from effects
+        let (produced, consumed) = collect_effect_token_flow(&card.effects);
+        self.metrics_tracker
+            .record_card_played(&card.tags, &produced, &consumed);
+
         self.cards[entry_idx].counts.hand -= 1;
         self.cards[entry_idx].counts.discard += 1;
 
@@ -553,6 +567,9 @@ impl GameState {
 
         let bonus = self.rules.general.discard_production_unit_bonus;
         *self.tokens.entry(TokenType::ProductionUnit).or_insert(0) += bonus;
+
+        self.metrics_tracker
+            .record_card_discarded(&[(TokenType::ProductionUnit, bonus)]);
 
         draw_from_deck(&mut self.cards, &mut self.rng);
 
@@ -658,6 +675,8 @@ impl GameState {
 
         // Clean up entries where all counts are zero
         self.cards.retain(|e| e.counts.total() > 0);
+
+        self.metrics_tracker.record_card_replaced();
 
         ActionResult::Success(ActionSuccess::CardReplaced)
     }
@@ -776,6 +795,8 @@ impl GameState {
 
         self.subtract_contract_tokens(&contract);
         self.add_tokens(&TokenType::ContractsTierCompleted(contract.tier.0), 1);
+        self.metrics_tracker
+            .record_contract_completed(contract.tier.0);
 
         // Add reward card to shelved
         self.add_reward_card(&contract.reward_card);
@@ -908,4 +929,23 @@ fn draw_random(cards: &mut [CardEntry], rng: &mut Pcg64, deck_total: u32) {
             return;
         }
     }
+}
+
+/// Token flow pairs: (token_type, amount) for each produced/consumed token.
+type TokenFlowPairs = (Vec<(TokenType, u32)>, Vec<(TokenType, u32)>);
+
+/// Extract token inputs and outputs from a list of card effects
+/// as flat `(TokenType, amount)` pairs for metrics tracking.
+fn collect_effect_token_flow(effects: &[CardEffect]) -> TokenFlowPairs {
+    let mut produced = Vec::new();
+    let mut consumed = Vec::new();
+    for effect in effects {
+        for output in &effect.outputs {
+            produced.push((output.token_type.clone(), output.amount));
+        }
+        for input in &effect.inputs {
+            consumed.push((input.token_type.clone(), input.amount));
+        }
+    }
+    (produced, consumed)
 }

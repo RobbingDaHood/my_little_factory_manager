@@ -10,6 +10,7 @@ use std::sync::Mutex;
 
 use crate::action_log::{ActionEntry, PlayerAction};
 use crate::game_state::{ActionResult, GameState, GameStateView, PlayerTokensView, PossibleAction};
+use crate::metrics::SessionMetrics;
 use crate::types::{CardEntry, CardTag, Contract, TierContracts};
 
 /// Dispatch a player action.
@@ -136,4 +137,18 @@ pub fn get_contracts_active(game_state: &State<Mutex<GameState>>) -> Json<Option
 pub fn get_actions_possible(game_state: &State<Mutex<GameState>>) -> Json<Vec<PossibleAction>> {
     let gs = game_state.lock().expect("game state lock poisoned");
     Json(gs.possible_actions())
+}
+
+/// Gameplay statistics and metrics.
+///
+/// Returns session-level statistics computed from live gameplay data:
+/// contract completion counts per tier, card usage breakdown by tag,
+/// token production/consumption flow, efficiency metrics (average cards
+/// per contract), streaks, and strategy diversity analysis.
+/// All metrics reset when a new game starts.
+#[openapi]
+#[get("/metrics")]
+pub fn get_metrics(game_state: &State<Mutex<GameState>>) -> Json<SessionMetrics> {
+    let gs = game_state.lock().expect("game state lock poisoned");
+    Json(gs.session_metrics())
 }

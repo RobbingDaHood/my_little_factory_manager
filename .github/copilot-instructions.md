@@ -68,6 +68,7 @@ Key project files
 - `src/config_loader.rs` — JSON config embedding and loading
 - `src/game_state.rs` — `GameState` struct, game mechanics (card/token/contract operations), action dispatch
 - `src/action_log.rs` — `PlayerAction` enum, `ActionEntry`, `ActionLog` for deterministic replay
+- `src/metrics.rs` — `MetricsTracker` (live gameplay counters) and `SessionMetrics` response type
 - `src/contract_generation.rs` — formula-based contract and reward card generation (TierScalingFormula)
 - `src/endpoints.rs` — HTTP handlers: `POST /action`, `GET /state`, `GET /actions/history`, `GET /contracts/available`, `GET /library/cards`, `GET /player/tokens`, `GET /contracts/active`, `GET /actions/possible`
 - `src/starter_cards.rs` — starter deck generation (round-robin all tier ≤ 1 effect types)
@@ -91,6 +92,7 @@ Key project files
 - `tests/determinism_test.rs` — deterministic replay and seed reproducibility tests
 - `tests/api_endpoints_test.rs` — integration tests for query and documentation endpoints
 - `tests/deckbuilding_test.rs` — integration tests for deckbuilding mechanics (ReplaceCard, DeckSlots, rewards)
+- `tests/metrics_test.rs` — integration tests for metrics tracking and GET /metrics endpoint
 
 Suggest changes to vision.md and roadmap.md
 

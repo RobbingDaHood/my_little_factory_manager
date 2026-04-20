@@ -227,6 +227,7 @@ fn build_tutorial() -> Tutorial {
         ],
         next_steps: vec![
             "Keep completing contracts to unlock higher tiers with new challenges.".to_string(),
+            "Check /metrics to track your gameplay statistics — completions, efficiency, and streaks.".to_string(),
             "Check /docs/hints for strategies and tips.".to_string(),
             "Check /docs/designer for how contracts, cards, and tokens work.".to_string(),
             "Explore /swagger/ for the complete interactive API documentation.".to_string(),

@@ -46,6 +46,7 @@ fn build_hints() -> HintsGuide {
             "Between contracts, use ReplaceCard to swap weak deck cards for strong shelved reward cards.".to_string(),
             "ReplaceCard costs a sacrifice from shelved copies — choose carefully which card to permanently destroy.".to_string(),
             "Reward cards always go to the shelf — use ReplaceCard to bring them into your active cycle.".to_string(),
+            "Use /metrics to track your efficiency — lower average cards per contract means you're improving.".to_string(),
         ],
         tiers: vec![
             build_tier0_hints(),

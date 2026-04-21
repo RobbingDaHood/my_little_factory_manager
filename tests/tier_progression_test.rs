@@ -424,7 +424,7 @@ fn reward_card_amounts_scale_with_tier() {
 }
 
 // ---------------------------------------------------------------------------
-// HarmfulTokenLimit requirement generation
+// TokenRequirement (harmful max) generation
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -448,7 +448,7 @@ fn harmful_token_limit_appears_in_generated_contracts() {
         );
 
         for req in &contract.requirements {
-            if matches!(req, ContractRequirementKind::HarmfulTokenLimit { .. }) {
+            if matches!(req, ContractRequirementKind::TokenRequirement { max: Some(_), .. }) {
                 found_limit = true;
             }
         }
@@ -459,7 +459,7 @@ fn harmful_token_limit_appears_in_generated_contracts() {
 
     assert!(
         found_limit,
-        "HarmfulTokenLimit should appear in contracts at tier 3 across 100 seeds"
+        "TokenRequirement with max should appear in contracts at tier 3 across 100 seeds"
     );
 }
 
@@ -481,10 +481,15 @@ fn harmful_token_limit_targets_harmful_tokens_only() {
         );
 
         for req in &contract.requirements {
-            if let ContractRequirementKind::HarmfulTokenLimit { token_type, .. } = req {
+            if let ContractRequirementKind::TokenRequirement {
+                token_type,
+                max: Some(_),
+                min: None,
+            } = req
+            {
                 assert!(
                     token_type.is_harmful(),
-                    "HarmfulTokenLimit should only target harmful tokens, got {:?}",
+                    "harmful-only TokenRequirement should target harmful tokens, got {:?}",
                     token_type
                 );
             }
@@ -514,25 +519,22 @@ fn tier0_requirements_only_use_production_unit() {
         );
 
         for req in &contract.requirements {
-            match req {
-                ContractRequirementKind::OutputThreshold { token_type, .. } => {
-                    // At tier 0, only PU is unlocked; req_tier can be 0 or 1
-                    // At tier 1, Heat is also unlocked but Heat is harmful (no OutputThreshold)
-                    assert_eq!(
-                        *token_type,
-                        TokenType::ProductionUnit,
-                        "tier 0 OutputThreshold should only target PU, got {:?}",
-                        token_type
-                    );
-                }
-                ContractRequirementKind::HarmfulTokenLimit { token_type, .. } => {
-                    assert!(
-                        token_type.is_harmful(),
-                        "HarmfulTokenLimit should target harmful token, got {:?}",
-                        token_type
-                    );
-                }
-                _ => {}
+            if let ContractRequirementKind::TokenRequirement { token_type, min: Some(_), max: None } = req {
+                // At tier 0, only PU is unlocked; req_tier can be 0 or 1
+                // At tier 1, Heat is also unlocked but Heat is harmful (no min-only requirement)
+                assert_eq!(
+                    *token_type,
+                    TokenType::ProductionUnit,
+                    "tier 0 beneficial TokenRequirement should only target PU, got {:?}",
+                    token_type
+                );
+            }
+            if let ContractRequirementKind::TokenRequirement { token_type, max: Some(_), min: None } = req {
+                assert!(
+                    token_type.is_harmful(),
+                    "harmful TokenRequirement should target harmful token, got {:?}",
+                    token_type
+                );
             }
         }
     }
@@ -558,12 +560,8 @@ fn higher_tier_contracts_can_reference_more_token_types() {
             &AdaptiveBalanceTracker::new(game_rules.adaptive_balance.clone()),
         );
         for req in &c0.requirements {
-            match req {
-                ContractRequirementKind::OutputThreshold { token_type, .. }
-                | ContractRequirementKind::HarmfulTokenLimit { token_type, .. } => {
-                    tier0_tokens.insert(format!("{:?}", token_type));
-                }
-                _ => {}
+            if let ContractRequirementKind::TokenRequirement { token_type, .. } = req {
+                tier0_tokens.insert(format!("{:?}", token_type));
             }
         }
 
@@ -577,12 +575,8 @@ fn higher_tier_contracts_can_reference_more_token_types() {
             &AdaptiveBalanceTracker::new(game_rules.adaptive_balance.clone()),
         );
         for req in &c10.requirements {
-            match req {
-                ContractRequirementKind::OutputThreshold { token_type, .. }
-                | ContractRequirementKind::HarmfulTokenLimit { token_type, .. } => {
-                    tier10_tokens.insert(format!("{:?}", token_type));
-                }
-                _ => {}
+            if let ContractRequirementKind::TokenRequirement { token_type, .. } = req {
+                tier10_tokens.insert(format!("{:?}", token_type));
             }
         }
     }

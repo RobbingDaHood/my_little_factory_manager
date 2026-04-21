@@ -171,37 +171,41 @@ fn card_effect_empty_json_deserialization_rejected() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn output_threshold_serialization_roundtrip() {
-    let req = ContractRequirementKind::OutputThreshold {
+fn token_requirement_min_serialization_roundtrip() {
+    let req = ContractRequirementKind::TokenRequirement {
         token_type: TokenType::ProductionUnit,
-        min_amount: 20,
+        min: Some(20),
+        max: None,
     };
-    let json = serde_json::to_string(&req).expect("serialize OutputThreshold");
+    let json = serde_json::to_string(&req).expect("serialize TokenRequirement(min)");
     let roundtrip: ContractRequirementKind =
-        serde_json::from_str(&json).expect("deserialize OutputThreshold");
+        serde_json::from_str(&json).expect("deserialize TokenRequirement(min)");
     assert_eq!(req, roundtrip);
 }
 
 #[test]
-fn harmful_token_limit_serialization_roundtrip() {
-    let req = ContractRequirementKind::HarmfulTokenLimit {
+fn token_requirement_max_serialization_roundtrip() {
+    let req = ContractRequirementKind::TokenRequirement {
         token_type: TokenType::Heat,
-        max_amount: 5,
+        min: None,
+        max: Some(5),
     };
-    let json = serde_json::to_string(&req).expect("serialize HarmfulTokenLimit");
+    let json = serde_json::to_string(&req).expect("serialize TokenRequirement(max)");
     let roundtrip: ContractRequirementKind =
-        serde_json::from_str(&json).expect("deserialize HarmfulTokenLimit");
+        serde_json::from_str(&json).expect("deserialize TokenRequirement(max)");
     assert_eq!(req, roundtrip);
 }
 
 #[test]
-fn card_tag_restriction_serialization_roundtrip() {
-    let req = ContractRequirementKind::CardTagRestriction {
-        restricted_tag: CardTag::Production,
+fn card_tag_constraint_serialization_roundtrip() {
+    let req = ContractRequirementKind::CardTagConstraint {
+        tag: CardTag::Production,
+        min: None,
+        max: Some(0),
     };
-    let json = serde_json::to_string(&req).expect("serialize CardTagRestriction");
+    let json = serde_json::to_string(&req).expect("serialize CardTagConstraint");
     let roundtrip: ContractRequirementKind =
-        serde_json::from_str(&json).expect("deserialize CardTagRestriction");
+        serde_json::from_str(&json).expect("deserialize CardTagConstraint");
     assert_eq!(req, roundtrip);
 }
 
@@ -317,13 +321,15 @@ fn contract_serialization_roundtrip() {
     let contract = Contract {
         tier: ContractTier(2),
         requirements: vec![
-            ContractRequirementKind::OutputThreshold {
+            ContractRequirementKind::TokenRequirement {
                 token_type: TokenType::ProductionUnit,
-                min_amount: 15,
+                min: Some(15),
+                max: None,
             },
-            ContractRequirementKind::HarmfulTokenLimit {
+            ContractRequirementKind::TokenRequirement {
                 token_type: TokenType::Heat,
-                max_amount: 10,
+                min: None,
+                max: Some(10),
             },
         ],
         reward_card: PlayerActionCard {

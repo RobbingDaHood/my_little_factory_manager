@@ -263,9 +263,9 @@ fn contract_auto_completes_when_threshold_met() {
 
     // Get the required threshold from the active contract
     let state = get_state(&client);
-    let min_amount = state["active_contract"]["requirements"][0]["min_amount"]
+    let min_amount = state["active_contract"]["requirements"][0]["min"]
         .as_u64()
-        .expect("min_amount");
+        .expect("min");
 
     // Play cards until we accumulate enough production units
     let mut total_pu: u64 = 0;

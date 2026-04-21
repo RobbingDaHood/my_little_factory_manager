@@ -101,37 +101,36 @@ fn tier0_contracts_have_valid_requirements() {
             .as_str()
             .expect("requirement_type");
         // Tier 0 requirement tier ranges from 0 to 1.
-        // At tier 0: only PU OutputThreshold.
-        // At tier 1: PU OutputThreshold or Heat HarmfulTokenLimit.
-        match req_type {
-            "OutputThreshold" => {
-                assert_eq!(
-                    reqs[0]["token_type"], "ProductionUnit",
-                    "contract {} OutputThreshold should require ProductionUnit",
-                    i
-                );
-                let min_amount = reqs[0]["min_amount"].as_u64().expect("min_amount");
-                assert!(
-                    (4..=15).contains(&min_amount),
-                    "contract {} min_amount {} should be in [4, 15]",
-                    i,
-                    min_amount
-                );
-            }
-            "HarmfulTokenLimit" => {
-                assert_eq!(
-                    reqs[0]["token_type"], "Heat",
-                    "contract {} HarmfulTokenLimit should target Heat",
-                    i
-                );
-                let max_amount = reqs[0]["max_amount"].as_u64().expect("max_amount");
-                assert!(
-                    max_amount > 0,
-                    "contract {} max_amount should be positive",
-                    i
-                );
-            }
-            other => panic!("contract {} unexpected requirement type: {}", i, other),
+        // At tier 0: only PU TokenRequirement(min).
+        // At tier 1: PU TokenRequirement(min) or Heat TokenRequirement(max).
+        assert_eq!(req_type, "TokenRequirement", "contract {} should have TokenRequirement", i);
+        if reqs[0]["min"].is_null() {
+            // max-only = harmful token limit
+            assert_eq!(
+                reqs[0]["token_type"], "Heat",
+                "contract {} max-only TokenRequirement should target Heat",
+                i
+            );
+            let max_amount = reqs[0]["max"].as_u64().expect("max");
+            assert!(
+                max_amount > 0,
+                "contract {} max should be positive",
+                i
+            );
+        } else {
+            // min-only = production threshold
+            assert_eq!(
+                reqs[0]["token_type"], "ProductionUnit",
+                "contract {} min-only TokenRequirement should require ProductionUnit",
+                i
+            );
+            let min_amount = reqs[0]["min"].as_u64().expect("min");
+            assert!(
+                (4..=15).contains(&min_amount),
+                "contract {} min {} should be in [4, 15]",
+                i,
+                min_amount
+            );
         }
     }
 }

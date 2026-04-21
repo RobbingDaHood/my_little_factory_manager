@@ -879,9 +879,8 @@ impl GameState {
     /// violation found (deterministic order: harmful limits by token sort order,
     /// then turn window).
     fn check_contract_failure(&self, contract: &Contract) -> Option<ContractFailureReason> {
-        let (_, harmful_limits) = Self::aggregate_requirements(&contract.requirements);
-
         // Check HarmfulTokenLimit violations (sorted by TokenType for determinism)
+        let (_, harmful_limits) = Self::aggregate_requirements(&contract.requirements);
         let mut sorted_limits: Vec<_> = harmful_limits.into_iter().collect();
         sorted_limits.sort_by(|a, b| a.0.cmp(&b.0));
 
@@ -956,20 +955,20 @@ impl GameState {
 
         for req in requirements {
             match req {
-                ContractRequirementKind::OutputThreshold {
+                ContractRequirementKind::TokenRequirement {
                     token_type,
-                    min_amount,
+                    min,
+                    max,
                 } => {
-                    *output_thresholds.entry(token_type.clone()).or_insert(0) += min_amount;
+                    if let Some(min_amount) = min {
+                        *output_thresholds.entry(token_type.clone()).or_insert(0) += min_amount;
+                    }
+                    if let Some(max_amount) = max {
+                        let entry = harmful_limits.entry(token_type.clone()).or_insert(u32::MAX);
+                        *entry = (*entry).min(*max_amount);
+                    }
                 }
-                ContractRequirementKind::HarmfulTokenLimit {
-                    token_type,
-                    max_amount,
-                } => {
-                    let entry = harmful_limits.entry(token_type.clone()).or_insert(u32::MAX);
-                    *entry = (*entry).min(*max_amount);
-                }
-                ContractRequirementKind::CardTagRestriction { .. }
+                ContractRequirementKind::CardTagConstraint { .. }
                 | ContractRequirementKind::TurnWindow { .. } => {}
             }
         }

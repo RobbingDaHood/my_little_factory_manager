@@ -301,18 +301,38 @@ pub struct ContractTier(pub u32);
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(crate = "rocket::serde", tag = "requirement_type")]
 pub enum ContractRequirementKind {
-    /// Produce at least `min_amount` of `token_type` (mandatory on every contract).
-    OutputThreshold {
+    /// Token requirement with optional lower and upper bounds.
+    ///
+    /// - `min: Some(n)` — contract requires accumulating at least n of this token.
+    /// - `max: Some(m)` — exceeding m tokens is an immediate failure; completion
+    ///   also requires the balance to be ≤ m at the time of resolution.
+    /// - Both bounds may be set simultaneously for dual-constraint requirements.
+    ///
+    /// Generation bias: beneficial tokens start with only `min` set; harmful
+    /// tokens start with only `max` set. Higher tiers may add the second bound.
+    TokenRequirement {
         token_type: TokenType,
-        min_amount: u32,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        min: Option<u32>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        max: Option<u32>,
     },
-    /// Complete without exceeding `max_amount` of a harmful `token_type`.
-    HarmfulTokenLimit {
-        token_type: TokenType,
-        max_amount: u32,
+    /// Card-tag play count requirement with optional lower and upper bounds.
+    ///
+    /// - `min: Some(n)` — must play at least n cards with this tag before completion.
+    /// - `max: Some(0)` — this tag is banned: no cards with this tag may be played.
+    /// - `max: Some(m)` where m > 0 — at most m cards with this tag may be played.
+    /// - Both bounds may be set to require playing between n and m cards of this tag.
+    ///
+    /// Only tags that have at least one card available at the contract's tier are
+    /// ever generated.
+    CardTagConstraint {
+        tag: CardTag,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        min: Option<u32>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        max: Option<u32>,
     },
-    /// Certain card tags are unavailable during this contract.
-    CardTagRestriction { restricted_tag: CardTag },
     /// Contract must be completed between turn `min_turn` and `max_turn` (inclusive).
     TurnWindow { min_turn: u32, max_turn: u32 },
 }

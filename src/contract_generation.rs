@@ -330,29 +330,31 @@ fn available_requirement_generators(
     let mut generators: Vec<RequirementGenerator> = Vec::new();
     let available_tokens = unlocked_token_types(tier, effect_types);
 
-    // OutputThreshold generators for each beneficial token that's unlocked
+    // TokenRequirement generators for each beneficial token that's unlocked
     for token in &available_tokens {
         if token.is_beneficial() {
             let t = token.clone();
             let formula = formulas.output_threshold.clone();
             generators.push(Box::new(move |rng: &mut Pcg64| {
-                ContractRequirementKind::OutputThreshold {
+                ContractRequirementKind::TokenRequirement {
                     token_type: t.clone(),
-                    min_amount: roll_from_formula(tier, &formula, rng),
+                    min: Some(roll_from_formula(tier, &formula, rng)),
+                    max: None,
                 }
             }));
         }
     }
 
-    // HarmfulTokenLimit generators for each harmful token that's unlocked
+    // TokenRequirement generators for each harmful token that's unlocked
     for token in &available_tokens {
         if token.is_harmful() {
             let t = token.clone();
             let formula = formulas.harmful_token_limit.clone();
             generators.push(Box::new(move |rng: &mut Pcg64| {
-                ContractRequirementKind::HarmfulTokenLimit {
+                ContractRequirementKind::TokenRequirement {
                     token_type: t.clone(),
-                    max_amount: roll_from_formula(tier, &formula, rng),
+                    min: None,
+                    max: Some(roll_from_formula(tier, &formula, rng)),
                 }
             }));
         }

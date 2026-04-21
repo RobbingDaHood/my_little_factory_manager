@@ -220,16 +220,17 @@ fn build_tier6_hints() -> TierHints {
 fn build_tier12_hints() -> TierHints {
     TierHints {
         tier: 12,
-        overview: "Tier 12 introduces CardTagConstraint requirements. Contracts can now \
-            restrict or require specific card categories. A banned tag cannot be played \
-            at all during the contract. A min constraint forces you to use a specific type. \
-            The valid_hand_indices in /actions/possible already filters out invalid plays."
+        overview: "Tier 12 introduces CardTagConstraint requirements in three progressive variants. \
+            Only-Max (tier 12): max only — at most N cards with this tag; 0 is a full ban. \
+            Only-Min (tier 16): min only — must play at least N cards with this tag. \
+            Both (tier 20): range — must play between N and M cards of this tag. \
+            The valid_card_indices in /actions/possible already filters out banned/over-limit cards."
             .to_string(),
         strategies: vec![
             Strategy {
                 name: "Check tag constraints before accepting".to_string(),
                 description: "Read the CardTagConstraint requirements carefully before \
-                    accepting. A banned tag you rely on heavily may make the contract \
+                    accepting. A banned tag (max=0) you rely on heavily may make the contract \
                     very difficult. Choose contracts compatible with your deck composition."
                     .to_string(),
             },
@@ -255,7 +256,7 @@ fn build_tier12_hints() -> TierHints {
         ],
         tips: vec![
             "CardTagConstraint unlocks at tier 12 (Waste→QP gap in the token unlock schedule).".to_string(),
-            "valid_hand_indices in /actions/possible already excludes banned/over-limit cards.".to_string(),
+            "valid_card_indices in /actions/possible already excludes banned/over-limit cards.".to_string(),
             "cards_played_per_tag_contract in /state shows your progress against tag constraints.".to_string(),
             "Tag constraints reset with each new contract — they track per-contract play counts.".to_string(),
         ],

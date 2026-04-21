@@ -200,11 +200,11 @@ fn build_contract_requirements() -> DesignerSection {
             ReferenceEntry {
                 name: "CardTagConstraint (tier 12+)".to_string(),
                 description: "Unified range requirement for a card tag category. \
-                    'max: Some(0)' — the tag is banned: no card with that tag may be played. \
-                    'min: Some(n)' — must play at least n cards with this tag before completion. \
-                    'max: Some(m)' — may play at most m cards with this tag. \
-                    Both bounds may combine for a range constraint. \
-                    The valid_hand_indices in /actions/possible already excludes banned \
+                    Three variants unlock progressively: Only-Max (tier 12) — at most N cards \
+                    with this tag; max=0 is a full ban. Only-Min (tier 16) — must play at least \
+                    N cards. Both (tier 20) — must play between N and M cards of this tag. \
+                    Max count decreases with tier (harder caps); min count increases (harder floors). \
+                    The valid_card_indices in /actions/possible already excludes banned \
                     and over-limit cards."
                     .to_string(),
             },
@@ -368,10 +368,10 @@ fn build_contract_failure() -> DesignerSection {
             },
             ReferenceEntry {
                 name: "CardTagBanned Play Blocked".to_string(),
-                description: "Playing a card whose tag is banned (CardTagConstraint max=0) \
-                    is blocked outright — the play action is rejected before it can trigger \
-                    failure. The /actions/possible valid_hand_indices already excludes such \
-                    cards so well-behaved clients never see this error."
+                description: "Playing a card whose tag has reached its CardTagConstraint max \
+                    (including max=0, a full ban) is blocked outright — the play action is \
+                    rejected before it can trigger failure. The /actions/possible valid_card_indices \
+                    already excludes such cards so well-behaved clients never see this error."
                     .to_string(),
             },
             ReferenceEntry {

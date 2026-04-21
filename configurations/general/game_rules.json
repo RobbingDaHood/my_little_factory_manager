@@ -31,9 +31,16 @@
             "window_size_extra_decrease_per_tier": 1
         },
         "card_tag_constraint": {
-            "unlock_tier": 12,
-            "base_count": 1,
-            "per_tier_count": 1
+            "unlock_tier_only_max": 12,
+            "unlock_tier_only_min": 16,
+            "unlock_tier_both": 20,
+            "max_count_base": 5,
+            "max_count_decrease_per_tier": 1,
+            "min_count_per_tier": 1,
+            "min_count_cap": 8,
+            "count_window_min": 1,
+            "count_window_extra_base": 6,
+            "count_window_extra_decrease_per_tier": 1
         }
     },
     "adaptive_balance": {

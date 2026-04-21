@@ -74,14 +74,38 @@ pub struct TurnWindowFormulaConfig {
 }
 
 /// Formula config for CardTagConstraint requirement generation.
+///
+/// Three variants unlock progressively:
+///   1. Only-Max (upper limit/ban): `max` only — at most N cards of this tag. Unlocks at `unlock_tier_only_max`.
+///   2. Only-Min (must-play): `min` only — must play at least N cards of this tag. Unlocks at `unlock_tier_only_min`.
+///   3. Both (range): `min` and `max` — must play between N and M cards of this tag. Unlocks at `unlock_tier_both`.
+///
+/// Only-Max `max_count` rolls in `[0, max_count_at_tier]` where `max_count_at_tier` decreases with tier
+/// (higher tier = tighter cap = harder). Rolling 0 is a full ban — the ban special-case is subsumed here.
+/// Only-Min `min_count` rolls in `[0, min(min_count_per_tier × tier, min_count_cap)]` — increasing with tier.
+/// Both uses `min_count` from the Only-Min formula plus a window (same decreasing pattern as TurnWindow).
 #[derive(Debug, Clone, Deserialize)]
 #[serde(crate = "rocket::serde")]
 pub struct CardTagConstraintFormulaConfig {
-    /// First tier at which CardTagConstraint requirements can appear.
-    pub unlock_tier: u32,
-    /// Base count used for min/max bounds (scaled by tier).
-    pub base_count: u32,
-    pub per_tier_count: u32,
+    /// Tier at which the Only-Max (upper limit/ban) variant unlocks.
+    pub unlock_tier_only_max: u32,
+    /// Tier at which the Only-Min (must-play) variant unlocks.
+    pub unlock_tier_only_min: u32,
+    /// Tier at which the Both (range) variant unlocks.
+    pub unlock_tier_both: u32,
+    /// Maximum count at the unlock tier; decreases by `max_count_decrease_per_tier` each tier.
+    /// Rolling 0 acts as a full ban.
+    pub max_count_base: u32,
+    pub max_count_decrease_per_tier: u32,
+    /// Only-Min min_count scales as `min_count_per_tier × (tier - unlock_tier_only_min)`.
+    pub min_count_per_tier: u32,
+    /// Cap on min_count to prevent requirement from becoming impossibly high.
+    pub min_count_cap: u32,
+    /// Minimum window size for the Both variant (max_count = min_count + window).
+    pub count_window_min: u32,
+    /// Extra window width at the unlock tier; decreases by `count_window_extra_decrease_per_tier`.
+    pub count_window_extra_base: u32,
+    pub count_window_extra_decrease_per_tier: u32,
 }
 
 /// A linear tier-scaling formula: for a given tier, produces a range

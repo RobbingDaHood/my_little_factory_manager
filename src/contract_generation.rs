@@ -389,7 +389,7 @@ fn available_requirement_generators(
 
     // CardTagConstraint generator — unlocks in the Waste→QP gap
     if let Some(ctc_config) = formulas.card_tag_constraint.as_ref() {
-        if tier >= ctc_config.unlock_tier {
+        if tier >= ctc_config.unlock_tier_only_max {
             let available_tags = unlocked_card_tags(tier, effect_types);
             if !available_tags.is_empty() {
                 let ctc = ctc_config.clone();
@@ -454,24 +454,50 @@ fn generate_card_tag_constraint(
 ) -> ContractRequirementKind {
     let tag_idx = rng.next_u32() as usize % available_tags.len();
     let tag = available_tags[tag_idx].clone();
-    let max_count = config.base_count + tier * config.per_tier_count;
-    // Alternate between ban (max=0), must-play (min), and limit (max>0) based on RNG
-    let variant = rng.next_u32() % 3;
+
+    // Select variant based on which have unlocked at this tier.
+    let variant = if tier >= config.unlock_tier_both {
+        rng.next_u32() % 3
+    } else if tier >= config.unlock_tier_only_min {
+        rng.next_u32() % 2
+    } else {
+        0 // Only-Max
+    };
+
+    // Only-Max: max_count decreases with tier (harder = fewer allowed).
+    // Rolling 0 is a full ban — no special-case needed.
+    let max_count_at_tier = config.max_count_base.saturating_sub(
+        tier.saturating_sub(config.unlock_tier_only_max) * config.max_count_decrease_per_tier,
+    );
+    let max_count = rng.next_u32() % (max_count_at_tier.max(1) + 1); // [0, max_count_at_tier.max(1)]
+
+    // Only-Min: min_count increases with tier (harder = must play more), capped.
+    let min_count_max = (config.min_count_per_tier
+        * tier.saturating_sub(config.unlock_tier_only_min))
+    .min(config.min_count_cap);
+    let min_count = rng.next_u32() % (min_count_max + 1); // [0, min_count_max]
+
+    // Window for Both: decreasing with tier, always ≥2 possible values.
+    let extra_range = config.count_window_extra_base.saturating_sub(
+        tier.saturating_sub(config.unlock_tier_both) * config.count_window_extra_decrease_per_tier,
+    );
+    let window_size = config.count_window_min + rng.next_u32() % (extra_range.max(1) + 1);
+
     match variant {
         0 => ContractRequirementKind::CardTagConstraint {
             tag,
             min: None,
-            max: Some(0),
+            max: Some(max_count),
         },
         1 => ContractRequirementKind::CardTagConstraint {
             tag,
-            min: Some(max_count.max(1)),
+            min: Some(min_count),
             max: None,
         },
         _ => ContractRequirementKind::CardTagConstraint {
             tag,
-            min: None,
-            max: Some(max_count.max(1)),
+            min: Some(min_count),
+            max: Some(min_count + window_size),
         },
     }
 }

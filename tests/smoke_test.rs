@@ -19,6 +19,14 @@ fn version_endpoint_returns_ok() {
         .as_str()
         .expect("version should be a string");
     assert!(!version.is_empty(), "version should not be empty");
+    assert!(
+        json.get("config_hash").is_some(),
+        "response should contain config_hash field"
+    );
+    let hash = json["config_hash"]
+        .as_str()
+        .expect("config_hash should be a string");
+    assert_eq!(hash.len(), 16, "config_hash should be 16 hex chars");
 }
 
 #[test]

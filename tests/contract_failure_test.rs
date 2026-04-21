@@ -297,7 +297,11 @@ fn overlay_tightens_harmful_token_limit() {
 
     let adjustments = tracker.apply_overlay(&mut requirements);
 
-    if let ContractRequirementKind::TokenRequirement { max: Some(max_amount), .. } = &requirements[0] {
+    if let ContractRequirementKind::TokenRequirement {
+        max: Some(max_amount),
+        ..
+    } = &requirements[0]
+    {
         assert!(
             *max_amount < 20,
             "overlay should tighten HarmfulTokenLimit: got {max_amount}"
@@ -330,7 +334,11 @@ fn overlay_increases_output_threshold() {
 
     let adjustments = tracker.apply_overlay(&mut requirements);
 
-    if let ContractRequirementKind::TokenRequirement { min: Some(min_amount), .. } = &requirements[0] {
+    if let ContractRequirementKind::TokenRequirement {
+        min: Some(min_amount),
+        ..
+    } = &requirements[0]
+    {
         assert!(
             *min_amount > 10,
             "overlay should increase OutputThreshold: got {min_amount}"
@@ -394,7 +402,11 @@ fn overlay_does_not_reduce_harmful_limit_below_one() {
 
     tracker.apply_overlay(&mut requirements);
 
-    if let ContractRequirementKind::TokenRequirement { max: Some(max_amount), .. } = &requirements[0] {
+    if let ContractRequirementKind::TokenRequirement {
+        max: Some(max_amount),
+        ..
+    } = &requirements[0]
+    {
         assert!(
             *max_amount >= 1,
             "max_amount should never go below 1: got {max_amount}"

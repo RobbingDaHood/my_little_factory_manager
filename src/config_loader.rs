@@ -23,8 +23,7 @@ pub fn fnv1a_hash(data: &[u8]) -> u64 {
 
 /// Deterministic fingerprint of all embedded config files (FNV-1a XOR, hex).
 pub fn config_hash() -> String {
-    let h = fnv1a_hash(GAME_RULES_JSON.as_bytes())
-        ^ fnv1a_hash(TOKEN_DEFINITIONS_JSON.as_bytes());
+    let h = fnv1a_hash(GAME_RULES_JSON.as_bytes()) ^ fnv1a_hash(TOKEN_DEFINITIONS_JSON.as_bytes());
     format!("{h:016x}")
 }
 

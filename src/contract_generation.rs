@@ -403,7 +403,11 @@ fn available_requirement_generators(
     generators
 }
 
-fn generate_turn_window(tier: u32, config: &TurnWindowFormulaConfig, rng: &mut Pcg64) -> ContractRequirementKind {
+fn generate_turn_window(
+    tier: u32,
+    config: &TurnWindowFormulaConfig,
+    rng: &mut Pcg64,
+) -> ContractRequirementKind {
     let min_low = config.min_turns_base + tier * config.min_turns_per_tier;
     let min_turn = min_low + (rng.next_u32() % (tier + 1));
     let window_size = config.window_size_base + tier * config.window_size_per_tier;
@@ -423,9 +427,21 @@ fn generate_card_tag_constraint(
     // Alternate between ban (max=0), must-play (min), and limit (max>0) based on RNG
     let variant = rng.next_u32() % 3;
     match variant {
-        0 => ContractRequirementKind::CardTagConstraint { tag, min: None, max: Some(0) },
-        1 => ContractRequirementKind::CardTagConstraint { tag, min: Some(max_count.max(1)), max: None },
-        _ => ContractRequirementKind::CardTagConstraint { tag, min: None, max: Some(max_count.max(1)) },
+        0 => ContractRequirementKind::CardTagConstraint {
+            tag,
+            min: None,
+            max: Some(0),
+        },
+        1 => ContractRequirementKind::CardTagConstraint {
+            tag,
+            min: Some(max_count.max(1)),
+            max: None,
+        },
+        _ => ContractRequirementKind::CardTagConstraint {
+            tag,
+            min: None,
+            max: Some(max_count.max(1)),
+        },
     }
 }
 

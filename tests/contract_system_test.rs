@@ -103,7 +103,11 @@ fn tier0_contracts_have_valid_requirements() {
         // Tier 0 requirement tier ranges from 0 to 1.
         // At tier 0: only PU TokenRequirement(min).
         // At tier 1: PU TokenRequirement(min) or Heat TokenRequirement(max).
-        assert_eq!(req_type, "TokenRequirement", "contract {} should have TokenRequirement", i);
+        assert_eq!(
+            req_type, "TokenRequirement",
+            "contract {} should have TokenRequirement",
+            i
+        );
         if reqs[0]["min"].is_null() {
             // max-only = harmful token limit
             assert_eq!(
@@ -112,11 +116,7 @@ fn tier0_contracts_have_valid_requirements() {
                 i
             );
             let max_amount = reqs[0]["max"].as_u64().expect("max");
-            assert!(
-                max_amount > 0,
-                "contract {} max should be positive",
-                i
-            );
+            assert!(max_amount > 0, "contract {} max should be positive", i);
         } else {
             // min-only = production threshold
             assert_eq!(

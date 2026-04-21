@@ -515,7 +515,12 @@ impl GameState {
         // Collect tag constraints (max-bound only) for fast lookup
         let mut banned_or_limited: HashMap<CardTag, u32> = HashMap::new();
         for req in &contract.requirements {
-            if let ContractRequirementKind::CardTagConstraint { tag, max: Some(max), .. } = req {
+            if let ContractRequirementKind::CardTagConstraint {
+                tag,
+                max: Some(max),
+                ..
+            } = req
+            {
                 // Keep the tightest limit per tag
                 let entry = banned_or_limited.entry(tag.clone()).or_insert(u32::MAX);
                 *entry = (*entry).min(*max);

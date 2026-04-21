@@ -123,7 +123,9 @@ fn build_tutorial() -> Tutorial {
                 step: 6,
                 title: "Play Cards to Produce Tokens".to_string(),
                 description: "Play cards from your hand by index. Each card's effects \
-                    add or remove tokens. A replacement card is drawn from the deck."
+                    add or remove tokens. A replacement card is drawn from the deck. \
+                    Check /actions/possible for valid_hand_indices — at higher tiers, \
+                    some cards may be excluded due to CardTagConstraint bans."
                     .to_string(),
                 endpoint: "/action".to_string(),
                 method: "POST".to_string(),
@@ -134,6 +136,7 @@ fn build_tutorial() -> Tutorial {
                     "Playing a card applies all its effects (inputs consumed, outputs produced).".to_string(),
                     "After playing, a new card is drawn from the deck.".to_string(),
                     "The contract auto-completes as soon as all requirements are met.".to_string(),
+                    "valid_hand_indices in /actions/possible already filters out banned/over-limit cards.".to_string(),
                 ],
             },
             TutorialStep {
@@ -173,16 +176,20 @@ fn build_tutorial() -> Tutorial {
             TutorialStep {
                 step: 9,
                 title: "Contract Failure".to_string(),
-                description: "Contracts can fail! If your harmful token balance exceeds a \
-                    HarmfulTokenLimit requirement, or if you exceed the TurnWindow's \
-                    max_turn, the contract fails immediately. You lose the contract \
-                    (no reward) and the market refills."
+                description: "Contracts can fail! If your token balance exceeds a \
+                    TokenRequirement max bound (formerly HarmfulTokenLimit), if you exceed \
+                    the TurnWindow's max_turn, the contract fails immediately. You lose \
+                    the contract (no reward) and the market refills. \
+                    At tier 12+, playing a banned tag (CardTagConstraint max=0) is blocked \
+                    outright — the server rejects the action before it can cause failure."
                     .to_string(),
                 endpoint: "/state".to_string(),
                 method: "GET".to_string(),
                 example_body: None,
                 tips: vec![
-                    "Check contract requirements before accepting — HarmfulTokenLimit means you must manage those tokens.".to_string(),
+                    "Check TokenRequirement max bounds before accepting — exceeding them fails the contract.".to_string(),
+                    "TurnWindow max_turn is a hard deadline — exceeding it is an immediate failure.".to_string(),
+                    "At tier 12+, check valid_hand_indices in /actions/possible to avoid banned tag plays.".to_string(),
                     "Failure is not game-over — it just means no reward and a broken streak.".to_string(),
                     "After failure, the adaptive system eases difficulty, giving you breathing room.".to_string(),
                     "The contract_turns_played field in /state shows how many turns you've used.".to_string(),

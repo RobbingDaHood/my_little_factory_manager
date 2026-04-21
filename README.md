@@ -12,7 +12,7 @@ Tokens represent persistent resources — **beneficial** (ProductionUnit, Energy
 
 - RESTful API with 13 endpoints for full gameplay
 - Tiered contract system with formula-based balance scaling
-- Contract failure conditions (HarmfulTokenLimit and TurnWindow violations)
+- Contract failure conditions (TokenRequirement max violations, TurnWindow exceeded, CardTagBanned plays blocked)
 - Adaptive balance overlay — contracts adjust to player behavior patterns
 - Deckbuilding via ReplaceCard action — reshape your active cycle by swapping and sacrificing cards
 - Active cycle size controlled by DeckSlots progression token

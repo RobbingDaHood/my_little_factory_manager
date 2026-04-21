@@ -448,7 +448,10 @@ fn harmful_token_limit_appears_in_generated_contracts() {
         );
 
         for req in &contract.requirements {
-            if matches!(req, ContractRequirementKind::TokenRequirement { max: Some(_), .. }) {
+            if matches!(
+                req,
+                ContractRequirementKind::TokenRequirement { max: Some(_), .. }
+            ) {
                 found_limit = true;
             }
         }
@@ -519,7 +522,12 @@ fn tier0_requirements_only_use_production_unit() {
         );
 
         for req in &contract.requirements {
-            if let ContractRequirementKind::TokenRequirement { token_type, min: Some(_), max: None } = req {
+            if let ContractRequirementKind::TokenRequirement {
+                token_type,
+                min: Some(_),
+                max: None,
+            } = req
+            {
                 // At tier 0, only PU is unlocked; req_tier can be 0 or 1
                 // At tier 1, Heat is also unlocked but Heat is harmful (no min-only requirement)
                 assert_eq!(
@@ -529,7 +537,12 @@ fn tier0_requirements_only_use_production_unit() {
                     token_type
                 );
             }
-            if let ContractRequirementKind::TokenRequirement { token_type, max: Some(_), min: None } = req {
+            if let ContractRequirementKind::TokenRequirement {
+                token_type,
+                max: Some(_),
+                min: None,
+            } = req
+            {
                 assert!(
                     token_type.is_harmful(),
                     "harmful TokenRequirement should target harmful token, got {:?}",

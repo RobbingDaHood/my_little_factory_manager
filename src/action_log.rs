@@ -19,10 +19,10 @@ pub enum PlayerAction {
         tier_index: usize,
         contract_index: usize,
     },
-    /// Play a card from hand by its position index.
-    PlayCard { hand_index: usize },
+    /// Play a card from hand by its index in the cards Vec (must have hand > 0).
+    PlayCard { card_index: usize },
     /// Discard a card from hand for a small baseline production bonus.
-    DiscardCard { hand_index: usize },
+    DiscardCard { card_index: usize },
     /// Replace a card in the active cycle (deck or discard, auto-selected)
     /// with a shelved card. The replacement always enters the deck.
     /// A third card is permanently destroyed as the cost.

@@ -24,6 +24,20 @@ fn accept_first_contract(client: &Client) {
         .dispatch();
 }
 
+fn first_card_in_hand(client: &Client) -> usize {
+    let response = client.get("/state").dispatch();
+    let body: serde_json::Value =
+        serde_json::from_str(&response.into_string().expect("body")).expect("valid json");
+    body["cards"]
+        .as_array()
+        .expect("cards array")
+        .iter()
+        .enumerate()
+        .find(|(_, e)| e["counts"]["hand"].as_u64().unwrap_or(0) > 0)
+        .map(|(i, _)| i)
+        .expect("at least one card in hand")
+}
+
 // -----------------------------------------------------------------------
 // GET /library/cards
 // -----------------------------------------------------------------------
@@ -104,10 +118,13 @@ fn player_tokens_after_playing_card_shows_production() {
     start_new_game(&client);
     accept_first_contract(&client);
 
+    let idx = first_card_in_hand(&client);
     client
         .post("/action")
         .header(ContentType::JSON)
-        .body(r#"{"action_type": "PlayCard", "hand_index": 0}"#)
+        .body(format!(
+            r#"{{"action_type": "PlayCard", "card_index": {idx}}}"#
+        ))
         .dispatch();
 
     let response = client.get("/player/tokens").dispatch();

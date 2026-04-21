@@ -74,7 +74,7 @@ pub enum ActionError {
         contract_index: usize,
     },
     NoActiveContract,
-    InvalidHandIndex {
+    InvalidCardIndex {
         index: usize,
     },
     InsufficientTokens {
@@ -178,12 +178,14 @@ pub struct TierContractRange {
 #[serde(tag = "action_type", crate = "rocket::serde")]
 pub enum PossibleAction {
     NewGame,
-    /// Lists the specific hand indices the player can play given active CardTagConstraint bans.
+    /// Lists the specific card indices (into the /state cards Vec) that the player
+    /// can play given active CardTagConstraint limits and hand availability.
     PlayCard {
-        valid_hand_indices: Vec<usize>,
+        valid_card_indices: Vec<usize>,
     },
+    /// Lists the card indices (into the /state cards Vec) that have hand > 0.
     DiscardCard {
-        valid_hand_index_range: IndexRange,
+        valid_card_indices: Vec<usize>,
     },
     AcceptContract {
         valid_tiers: Vec<TierContractRange>,
@@ -413,21 +415,25 @@ impl GameState {
         actions.push(PossibleAction::NewGame);
 
         if self.active_contract.is_some() {
-            let hand_size = hand_total(&self.cards);
-            if hand_size > 0 {
-                let range = IndexRange {
-                    min: 0,
-                    max: hand_size - 1,
-                };
-                let valid_play_indices = self.playable_hand_indices(hand_size);
+            if self.cards.iter().any(|e| e.counts.hand > 0) {
+                let valid_play_indices = self.playable_card_indices();
                 if !valid_play_indices.is_empty() {
                     actions.push(PossibleAction::PlayCard {
-                        valid_hand_indices: valid_play_indices,
+                        valid_card_indices: valid_play_indices,
                     });
                 }
-                actions.push(PossibleAction::DiscardCard {
-                    valid_hand_index_range: range,
-                });
+                let discard_indices: Vec<usize> = self
+                    .cards
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, e)| e.counts.hand > 0)
+                    .map(|(i, _)| i)
+                    .collect();
+                if !discard_indices.is_empty() {
+                    actions.push(PossibleAction::DiscardCard {
+                        valid_card_indices: discard_indices,
+                    });
+                }
             }
         } else {
             let valid_tiers: Vec<TierContractRange> = self
@@ -503,13 +509,21 @@ impl GameState {
         });
     }
 
-    /// Returns the set of hand indices that may currently be played.
-    /// Excludes cards whose tags are banned or whose tag limit has been reached
-    /// by an active CardTagConstraint requirement.
-    fn playable_hand_indices(&self, hand_size: usize) -> Vec<usize> {
+    /// Returns the set of card indices (into the cards Vec) that may currently be played.
+    /// A card is playable if it has hand > 0 and its tags are not banned or over the
+    /// active CardTagConstraint max limit.
+    fn playable_card_indices(&self) -> Vec<usize> {
         let contract = match &self.active_contract {
             Some(c) => c,
-            None => return (0..hand_size).collect(),
+            None => {
+                return self
+                    .cards
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, e)| e.counts.hand > 0)
+                    .map(|(i, _)| i)
+                    .collect();
+            }
         };
 
         // Collect tag constraints (max-bound only) for fast lookup
@@ -527,11 +541,12 @@ impl GameState {
             }
         }
 
-        (0..hand_size)
-            .filter(|&idx| {
-                let entry_idx = resolve_hand_index(&self.cards, idx);
-                let card = &self.cards[entry_idx].card;
-                for tag in &card.tags {
+        self.cards
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| e.counts.hand > 0)
+            .filter(|(_, e)| {
+                for tag in &e.card.tags {
                     if let Some(&limit) = banned_or_limited.get(tag) {
                         let played = self
                             .cards_played_per_tag_contract
@@ -545,6 +560,7 @@ impl GameState {
                 }
                 true
             })
+            .map(|(i, _)| i)
             .collect()
     }
 
@@ -562,8 +578,8 @@ impl GameState {
                 tier_index,
                 contract_index,
             } => self.handle_accept_contract(tier_index, contract_index),
-            PlayerAction::PlayCard { hand_index } => self.handle_play_card(hand_index),
-            PlayerAction::DiscardCard { hand_index } => self.handle_discard_card(hand_index),
+            PlayerAction::PlayCard { card_index } => self.handle_play_card(card_index),
+            PlayerAction::DiscardCard { card_index } => self.handle_discard_card(card_index),
             PlayerAction::ReplaceCard {
                 target_card_index,
                 replacement_card_index,
@@ -624,18 +640,16 @@ impl GameState {
         ActionResult::Success(ActionSuccess::ContractAccepted)
     }
 
-    fn handle_play_card(&mut self, hand_index: usize) -> ActionResult {
+    fn handle_play_card(&mut self, card_index: usize) -> ActionResult {
         if self.active_contract.is_none() {
             return ActionResult::Error(ActionError::NoActiveContract);
         }
 
-        let hand_size = hand_total(&self.cards);
-        if hand_index >= hand_size {
-            return ActionResult::Error(ActionError::InvalidHandIndex { index: hand_index });
+        if card_index >= self.cards.len() || self.cards[card_index].counts.hand == 0 {
+            return ActionResult::Error(ActionError::InvalidCardIndex { index: card_index });
         }
 
-        let entry_idx = resolve_hand_index(&self.cards, hand_index);
-        let card = self.cards[entry_idx].card.clone();
+        let card = self.cards[card_index].card.clone();
 
         // Check CardTagConstraint bans / limits before applying the card
         if let Some(contract) = &self.active_contract {
@@ -690,8 +704,8 @@ impl GameState {
                 .record_token_produced(token_type, *amount);
         }
 
-        self.cards[entry_idx].counts.hand -= 1;
-        self.cards[entry_idx].counts.discard += 1;
+        self.cards[card_index].counts.hand -= 1;
+        self.cards[card_index].counts.discard += 1;
 
         self.contract_turns_played += 1;
 
@@ -703,19 +717,17 @@ impl GameState {
         })
     }
 
-    fn handle_discard_card(&mut self, hand_index: usize) -> ActionResult {
+    fn handle_discard_card(&mut self, card_index: usize) -> ActionResult {
         if self.active_contract.is_none() {
             return ActionResult::Error(ActionError::NoActiveContract);
         }
 
-        let hand_size = hand_total(&self.cards);
-        if hand_index >= hand_size {
-            return ActionResult::Error(ActionError::InvalidHandIndex { index: hand_index });
+        if card_index >= self.cards.len() || self.cards[card_index].counts.hand == 0 {
+            return ActionResult::Error(ActionError::InvalidCardIndex { index: card_index });
         }
 
-        let entry_idx = resolve_hand_index(&self.cards, hand_index);
-        self.cards[entry_idx].counts.hand -= 1;
-        self.cards[entry_idx].counts.discard += 1;
+        self.cards[card_index].counts.hand -= 1;
+        self.cards[card_index].counts.discard += 1;
 
         let bonus = self.rules.general.discard_production_unit_bonus;
         *self.tokens.entry(TokenType::ProductionUnit).or_insert(0) += bonus;
@@ -1130,25 +1142,6 @@ impl GameState {
 // ---------------------------------------------------------------------------
 // Card helper functions (free functions operating on Vec<CardEntry>)
 // ---------------------------------------------------------------------------
-
-/// Total number of cards currently in hand.
-fn hand_total(cards: &[CardEntry]) -> usize {
-    cards.iter().map(|e| e.counts.hand as usize).sum()
-}
-
-/// Given a hand_index (position in the expanded hand), return the
-/// index into the cards Vec for the corresponding entry.
-fn resolve_hand_index(cards: &[CardEntry], hand_index: usize) -> usize {
-    let mut remaining = hand_index;
-    for (i, entry) in cards.iter().enumerate() {
-        let count = entry.counts.hand as usize;
-        if remaining < count {
-            return i;
-        }
-        remaining -= count;
-    }
-    unreachable!("hand_index validated before calling resolve_hand_index")
-}
 
 /// Draw one card from deck to hand via random selection.
 /// If deck is empty, recycles discard counts back into deck first.

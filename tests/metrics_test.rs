@@ -38,6 +38,18 @@ fn get_state(client: &Client) -> serde_json::Value {
     serde_json::from_str(&body).expect("valid json")
 }
 
+fn first_card_in_hand(client: &Client) -> usize {
+    let state = get_state(client);
+    state["cards"]
+        .as_array()
+        .expect("cards array")
+        .iter()
+        .enumerate()
+        .find(|(_, e)| e["counts"]["hand"].as_u64().unwrap_or(0) > 0)
+        .map(|(i, _)| i)
+        .expect("at least one card in hand")
+}
+
 /// Start a game, accept contract at tier 0 index 0, then play cards until
 /// contract completes. Returns the number of cards played+discarded.
 fn complete_one_contract(client: &Client) -> u64 {
@@ -52,12 +64,20 @@ fn complete_one_contract(client: &Client) -> u64 {
         if state["active_contract"].is_null() {
             break;
         }
-        let (_, result) = post_action(client, r#"{"action_type":"PlayCard","hand_index":0}"#);
+        let idx = first_card_in_hand(client);
+        let (_, result) = post_action(
+            client,
+            &format!(r#"{{"action_type":"PlayCard","card_index":{idx}}}"#),
+        );
         cards_used += 1;
 
         // If card play failed (insufficient tokens), discard instead
         if result["outcome"] == "Error" {
-            post_action(client, r#"{"action_type":"DiscardCard","hand_index":0}"#);
+            let idx = first_card_in_hand(client);
+            post_action(
+                client,
+                &format!(r#"{{"action_type":"DiscardCard","card_index":{idx}}}"#),
+            );
             // Don't double count — the failed PlayCard didn't actually play
             // but the DiscardCard did use a card
         }
@@ -124,7 +144,13 @@ fn metrics_track_cards_played() {
     let before = get_metrics(&client);
     assert_eq!(before["total_cards_played"].as_u64().unwrap_or(0), 0);
 
-    post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
+    {
+        let _idx = first_card_in_hand(&client);
+        post_action(
+            &client,
+            &format!(r#"{{"action_type":"PlayCard","card_index":{}}}"#, _idx),
+        );
+    };
 
     let after = get_metrics(&client);
     assert_eq!(after["total_cards_played"].as_u64().unwrap_or(0), 1);
@@ -139,7 +165,13 @@ fn metrics_track_cards_discarded() {
         r#"{"action_type":"AcceptContract","tier_index":0,"contract_index":0}"#,
     );
 
-    post_action(&client, r#"{"action_type":"DiscardCard","hand_index":0}"#);
+    {
+        let _idx = first_card_in_hand(&client);
+        post_action(
+            &client,
+            &format!(r#"{{"action_type":"DiscardCard","card_index":{}}}"#, _idx),
+        );
+    };
 
     let metrics = get_metrics(&client);
     assert_eq!(metrics["total_cards_discarded"].as_u64().unwrap_or(0), 1);
@@ -157,8 +189,20 @@ fn metrics_track_per_tag_counts() {
     );
 
     // Play a few cards to get tag counts
-    post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
-    post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
+    {
+        let _idx = first_card_in_hand(&client);
+        post_action(
+            &client,
+            &format!(r#"{{"action_type":"PlayCard","card_index":{}}}"#, _idx),
+        );
+    };
+    {
+        let _idx = first_card_in_hand(&client);
+        post_action(
+            &client,
+            &format!(r#"{{"action_type":"PlayCard","card_index":{}}}"#, _idx),
+        );
+    };
 
     let metrics = get_metrics(&client);
     let tags = metrics["cards_per_tag"]
@@ -227,7 +271,13 @@ fn metrics_track_token_flow() {
     );
 
     // Play a card to produce tokens
-    post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
+    {
+        let _idx = first_card_in_hand(&client);
+        post_action(
+            &client,
+            &format!(r#"{{"action_type":"PlayCard","card_index":{}}}"#, _idx),
+        );
+    };
 
     let metrics = get_metrics(&client);
     let flow = metrics["token_flow"].as_array().expect("token_flow array");
@@ -281,7 +331,13 @@ fn metrics_reset_on_new_game() {
         &client,
         r#"{"action_type":"AcceptContract","tier_index":0,"contract_index":0}"#,
     );
-    post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
+    {
+        let _idx = first_card_in_hand(&client);
+        post_action(
+            &client,
+            &format!(r#"{{"action_type":"PlayCard","card_index":{}}}"#, _idx),
+        );
+    };
 
     let before = get_metrics(&client);
     assert!(before["total_cards_played"].as_u64().unwrap_or(0) > 0);
@@ -315,7 +371,13 @@ fn metrics_strategy_diversity_after_plays() {
         if state["active_contract"].is_null() {
             break;
         }
-        post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
+        {
+            let _idx = first_card_in_hand(&client);
+            post_action(
+                &client,
+                &format!(r#"{{"action_type":"PlayCard","card_index":{}}}"#, _idx),
+            );
+        };
     }
 
     let metrics = get_metrics(&client);

@@ -128,10 +128,10 @@ curl -X POST http://localhost:8000/action \
   -H "Content-Type: application/json" \
   -d '{"action_type": "AcceptContract", "tier_index": 0, "contract_index": 0}'
 
-# Play the first card in hand
+# Play the first card in hand (use /actions/possible valid_card_indices for the actual index)
 curl -X POST http://localhost:8000/action \
   -H "Content-Type: application/json" \
-  -d '{"action_type": "PlayCard", "hand_index": 0}'
+  -d '{"action_type": "PlayCard", "card_index": 0}'
 
 # Check token balances
 curl http://localhost:8000/player/tokens

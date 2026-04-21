@@ -41,6 +41,18 @@ fn get_state(client: &Client) -> serde_json::Value {
     serde_json::from_str(&body).expect("valid json")
 }
 
+fn first_card_in_hand(client: &Client) -> usize {
+    let state = get_state(client);
+    state["cards"]
+        .as_array()
+        .expect("cards array")
+        .iter()
+        .enumerate()
+        .find(|(_, e)| e["counts"]["hand"].as_u64().unwrap_or(0) > 0)
+        .map(|(i, _)| i)
+        .expect("at least one card in hand")
+}
+
 // ---------------------------------------------------------------------------
 // Combinatorial generator correctness
 // ---------------------------------------------------------------------------
@@ -626,7 +638,11 @@ fn contract_completion_subtracts_summed_requirements() {
     // Play cards until contract completes
     let mut completed = false;
     for _ in 0..200 {
-        let result = post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
+        let idx = first_card_in_hand(&client);
+        let result = post_action(
+            &client,
+            &format!(r#"{{"action_type":"PlayCard","card_index":{idx}}}"#),
+        );
         if result["detail"]["contract_resolution"]["resolution_type"] == "Completed" {
             completed = true;
             break;

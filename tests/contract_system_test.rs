@@ -40,6 +40,18 @@ fn detail(result: &serde_json::Value) -> &serde_json::Value {
     &result["detail"]
 }
 
+fn first_card_in_hand(client: &Client) -> usize {
+    let state = get_state(client);
+    state["cards"]
+        .as_array()
+        .expect("cards array")
+        .iter()
+        .enumerate()
+        .find(|(_, e)| e["counts"]["hand"].as_u64().unwrap_or(0) > 0)
+        .map(|(i, _)| i)
+        .expect("at least one card in hand")
+}
+
 fn token_amount(state: &serde_json::Value, token_type_json: &str) -> u64 {
     let expected: serde_json::Value =
         serde_json::from_str(token_type_json).expect("valid token_type json");
@@ -223,7 +235,13 @@ fn market_refills_after_contract_completion() {
     // Complete the contract
     let mut completed = false;
     for _ in 0..100 {
-        let result = post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
+        let result = {
+            let idx = first_card_in_hand(&client);
+            post_action(
+                &client,
+                &format!(r#"{{"action_type":"PlayCard","card_index":{}}}"#, idx),
+            )
+        };
         if detail(&result)["contract_resolution"]["resolution_type"] == "Completed" {
             completed = true;
             break;
@@ -389,7 +407,13 @@ fn reward_card_added_to_shelved_on_completion() {
 
     let mut completed = false;
     for _ in 0..100 {
-        let result = post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
+        let result = {
+            let idx = first_card_in_hand(&client);
+            post_action(
+                &client,
+                &format!(r#"{{"action_type":"PlayCard","card_index":{}}}"#, idx),
+            )
+        };
         if detail(&result)["contract_resolution"]["resolution_type"] == "Completed" {
             completed = true;
             break;

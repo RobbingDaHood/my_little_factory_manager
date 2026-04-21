@@ -122,33 +122,35 @@ fn build_tutorial() -> Tutorial {
             TutorialStep {
                 step: 6,
                 title: "Play Cards to Produce Tokens".to_string(),
-                description: "Play cards from your hand by index. Each card's effects \
-                    add or remove tokens. A replacement card is drawn from the deck. \
-                    Check /actions/possible for valid_hand_indices — at higher tiers, \
-                    some cards may be excluded due to CardTagConstraint bans."
+                description: "Play a card by its index in the /state cards Vec. The card \
+                    must have hand > 0. Each card's effects add or remove tokens. A \
+                    replacement card is drawn from the deck. Check /actions/possible for \
+                    valid_card_indices — at higher tiers, some cards may be excluded due \
+                    to CardTagConstraint limits."
                     .to_string(),
                 endpoint: "/action".to_string(),
                 method: "POST".to_string(),
                 example_body: Some(
-                    r#"{"action_type": "PlayCard", "hand_index": 0}"#.to_string(),
+                    r#"{"action_type": "PlayCard", "card_index": 0}"#.to_string(),
                 ),
                 tips: vec![
                     "Playing a card applies all its effects (inputs consumed, outputs produced).".to_string(),
                     "After playing, a new card is drawn from the deck.".to_string(),
                     "The contract auto-completes as soon as all requirements are met.".to_string(),
-                    "valid_hand_indices in /actions/possible already filters out banned/over-limit cards.".to_string(),
+                    "valid_card_indices in /actions/possible already filters out banned/over-limit cards.".to_string(),
                 ],
             },
             TutorialStep {
                 step: 7,
                 title: "Discard for Progress".to_string(),
                 description: "If your hand isn't ideal, you can discard any card for a \
-                    small baseline production bonus (1 ProductionUnit)."
+                    small baseline production bonus (1 ProductionUnit). Pass the card_index \
+                    (into the /state cards Vec) of a card with hand > 0."
                     .to_string(),
                 endpoint: "/action".to_string(),
                 method: "POST".to_string(),
                 example_body: Some(
-                    r#"{"action_type": "DiscardCard", "hand_index": 0}"#.to_string(),
+                    r#"{"action_type": "DiscardCard", "card_index": 0}"#.to_string(),
                 ),
                 tips: vec![
                     "Discarding prevents dead turns — every card has some value.".to_string(),

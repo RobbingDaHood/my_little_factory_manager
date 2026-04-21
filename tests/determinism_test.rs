@@ -37,6 +37,18 @@ fn get_history(client: &Client) -> Vec<serde_json::Value> {
     entries
 }
 
+fn first_card_in_hand(client: &Client) -> usize {
+    let state = get_state(client);
+    state["cards"]
+        .as_array()
+        .expect("cards array")
+        .iter()
+        .enumerate()
+        .find(|(_, e)| e["counts"]["hand"].as_u64().unwrap_or(0) > 0)
+        .map(|(i, _)| i)
+        .expect("at least one card in hand")
+}
+
 /// Run a fixed sequence of actions and return the final state.
 fn run_game_sequence(client: &Client, seed: u64) -> serde_json::Value {
     post_action(
@@ -50,11 +62,19 @@ fn run_game_sequence(client: &Client, seed: u64) -> serde_json::Value {
 
     // Play several cards
     for _ in 0..5 {
-        post_action(client, r#"{"action_type":"PlayCard","hand_index":0}"#);
+        let idx = first_card_in_hand(client);
+        post_action(
+            client,
+            &format!(r#"{{"action_type":"PlayCard","card_index":{idx}}}"#),
+        );
     }
 
     // Discard one card
-    post_action(client, r#"{"action_type":"DiscardCard","hand_index":0}"#);
+    let idx = first_card_in_hand(client);
+    post_action(
+        client,
+        &format!(r#"{{"action_type":"DiscardCard","card_index":{idx}}}"#),
+    );
 
     get_state(client)
 }
@@ -137,7 +157,11 @@ fn new_game_fully_resets_state() {
         &client,
         r#"{"action_type":"AcceptContract","tier_index":0,"contract_index":0}"#,
     );
-    post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
+    let idx = first_card_in_hand(&client);
+    post_action(
+        &client,
+        &format!(r#"{{"action_type":"PlayCard","card_index":{idx}}}"#),
+    );
 
     let state_mid = get_state(&client);
     // Verify game has progressed — tokens should have been produced

@@ -41,6 +41,18 @@ fn get_metrics(client: &Client) -> serde_json::Value {
     serde_json::from_str(&body).expect("valid json")
 }
 
+fn first_card_in_hand(client: &Client) -> usize {
+    let state = get_state(client);
+    state["cards"]
+        .as_array()
+        .expect("cards array")
+        .iter()
+        .enumerate()
+        .find(|(_, e)| e["counts"]["hand"].as_u64().unwrap_or(0) > 0)
+        .map(|(i, _)| i)
+        .expect("at least one card in hand")
+}
+
 // ---------------------------------------------------------------------------
 // Contract failure: harmful token limit
 // ---------------------------------------------------------------------------
@@ -54,10 +66,17 @@ fn play_until_resolution(client: &Client, max_plays: usize) -> Option<serde_json
         if state["active_contract"].is_null() {
             return None;
         }
-        let (_, result) = post_action(client, r#"{"action_type":"PlayCard","hand_index":0}"#);
+        let idx = first_card_in_hand(client);
+        let (_, result) = post_action(
+            client,
+            &format!(r#"{{"action_type":"PlayCard","card_index":{idx}}}"#),
+        );
         if result["outcome"] == "Error" {
-            let (_, result) =
-                post_action(client, r#"{"action_type":"DiscardCard","hand_index":0}"#);
+            let idx = first_card_in_hand(client);
+            let (_, result) = post_action(
+                client,
+                &format!(r#"{{"action_type":"DiscardCard","card_index":{idx}}}"#),
+            );
             let resolution = &result["detail"]["contract_resolution"];
             if !resolution.is_null() {
                 return Some(result);
@@ -136,7 +155,11 @@ fn contract_turns_tracked_in_state() {
     let state = get_state(&client);
     assert_eq!(state["contract_turns_played"], 0);
 
-    post_action(&client, r#"{"action_type":"DiscardCard","hand_index":0}"#);
+    let idx = first_card_in_hand(&client);
+    post_action(
+        &client,
+        &format!(r#"{{"action_type":"DiscardCard","card_index":{idx}}}"#),
+    );
 
     let state = get_state(&client);
     let turns = state["contract_turns_played"].as_u64().unwrap_or(0);

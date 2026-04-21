@@ -172,6 +172,42 @@ fn build_tutorial() -> Tutorial {
             },
             TutorialStep {
                 step: 9,
+                title: "Contract Failure".to_string(),
+                description: "Contracts can fail! If your harmful token balance exceeds a \
+                    HarmfulTokenLimit requirement, or if you exceed the TurnWindow's \
+                    max_turn, the contract fails immediately. You lose the contract \
+                    (no reward) and the market refills."
+                    .to_string(),
+                endpoint: "/state".to_string(),
+                method: "GET".to_string(),
+                example_body: None,
+                tips: vec![
+                    "Check contract requirements before accepting — HarmfulTokenLimit means you must manage those tokens.".to_string(),
+                    "Failure is not game-over — it just means no reward and a broken streak.".to_string(),
+                    "After failure, the adaptive system eases difficulty, giving you breathing room.".to_string(),
+                    "The contract_turns_played field in /state shows how many turns you've used.".to_string(),
+                ],
+            },
+            TutorialStep {
+                step: 10,
+                title: "Adaptive Balance".to_string(),
+                description: "The game adapts to your playstyle. Contracts you see in the \
+                    market are adjusted based on your behavior: if you produce a lot of \
+                    Heat, future contracts tighten Heat limits; if you stop producing \
+                    something, its pressure relaxes over time."
+                    .to_string(),
+                endpoint: "/metrics".to_string(),
+                method: "GET".to_string(),
+                example_body: None,
+                tips: vec![
+                    "Check adaptive_adjustments on each contract to see how requirements were modified.".to_string(),
+                    "The /metrics endpoint shows your current adaptive_pressure per token type.".to_string(),
+                    "Failing a contract relaxes all pressure — the system is forgiving.".to_string(),
+                    "Diversifying your strategy keeps pressure balanced across token types.".to_string(),
+                ],
+            },
+            TutorialStep {
+                step: 11,
                 title: "Manage Your Deck (Deckbuilding)".to_string(),
                 description: "Between contracts, you can use ReplaceCard to swap a card \
                     in your deck or discard (auto-selected: deck first, then discard) \
@@ -195,7 +231,7 @@ fn build_tutorial() -> Tutorial {
                 ],
             },
             TutorialStep {
-                step: 10,
+                step: 12,
                 title: "Browse Your Card Catalogue".to_string(),
                 description: "View all your cards and their location counts. Filter by \
                     tag to find specific card types."
@@ -210,7 +246,7 @@ fn build_tutorial() -> Tutorial {
                 ],
             },
             TutorialStep {
-                step: 11,
+                step: 13,
                 title: "Save and Replay".to_string(),
                 description: "The action history endpoint returns every action taken. \
                     Combined with the seed from /state, replaying these actions on a \

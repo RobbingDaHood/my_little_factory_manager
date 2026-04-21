@@ -343,6 +343,7 @@ fn contract_serialization_roundtrip() {
             )
             .expect("valid effect")],
         },
+        adaptive_adjustments: vec![],
     };
     let json = serde_json::to_string(&contract).expect("serialize Contract");
     let roundtrip: Contract = serde_json::from_str(&json).expect("deserialize Contract");
@@ -386,6 +387,14 @@ fn load_custom_game_rules_json() {
                 "per_tier_min": 2,
                 "per_tier_max": 4
             }
+        },
+        "adaptive_balance": {
+            "alpha": 0.3,
+            "decay_rate": 0.9,
+            "failure_relaxation": 0.7,
+            "max_tightening_pct": 0.30,
+            "max_increase_pct": 0.20,
+            "normalization_factor": 50.0
         }
     }"#;
     let config = load_game_rules_from_json(json).expect("parse custom game rules");

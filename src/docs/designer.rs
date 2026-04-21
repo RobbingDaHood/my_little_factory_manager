@@ -46,6 +46,8 @@ fn build_designer_guide() -> DesignerGuide {
             build_tier_system(),
             build_card_locations(),
             build_deckbuilding(),
+            build_contract_failure(),
+            build_adaptive_balance(),
             build_metrics_system(),
             build_configuration(),
             build_determinism(),
@@ -336,6 +338,106 @@ fn build_deckbuilding() -> DesignerSection {
     }
 }
 
+fn build_contract_failure() -> DesignerSection {
+    DesignerSection {
+        title: "Contract Failure".to_string(),
+        description: "Contracts can fail during gameplay. When a failure condition is \
+            triggered, the contract ends immediately with no reward, the streak resets, \
+            and the contract market refills. Failure is checked after every card play \
+            and discard, before checking for completion."
+            .to_string(),
+        entries: vec![
+            ReferenceEntry {
+                name: "HarmfulTokenLimit Violation".to_string(),
+                description: "If the player's current balance of a harmful token exceeds \
+                    the contract's HarmfulTokenLimit max_amount, the contract fails. Tokens \
+                    persist between contracts, so players must clean up before accepting \
+                    tight contracts."
+                    .to_string(),
+            },
+            ReferenceEntry {
+                name: "TurnWindow Exceeded".to_string(),
+                description: "If contract_turns_played exceeds the TurnWindow's max_turn, \
+                    the contract fails. The TurnWindow also has a min_turn that prevents \
+                    premature completion (the contract cannot complete before min_turn)."
+                    .to_string(),
+            },
+            ReferenceEntry {
+                name: "Failure-First Resolution".to_string(),
+                description: "If an action both satisfies completion requirements and \
+                    violates a failure condition, failure takes precedence. This prevents \
+                    timing exploits."
+                    .to_string(),
+            },
+            ReferenceEntry {
+                name: "ContractResolution".to_string(),
+                description: "The action response includes a contract_resolution field \
+                    with resolution_type 'Completed' (with contract and reward) or 'Failed' \
+                    (with contract and failure reason including which requirement was violated)."
+                    .to_string(),
+            },
+        ],
+    }
+}
+
+fn build_adaptive_balance() -> DesignerSection {
+    DesignerSection {
+        title: "Adaptive Balance System".to_string(),
+        description: "The adaptive system adjusts new contract requirements based on \
+            player behavior. It tracks gross token production per contract and applies \
+            an overlay to generated contracts, tightening areas the player dominates \
+            and relaxing areas they avoid."
+            .to_string(),
+        entries: vec![
+            ReferenceEntry {
+                name: "Pressure Tracking".to_string(),
+                description: "For each token type, an exponential moving average (EMA) \
+                    of gross production is maintained. Higher pressure means the player \
+                    is heavily relying on that token. Pressure decays for unused tokens."
+                    .to_string(),
+            },
+            ReferenceEntry {
+                name: "Contract Overlay".to_string(),
+                description: "After base requirements are rolled, the overlay adjusts: \
+                    HarmfulTokenLimit max_amount is reduced (up to 30%) for high-pressure \
+                    harmful tokens; OutputThreshold min_amount is increased (up to 20%) \
+                    for high-pressure beneficial tokens."
+                    .to_string(),
+            },
+            ReferenceEntry {
+                name: "Failure Relaxation".to_string(),
+                description: "When a contract fails, all token pressures are multiplied \
+                    by a relaxation factor (default 0.7), easing difficulty across the \
+                    board. Repeated failures compound the relaxation."
+                    .to_string(),
+            },
+            ReferenceEntry {
+                name: "Decay for Unused Strategies".to_string(),
+                description: "Token types not produced during a contract have their \
+                    pressure multiplied by the decay rate (default 0.9). Over several \
+                    contracts without use, pressure returns to near zero."
+                    .to_string(),
+            },
+            ReferenceEntry {
+                name: "Transparency".to_string(),
+                description: "Each generated contract includes an adaptive_adjustments \
+                    list with requirement_index, original_value, adjusted_value, and \
+                    adjustment_percent for every modified requirement. The /metrics \
+                    endpoint includes adaptive_pressure showing current pressure per token."
+                    .to_string(),
+            },
+            ReferenceEntry {
+                name: "Configuration".to_string(),
+                description: "Adaptive balance is controlled by game_rules.json: alpha \
+                    (EMA weight), decay_rate (per-contract decay), failure_relaxation \
+                    (multiplier on failure), max_tightening_pct (30%), max_increase_pct \
+                    (20%), normalization_factor (pressure-to-ratio divisor)."
+                    .to_string(),
+            },
+        ],
+    }
+}
+
 fn build_metrics_system() -> DesignerSection {
     DesignerSection {
         title: "Statistics & Metrics".to_string(),
@@ -346,8 +448,9 @@ fn build_metrics_system() -> DesignerSection {
         entries: vec![
             ReferenceEntry {
                 name: "Contract Metrics".to_string(),
-                description: "Total contracts completed, broken down per tier with \
-                    completion rates. Currently contracts cannot fail, so rate is always 100%."
+                description: "Total contracts completed and failed, broken down per tier \
+                    with completion rates (completed / attempted). Tracks attempted, \
+                    completed, and failed counts per tier."
                     .to_string(),
             },
             ReferenceEntry {
@@ -373,7 +476,7 @@ fn build_metrics_system() -> DesignerSection {
             ReferenceEntry {
                 name: "Streaks".to_string(),
                 description: "Current and best consecutive contract completion streaks. \
-                    Tracks momentum across the session."
+                    Contract failure resets the current streak to zero."
                     .to_string(),
             },
             ReferenceEntry {

@@ -4,6 +4,7 @@
 //! HarmfulTokenLimit requirements, requirement tier-gating, duplicate
 //! requirement stacking, and direction_sign correctness.
 
+use my_little_factory_manager::adaptive_balance::AdaptiveBalanceTracker;
 use my_little_factory_manager::config_loader::{load_game_rules, load_token_definitions};
 use my_little_factory_manager::contract_generation::{
     generate_contract_with_types, generate_effect_types, generate_reward_card_with_types,
@@ -443,6 +444,7 @@ fn harmful_token_limit_appears_in_generated_contracts() {
             &game_rules.contract_formulas,
             &token_defs,
             &effect_types,
+            &AdaptiveBalanceTracker::new(game_rules.adaptive_balance.clone()),
         );
 
         for req in &contract.requirements {
@@ -475,6 +477,7 @@ fn harmful_token_limit_targets_harmful_tokens_only() {
             &game_rules.contract_formulas,
             &token_defs,
             &effect_types,
+            &AdaptiveBalanceTracker::new(game_rules.adaptive_balance.clone()),
         );
 
         for req in &contract.requirements {
@@ -507,6 +510,7 @@ fn tier0_requirements_only_use_production_unit() {
             &game_rules.contract_formulas,
             &token_defs,
             &effect_types,
+            &AdaptiveBalanceTracker::new(game_rules.adaptive_balance.clone()),
         );
 
         for req in &contract.requirements {
@@ -551,6 +555,7 @@ fn higher_tier_contracts_can_reference_more_token_types() {
             &game_rules.contract_formulas,
             &token_defs,
             &effect_types,
+            &AdaptiveBalanceTracker::new(game_rules.adaptive_balance.clone()),
         );
         for req in &c0.requirements {
             match req {
@@ -569,6 +574,7 @@ fn higher_tier_contracts_can_reference_more_token_types() {
             &game_rules.contract_formulas,
             &token_defs,
             &effect_types,
+            &AdaptiveBalanceTracker::new(game_rules.adaptive_balance.clone()),
         );
         for req in &c10.requirements {
             match req {
@@ -614,7 +620,7 @@ fn contract_completion_subtracts_summed_requirements() {
     let mut completed = false;
     for _ in 0..200 {
         let result = post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
-        if result["detail"]["contract_completed"].is_object() {
+        if result["detail"]["contract_resolution"]["resolution_type"] == "Completed" {
             completed = true;
             break;
         }
@@ -640,6 +646,7 @@ fn same_seed_same_tier_produces_identical_contracts() {
             &game_rules.contract_formulas,
             &token_defs,
             &effect_types,
+            &AdaptiveBalanceTracker::new(game_rules.adaptive_balance.clone()),
         );
 
         let mut rng2 = Pcg64::seed_from_u64(42);
@@ -649,6 +656,7 @@ fn same_seed_same_tier_produces_identical_contracts() {
             &game_rules.contract_formulas,
             &token_defs,
             &effect_types,
+            &AdaptiveBalanceTracker::new(game_rules.adaptive_balance.clone()),
         );
 
         assert_eq!(
@@ -679,6 +687,7 @@ fn contracts_valid_across_many_tiers_and_seeds() {
                 &game_rules.contract_formulas,
                 &token_defs,
                 &effect_types,
+                &AdaptiveBalanceTracker::new(game_rules.adaptive_balance.clone()),
             );
 
             assert!(

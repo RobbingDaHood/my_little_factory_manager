@@ -47,6 +47,10 @@ fn build_hints() -> HintsGuide {
             "ReplaceCard costs a sacrifice from shelved copies — choose carefully which card to permanently destroy.".to_string(),
             "Reward cards always go to the shelf — use ReplaceCard to bring them into your active cycle.".to_string(),
             "Use /metrics to track your efficiency — lower average cards per contract means you're improving.".to_string(),
+            "Contracts can fail — check HarmfulTokenLimit requirements before accepting to avoid nasty surprises.".to_string(),
+            "After a contract failure, the adaptive system eases difficulty — it's okay to fail occasionally.".to_string(),
+            "Check adaptive_adjustments on offered contracts to see how the game is adapting to your style.".to_string(),
+            "Diversify your strategies to keep adaptive pressure balanced — specialization gets punished over time.".to_string(),
         ],
         tiers: vec![
             build_tier0_hints(),
@@ -135,10 +139,26 @@ fn build_tier1_hints() -> TierHints {
                     tokens reduce it. Choose based on your contract requirements."
                     .to_string(),
             },
+            Strategy {
+                name: "Manage harmful tokens proactively".to_string(),
+                description: "Harmful tokens persist between contracts. If you accept a \
+                    contract with a HarmfulTokenLimit and you're already near the cap, \
+                    you risk immediate failure. Clean up before accepting tight contracts."
+                    .to_string(),
+            },
+            Strategy {
+                name: "Adapt to the adaptive system".to_string(),
+                description: "If contracts keep tightening Heat limits, the game is \
+                    pushing you to diversify. Try strategies that produce less Heat, or \
+                    invest in Heat removal cards. The pressure relaxes once you shift."
+                    .to_string(),
+            },
         ],
         common_pitfalls: vec![
-            "Ignoring Heat accumulation — HarmfulTokenLimit contracts can fail if Heat spirals.".to_string(),
+            "Ignoring Heat accumulation — HarmfulTokenLimit contracts will fail if Heat spirals.".to_string(),
             "Only chasing raw ProductionUnit output — balance matters more than max output.".to_string(),
+            "Accepting contracts with tight limits when your harmful token balance is already high.".to_string(),
+            "Over-specializing in one strategy — the adaptive system gradually tightens requirements on dominant approaches.".to_string(),
         ],
         tips: vec![
             "Heat is the first harmful token introduced at tier 1.".to_string(),

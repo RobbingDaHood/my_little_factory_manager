@@ -225,7 +225,7 @@ fn market_refills_after_contract_completion() {
     let mut completed = false;
     for _ in 0..100 {
         let result = post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
-        if detail(&result)["contract_completed"].is_object() {
+        if detail(&result)["contract_resolution"]["resolution_type"] == "Completed" {
             completed = true;
             break;
         }
@@ -391,7 +391,7 @@ fn reward_card_added_to_shelved_on_completion() {
     let mut completed = false;
     for _ in 0..100 {
         let result = post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
-        if detail(&result)["contract_completed"].is_object() {
+        if detail(&result)["contract_resolution"]["resolution_type"] == "Completed" {
             completed = true;
             break;
         }

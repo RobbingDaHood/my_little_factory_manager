@@ -12,6 +12,7 @@
 use rand::RngCore;
 use rand_pcg::Pcg64;
 
+use crate::adaptive_balance::AdaptiveBalanceTracker;
 use crate::config::{
     CardEffectTypeConfig, CardEffectVariation, ContractFormulasConfig, ModifierRange,
     TierScalingFormula, TokenDefinitionsConfig, VariationDefaultsConfig,
@@ -387,10 +388,18 @@ pub fn generate_contract(
     tier: ContractTier,
     rng: &mut Pcg64,
     formulas: &ContractFormulasConfig,
+    adaptive_tracker: &AdaptiveBalanceTracker,
 ) -> Contract {
     let token_defs = load_token_definitions().expect("embedded token definitions must parse");
     let effect_types = generate_effect_types(&token_defs);
-    generate_contract_with_types(tier, rng, formulas, &token_defs, &effect_types)
+    generate_contract_with_types(
+        tier,
+        rng,
+        formulas,
+        &token_defs,
+        &effect_types,
+        adaptive_tracker,
+    )
 }
 
 /// Generate a contract using explicit effect types (for testing).
@@ -400,6 +409,7 @@ pub fn generate_contract_with_types(
     formulas: &ContractFormulasConfig,
     token_defs: &TokenDefinitionsConfig,
     effect_types: &[CardEffectTypeConfig],
+    adaptive_tracker: &AdaptiveBalanceTracker,
 ) -> Contract {
     let generators_at_contract_tier =
         available_requirement_generators(tier.0, formulas, effect_types);
@@ -416,6 +426,9 @@ pub fn generate_contract_with_types(
         requirements.push(generators[gen_idx](rng));
     }
 
+    // Apply adaptive balance overlay after base requirements are rolled
+    let adaptive_adjustments = adaptive_tracker.apply_overlay(&mut requirements);
+
     let reward_card =
         generate_reward_card_with_types(tier, requirements.len(), rng, token_defs, effect_types);
 
@@ -423,6 +436,7 @@ pub fn generate_contract_with_types(
         tier,
         requirements,
         reward_card,
+        adaptive_adjustments,
     }
 }
 

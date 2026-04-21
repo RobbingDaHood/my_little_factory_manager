@@ -203,30 +203,35 @@ The discard benefit is intentionally small — it prevents dead turns without re
 
 ---
 
-## 🔁 Adaptive System
+## 🔁 Adaptive Balance System
 
-The game tracks player behavior continuously, including:
+The game tracks player behavior continuously — specifically gross token production per contract. After each contract resolves (completed or failed), an **adaptive overlay** adjusts new contract requirements based on accumulated behavioral pressure.
 
-* cards played and their frequency
-* strategy patterns across contracts
-* contract outcomes (success, failure, efficiency)
-* token usage patterns
+### How It Works
 
-Based on this data:
+* **Pressure tracking**: For each token type, the system maintains a pressure score reflecting how heavily the player has been producing that token across recent contracts (exponential moving average).
+* **Contract overlay**: When new contracts are generated, the overlay tightens or relaxes requirements based on pressure:
+  * **HarmfulTokenLimit requirements** are tightened (lower max) when the player has been heavily producing that harmful token — forcing either better cleanup or a strategy shift.
+  * **OutputThreshold requirements** are increased (higher min) when the player has been heavily producing that beneficial token — demanding more from well-worn strategies.
+* **Decay for unused strategies**: Token types the player stops using see their pressure decay over time, gradually relaxing the requirements on those tokens.
+* **Failure relaxation**: When a contract fails, **all pressures are reduced**, easing overall difficulty across the board. This prevents frustration spirals and gives struggling players breathing room.
 
-* frequently used strategies become **less efficient** over time within contracts
-* previously underused mechanics gradually become **more valuable**
+### Transparency
 
-This creates a shifting strategic landscape where long-term optimization requires **adaptation rather than repetition**. The player cannot find a single dominant strategy and ride it indefinitely — the system gently pushes toward variety and exploration.
+The adaptive system is fully transparent to the player:
+
+* Each generated contract carries an `adaptive_adjustments` list showing exactly which requirements were modified, the original value, adjusted value, and the percentage change.
+* The `/metrics` endpoint includes an `adaptive_pressure` snapshot showing current pressure levels per token type.
 
 ### Design Intent
 
 The adaptive system is not punitive. Its purpose is to:
 
 * reward players who explore multiple approaches
-* prevent the game from becoming solvable with a single optimal path
+* prevent the game from becoming solvable with a single dominant strategy
 * create a sense of a living, responsive factory environment
 * ensure that strategic depth scales with player skill and experience
+* keep difficulty manageable by easing pressure after failures
 
 ---
 
@@ -288,7 +293,7 @@ The factory is never "solved." Each new contract, each shift in the adaptive sys
 Items that are not yet implemented but may be addressed in future phases:
 
 * **Card entry lookup performance** — currently the card collection is a `Vec<CardEntry>` with linear scan for lookups by card hash. With N unique card types, lookup is O(N). Late game might have ~100–500 unique cards; linear scan on small in-memory structs is fast up to ~10,000+ entries. If card variety grows into thousands, consider switching to a `HashMap` keyed by card hash for O(1) lookups.
-* **Additional requirement types** — Future phases may introduce requirement types beyond `OutputThreshold` and `HarmfulTokenLimit`, such as `CardTagRestriction` and `TurnWindow`.
+* **Additional requirement types** — Future phases may introduce requirement types beyond `OutputThreshold`, `HarmfulTokenLimit`, and `TurnWindow`, such as `CardTagRestriction`.
 
 ---
 

@@ -12,6 +12,7 @@ use rocket_okapi::openapi_get_routes;
 use rocket_okapi::swagger_ui::{make_swagger_ui, SwaggerUIConfig};
 
 pub mod action_log;
+pub mod adaptive_balance;
 pub mod config;
 pub mod config_loader;
 pub mod contract_generation;

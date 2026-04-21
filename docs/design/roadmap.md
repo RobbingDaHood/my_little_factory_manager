@@ -261,17 +261,20 @@ The existing [my_little_card_game](https://github.com/RobbingDaHood/my_little_ca
 
 ---
 
-## Phase 9: Advanced Contract Tiers & Polish
+## Phase 9: Advanced Contract Tiers & Polish ✅
 
-**Goal**: High-tier contracts with deeply multi-requirement puzzles. Polish and quality-of-life improvements.
+**Goal**: High-tier contracts with deeply multi-requirement puzzles, unified range-based requirement types, and quality-of-life improvements.
 
 **Deliverables**:
-- Tier 4+ contracts with 3–5+ simultaneous requirements
-- Complex requirement combinations that interact with each other
-- Powerful player action cards with multi-effect combinations
-- Config hash verification (`/version` endpoint includes config hash)
-- Performance optimization
-- Documentation polish
+- ✅ **BREAKING: TokenRequirement unification** — replaced `OutputThreshold` and `HarmfulTokenLimit` with a single `TokenRequirement { token_type, min: Option<u32>, max: Option<u32> }` variant; `min` = completion threshold (beneficial), `max` = failure cap (harmful); both may be set simultaneously at higher tiers
+- ✅ **BREAKING: CardTagConstraint** — replaced `CardTagRestriction` with unified `CardTagConstraint { tag, min: Option<u32>, max: Option<u32> }` (ban = max 0, must-play = min N, range = both); unlocks at tier 12 (Waste→QP gap)
+- ✅ **BREAKING: PlayCard possible_actions** — `valid_hand_index_range` replaced by `valid_hand_indices: Vec<usize>` listing only currently-playable cards (respects CardTagConstraint bans at runtime)
+- ✅ **CardTagConstraint enforcement** — `cards_played_per_tag_contract` tracking in `GameState`; banned tag plays blocked in `handle_play_card()`; min tag count enforced in `all_requirements_met()`; new `CardTagBanned` failure reason
+- ✅ **TurnWindow generation** — added `generate_turn_window()` with formula config (`min_turns_base`, `window_size_base`, per-tier scaling); unlocks at tier 6 (Energy→Waste gap)
+- ✅ **CardTagConstraint generation** — added `generate_card_tag_constraint()` with formula config; gated by `unlocked_card_tags()` to only use tags with available cards at the contract tier
+- ✅ **Performance: effect type caching** — `token_defs` + `effect_types` cached in `GameState::new_with_rules()`; eliminated per-contract config reload
+- ✅ **Config hash in /version** — `config_hash: String` field added to `VersionInfo`; FNV-1a 64-bit XOR hash of both embedded JSON configs, returned as 16-char hex
+- ✅ **Documentation polish** — tutorial, hints (added tier 6 and tier 12 sections), designer guide, and README updated with new requirement type names, unlock tiers, and enforcement semantics
 
 **Reference files from card game**:
 - `src/version.rs` — version + config hash endpoint
@@ -279,7 +282,26 @@ The existing [my_little_card_game](https://github.com/RobbingDaHood/my_little_ca
 
 ---
 
-## Deferred Items
+## Phase 10: Game Balancing
+
+**Goal**: Fine-tune the game so that simple, repetitive strategies perform measurably worse than adaptive, multi-dimensional strategies. Ensure the difficulty curve feels fair and purposeful across all tiers.
+
+**Deliverables**:
+- Playtesting sessions to identify degenerate strategies (e.g., pure production spam, single-tag dominance)
+- Tune adaptive balance parameters (`alpha`, `decay_rate`, `failure_relaxation`, `max_tightening_pct`, `max_increase_pct`, `normalization_factor`) so a single dominant strategy creates noticeably harder contracts within 5–10 contracts
+- Add balance tests: repeated single-strategy simulations should produce measurably rising pressure and harder contract requirements
+- Review TurnWindow and CardTagConstraint balance: ensure they are genuinely challenging without being arbitrary punishments
+- Update designer docs, hints, and vision if balance changes affect documented behavior
+
+**Known limitation of current pressure model**: The current pressure signal tracks gross token production per token type. In a well-developed deck, most token types will be in regular use simultaneously — so nearly all token pressures grow together. The system may behave more like a global difficulty escalator than a targeted strategy-detection mechanism, tightening requirements on nearly all tokens at once rather than selectively penalizing the dominant strategy.
+
+**Strategy identification improvement investigation**: If the above limitation proves significant in testing, explore replacing or supplementing the token-production pressure signal with a card-tag-based strategy dominance model:
+- Track per-contract distribution of cards played by tag (Production, Transformation, QualityControl, SystemAdjustment)
+- Compute a dominance score for the leading tag (e.g., Gini coefficient or top-tag share vs total)
+- Apply elevated pressure only to requirements associated with the dominant strategy, not uniformly across all tokens
+- This correctly distinguishes "spam Production cards" from a balanced mixed approach and provides targeted resistance
+
+---
 
 These are intentionally out of scope and will not be added:
 

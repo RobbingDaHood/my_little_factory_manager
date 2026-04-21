@@ -11,9 +11,9 @@ use rand_pcg::Pcg64;
 
 use crate::action_log::{ActionLog, PlayerAction};
 use crate::adaptive_balance::AdaptiveBalanceTracker;
-use crate::config::GameRulesConfig;
-use crate::config_loader::load_game_rules;
-use crate::contract_generation::generate_contract;
+use crate::config::{CardEffectTypeConfig, GameRulesConfig, TokenDefinitionsConfig};
+use crate::config_loader::{load_game_rules, load_token_definitions};
+use crate::contract_generation::{generate_contract_with_types, generate_effect_types};
 use crate::metrics::{MetricsTracker, SessionMetrics};
 use crate::starter_cards::create_starter_deck;
 use crate::types::{
@@ -202,6 +202,10 @@ pub struct GameState {
     // Config
     rules: GameRulesConfig,
 
+    // Precomputed effect types (cached at init for performance)
+    token_defs: TokenDefinitionsConfig,
+    effect_types: Vec<CardEffectTypeConfig>,
+
     // Action log
     action_log: ActionLog,
 
@@ -246,6 +250,9 @@ impl GameState {
             draw_from_deck(&mut cards, &mut rng);
         }
 
+        let token_defs = load_token_definitions().expect("embedded token definitions must parse");
+        let effect_types = generate_effect_types(&token_defs);
+
         let mut state = Self {
             cards,
             tokens: HashMap::new(),
@@ -255,6 +262,8 @@ impl GameState {
             rng,
             seed: actual_seed,
             rules: rules.clone(),
+            token_defs,
+            effect_types,
             action_log: ActionLog::new(),
             metrics_tracker: MetricsTracker::new(),
             adaptive_tracker: AdaptiveBalanceTracker::new(rules.adaptive_balance.clone()),
@@ -789,10 +798,12 @@ impl GameState {
 
             let new_contracts: Vec<Contract> = (0..needed)
                 .map(|_| {
-                    generate_contract(
+                    generate_contract_with_types(
                         tier,
                         &mut self.rng,
                         &self.rules.contract_formulas,
+                        &self.token_defs,
+                        &self.effect_types,
                         &self.adaptive_tracker,
                     )
                 })

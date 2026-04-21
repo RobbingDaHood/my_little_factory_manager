@@ -333,8 +333,20 @@ pub enum ContractRequirementKind {
         #[serde(skip_serializing_if = "Option::is_none")]
         max: Option<u32>,
     },
-    /// Contract must be completed between turn `min_turn` and `max_turn` (inclusive).
-    TurnWindow { min_turn: u32, max_turn: u32 },
+    /// Contract turn-window constraint with optional lower and upper bounds.
+    ///
+    /// - `min_turn: Some(n)` — contract cannot complete before turn n (must wait).
+    /// - `max_turn: Some(m)` — exceeding turn m is an immediate contract failure.
+    /// - Both may be set for a strict window; either may be omitted for a one-sided constraint.
+    ///
+    /// Generation: three tier-gated variants unlock progressively.
+    /// Only-Max (deadline) unlocks first; Only-Min (earliest-start) later; Both (window) last.
+    TurnWindow {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        min_turn: Option<u32>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        max_turn: Option<u32>,
+    },
 }
 
 /// A concrete contract with requirements and a visible reward card.

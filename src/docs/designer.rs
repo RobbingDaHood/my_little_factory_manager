@@ -189,10 +189,12 @@ fn build_contract_requirements() -> DesignerSection {
             },
             ReferenceEntry {
                 name: "TurnWindow (tier 6+)".to_string(),
-                description: "The contract must be completed between min_turn and \
-                    max_turn (inclusive). Creates time pressure and rewards efficient \
-                    play. min_turn blocks premature completion; max_turn causes immediate \
-                    failure if exceeded."
+                description: "A turn-window constraint with optional lower and upper bounds. \
+                    Three variants unlock progressively: Only-Max (tier 6) — max_turn only, \
+                    immediate failure if exceeded; Only-Min (tier 10) — min_turn only, \
+                    prevents premature completion; Both (tier 14) — full window. \
+                    Window size decreases with tier, making high-tier contracts harder. \
+                    Both bounds are optional and omitted from JSON when absent."
                     .to_string(),
             },
             ReferenceEntry {
@@ -359,9 +361,9 @@ fn build_contract_failure() -> DesignerSection {
             },
             ReferenceEntry {
                 name: "TurnWindow Exceeded".to_string(),
-                description: "If contract_turns_played exceeds the TurnWindow's max_turn, \
-                    the contract fails. The TurnWindow also has a min_turn that prevents \
-                    premature completion (the contract cannot complete before min_turn)."
+                description: "If contract_turns_played exceeds a TurnWindow's max_turn, \
+                    the contract fails immediately. Only-Min TurnWindow contracts (min_turn only) \
+                    cannot exceed this failure — they only block premature completion."
                     .to_string(),
             },
             ReferenceEntry {

@@ -211,14 +211,26 @@ fn card_tag_constraint_serialization_roundtrip() {
 
 #[test]
 fn turn_window_serialization_roundtrip() {
-    let req = ContractRequirementKind::TurnWindow {
-        min_turn: 3,
-        max_turn: 8,
-    };
-    let json = serde_json::to_string(&req).expect("serialize TurnWindow");
-    let roundtrip: ContractRequirementKind =
-        serde_json::from_str(&json).expect("deserialize TurnWindow");
-    assert_eq!(req, roundtrip);
+    let variants = vec![
+        ContractRequirementKind::TurnWindow {
+            min_turn: None,
+            max_turn: Some(8),
+        },
+        ContractRequirementKind::TurnWindow {
+            min_turn: Some(3),
+            max_turn: None,
+        },
+        ContractRequirementKind::TurnWindow {
+            min_turn: Some(3),
+            max_turn: Some(11),
+        },
+    ];
+    for req in &variants {
+        let json = serde_json::to_string(req).expect("serialize TurnWindow");
+        let roundtrip: ContractRequirementKind =
+            serde_json::from_str(&json).expect("deserialize TurnWindow");
+        assert_eq!(req, &roundtrip);
+    }
 }
 
 // ---------------------------------------------------------------------------

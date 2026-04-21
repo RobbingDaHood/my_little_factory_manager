@@ -176,10 +176,10 @@ fn build_tutorial() -> Tutorial {
             TutorialStep {
                 step: 9,
                 title: "Contract Failure".to_string(),
-                description: "Contracts can fail! If your token balance exceeds a \
-                    TokenRequirement max bound (formerly HarmfulTokenLimit), if you exceed \
-                    the TurnWindow's max_turn, the contract fails immediately. You lose \
-                    the contract (no reward) and the market refills. \
+                description: "Some contracts have a turn-window constraint with optional \
+                    lower and upper bounds. A deadline-only contract (max_turn set) fails if \
+                    you exceed max_turn. An earliest-start contract (min_turn set) cannot \
+                    complete before min_turn. A full window contract has both. \
                     At tier 12+, playing a banned tag (CardTagConstraint max=0) is blocked \
                     outright — the server rejects the action before it can cause failure."
                     .to_string(),
@@ -189,7 +189,8 @@ fn build_tutorial() -> Tutorial {
                 tips: vec![
                     "Check TokenRequirement max bounds before accepting — exceeding them fails the contract.".to_string(),
                     "TurnWindow max_turn is a hard deadline — exceeding it is an immediate failure.".to_string(),
-                    "At tier 12+, check valid_hand_indices in /actions/possible to avoid banned tag plays.".to_string(),
+                    "TurnWindow min_turn prevents rushing — the contract cannot complete before that turn.".to_string(),
+                    "At tier 12+, check valid_card_indices in /actions/possible to avoid banned tag plays.".to_string(),
                     "Failure is not game-over — it just means no reward and a broken streak.".to_string(),
                     "After failure, the adaptive system eases difficulty, giving you breathing room.".to_string(),
                     "The contract_turns_played field in /state shows how many turns you've used.".to_string(),

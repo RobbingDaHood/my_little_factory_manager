@@ -174,10 +174,11 @@ fn build_tier1_hints() -> TierHints {
 fn build_tier6_hints() -> TierHints {
     TierHints {
         tier: 6,
-        overview: "Tier 6 introduces TurnWindow requirements. Contracts now have a turn \
-            budget: you must complete the contract between min_turn and max_turn. \
-            Exceeding max_turn is an immediate contract failure. This rewards efficient \
-            deck construction and disciplined card selection."
+        overview: "Tier 6 introduces TurnWindow requirements in three progressive variants. \
+            Only-Max (deadline): max_turn set — exceeding it fails immediately. \
+            Only-Min (earliest-start, unlocks at tier 10): min_turn set — cannot complete early. \
+            Both (window, unlocks at tier 14): must complete between turns. \
+            Windows narrow at higher tiers, rewarding efficient deck construction."
             .to_string(),
         strategies: vec![
             Strategy {
@@ -190,27 +191,27 @@ fn build_tier6_hints() -> TierHints {
             Strategy {
                 name: "Know your expected turns-to-complete".to_string(),
                 description: "Before accepting a TurnWindow contract, estimate how many \
-                    turns your current deck needs. If the window is 8-14 turns and you \
+                    turns your current deck needs. If the deadline is 8 turns and you \
                     typically need 12, you have little margin — consider a different contract."
                     .to_string(),
             },
             Strategy {
-                name: "Balance speed and safety".to_string(),
-                description: "min_turn prevents rushing — you can't complete on turn 1 \
-                    with a lucky hand. max_turn is the real pressure. Choose contracts \
-                    with larger windows early, and tighter windows as your deck improves."
+                name: "Balance speed and patience".to_string(),
+                description: "Only-Min contracts (min_turn only) reward patience — you cannot \
+                    rush them. Only-Max is pure speed pressure. Full-window contracts require both. \
+                    Choose the variant that fits your current deck's cadence."
                     .to_string(),
             },
         ],
         common_pitfalls: vec![
-            "Accepting a TurnWindow contract with a narrow window before optimizing your deck.".to_string(),
+            "Accepting a tight-deadline contract before optimizing your deck.".to_string(),
             "Forgetting to check contract_turns_played in /state — missing how close you are to max_turn.".to_string(),
             "Playing cards that don't contribute to completion — every turn matters with a window constraint.".to_string(),
         ],
         tips: vec![
             "TurnWindow unlocks at tier 6 (Energy→Waste gap in the token unlock schedule).".to_string(),
             "contract_turns_played in /state shows how many turns you've used.".to_string(),
-            "min_turn is a soft gate — satisfying all other requirements before min_turn still waits.".to_string(),
+            "Only-Min contracts (min_turn only) cannot fail from the turn constraint — only from token bounds.".to_string(),
             "max_turn is hard — exceeding it immediately fails the contract with no reward.".to_string(),
         ],
     }

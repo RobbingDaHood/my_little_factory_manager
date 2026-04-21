@@ -377,9 +377,9 @@ fn available_requirement_generators(
         }
     }
 
-    // TurnWindow generator — unlocks at a specific tier in the Energy→Waste gap
+    // TurnWindow generator — unlocks in the Energy→Waste gap
     if let Some(tw_config) = formulas.turn_window.as_ref() {
-        if tier >= tw_config.unlock_tier {
+        if tier >= tw_config.unlock_tier_only_max {
             let tw = tw_config.clone();
             generators.push(Box::new(move |rng: &mut Pcg64| {
                 generate_turn_window(tier, &tw, rng)
@@ -408,11 +408,42 @@ fn generate_turn_window(
     config: &TurnWindowFormulaConfig,
     rng: &mut Pcg64,
 ) -> ContractRequirementKind {
-    let min_low = config.min_turns_base + tier * config.min_turns_per_tier;
-    let min_turn = min_low + (rng.next_u32() % (tier + 1));
-    let window_size = config.window_size_base + tier * config.window_size_per_tier;
-    let max_turn = min_turn + window_size;
-    ContractRequirementKind::TurnWindow { min_turn, max_turn }
+    // Select variant based on which have unlocked at this tier.
+    let variant = if tier >= config.unlock_tier_both {
+        rng.next_u32() % 3
+    } else if tier >= config.unlock_tier_only_min {
+        rng.next_u32() % 2
+    } else {
+        0 // Only-Max
+    };
+
+    // min_turn rolls in [0, min(base + tier×per_tier, max_min_turn)].
+    // 0 is always possible so the contract may start immediately.
+    let min_turn_max =
+        (config.min_turns_base + tier * config.min_turns_per_tier).min(config.max_min_turn);
+    let min_turn = rng.next_u32() % (min_turn_max + 1);
+
+    // window_size decreases with tier (harder at higher tiers) but always has ≥2 choices.
+    let extra_range = config.window_size_extra_base.saturating_sub(
+        tier.saturating_sub(config.unlock_tier_only_max)
+            * config.window_size_extra_decrease_per_tier,
+    );
+    let window_size = config.window_size_min + rng.next_u32() % (extra_range.max(1) + 1);
+
+    match variant {
+        0 => ContractRequirementKind::TurnWindow {
+            min_turn: None,
+            max_turn: Some(window_size),
+        },
+        1 => ContractRequirementKind::TurnWindow {
+            min_turn: Some(min_turn),
+            max_turn: None,
+        },
+        _ => ContractRequirementKind::TurnWindow {
+            min_turn: Some(min_turn),
+            max_turn: Some(min_turn + window_size),
+        },
+    }
 }
 
 fn generate_card_tag_constraint(

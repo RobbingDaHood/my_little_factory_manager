@@ -45,17 +45,32 @@ pub struct ContractFormulasConfig {
 
 /// Formula config for TurnWindow requirement generation.
 ///
-/// `min_turn` = base + tier × per_tier (rolled uniformly in that range).
-/// `max_turn` = min_turn + window_size (rolled from [window_size_base, window_size_base + tier × window_size_per_tier]).
+/// Three variants unlock progressively:
+///   1. Only-Max (deadline): `max_turn` only — must complete before turn X. Unlocks at `unlock_tier_only_max`.
+///   2. Only-Min (earliest-start): `min_turn` only — must not complete before turn X. Unlocks at `unlock_tier_only_min`.
+///   3. Both (window): `min_turn` and `max_turn` — must complete between turns. Unlocks at `unlock_tier_both`.
+///
+/// `min_turn` rolls uniformly in `[0, min(base + tier×per_tier, max_min_turn)]` — 0 is always possible.
+/// `window_size` rolls in `[window_size_min, window_size_min + extra]` where `extra` decreases with tier,
+/// so higher tiers have tighter (harder) windows. `extra` is always ≥1 to ensure at least two possible values.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(crate = "rocket::serde")]
 pub struct TurnWindowFormulaConfig {
-    /// First tier at which TurnWindow requirements can appear.
-    pub unlock_tier: u32,
+    /// Tier at which the Only-Max (deadline) variant unlocks.
+    pub unlock_tier_only_max: u32,
+    /// Tier at which the Only-Min (earliest-start) variant unlocks.
+    pub unlock_tier_only_min: u32,
+    /// Tier at which the Both (window) variant unlocks.
+    pub unlock_tier_both: u32,
     pub min_turns_base: u32,
     pub min_turns_per_tier: u32,
-    pub window_size_base: u32,
-    pub window_size_per_tier: u32,
+    /// Maximum value min_turn can reach (caps the range to avoid boring wait turns).
+    pub max_min_turn: u32,
+    /// Minimum window size (turns) — the floor for all window rolls.
+    pub window_size_min: u32,
+    /// Extra window width added at the unlock tier; decreases by `window_size_extra_decrease_per_tier` each tier.
+    pub window_size_extra_base: u32,
+    pub window_size_extra_decrease_per_tier: u32,
 }
 
 /// Formula config for CardTagConstraint requirement generation.

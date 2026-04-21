@@ -1013,10 +1013,14 @@ impl GameState {
 
         // Check TurnWindow max_turn
         for req in &contract.requirements {
-            if let ContractRequirementKind::TurnWindow { max_turn, .. } = req {
-                if self.contract_turns_played > *max_turn {
+            if let ContractRequirementKind::TurnWindow {
+                max_turn: Some(max),
+                ..
+            } = req
+            {
+                if self.contract_turns_played > *max {
                     return Some(ContractFailureReason::TurnWindowExceeded {
-                        max_turn: *max_turn,
+                        max_turn: *max,
                         current_turn: self.contract_turns_played,
                     });
                 }
@@ -1048,8 +1052,12 @@ impl GameState {
 
         // TurnWindow min_turn: prevent premature completion
         for req in &contract.requirements {
-            if let ContractRequirementKind::TurnWindow { min_turn, .. } = req {
-                if self.contract_turns_played < *min_turn {
+            if let ContractRequirementKind::TurnWindow {
+                min_turn: Some(min),
+                ..
+            } = req
+            {
+                if self.contract_turns_played < *min {
                     return false;
                 }
             }

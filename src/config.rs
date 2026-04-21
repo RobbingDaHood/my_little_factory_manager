@@ -37,6 +37,36 @@ pub struct GeneralRules {
 pub struct ContractFormulasConfig {
     pub output_threshold: TierScalingFormula,
     pub harmful_token_limit: TierScalingFormula,
+    #[serde(default)]
+    pub turn_window: Option<TurnWindowFormulaConfig>,
+    #[serde(default)]
+    pub card_tag_constraint: Option<CardTagConstraintFormulaConfig>,
+}
+
+/// Formula config for TurnWindow requirement generation.
+///
+/// `min_turn` = base + tier × per_tier (rolled uniformly in that range).
+/// `max_turn` = min_turn + window_size (rolled from [window_size_base, window_size_base + tier × window_size_per_tier]).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(crate = "rocket::serde")]
+pub struct TurnWindowFormulaConfig {
+    /// First tier at which TurnWindow requirements can appear.
+    pub unlock_tier: u32,
+    pub min_turns_base: u32,
+    pub min_turns_per_tier: u32,
+    pub window_size_base: u32,
+    pub window_size_per_tier: u32,
+}
+
+/// Formula config for CardTagConstraint requirement generation.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(crate = "rocket::serde")]
+pub struct CardTagConstraintFormulaConfig {
+    /// First tier at which CardTagConstraint requirements can appear.
+    pub unlock_tier: u32,
+    /// Base count used for min/max bounds (scaled by tier).
+    pub base_count: u32,
+    pub per_tier_count: u32,
 }
 
 /// A linear tier-scaling formula: for a given tier, produces a range

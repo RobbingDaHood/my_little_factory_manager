@@ -18,6 +18,18 @@
             "base_max": 15,
             "per_tier_min": 2,
             "per_tier_max": 4
+        },
+        "turn_window": {
+            "unlock_tier": 6,
+            "min_turns_base": 3,
+            "min_turns_per_tier": 1,
+            "window_size_base": 6,
+            "window_size_per_tier": 2
+        },
+        "card_tag_constraint": {
+            "unlock_tier": 12,
+            "base_count": 1,
+            "per_tier_count": 1
         }
     },
     "adaptive_balance": {

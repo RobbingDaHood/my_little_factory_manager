@@ -287,12 +287,7 @@ The existing [my_little_card_game](https://github.com/RobbingDaHood/my_little_ca
 
 **Goal**: Fine-tune the game so that simple, repetitive strategies perform measurably worse than adaptive, multi-dimensional strategies. Ensure the difficulty curve feels fair and purposeful across all tiers.
 
-**Deliverables**:
-- Playtesting sessions to identify degenerate strategies (e.g., pure production spam, single-tag dominance)
-- Tune adaptive balance parameters (`alpha`, `decay_rate`, `failure_relaxation`, `max_tightening_pct`, `max_increase_pct`, `normalization_factor`) so a single dominant strategy creates noticeably harder contracts within 5–10 contracts
-- Add balance tests: repeated single-strategy simulations should produce measurably rising pressure and harder contract requirements
-- Review TurnWindow and CardTagConstraint balance: ensure they are genuinely challenging without being arbitrary punishments
-- Update designer docs, hints, and vision if balance changes affect documented behavior
+**Success metric**: Total actions from game start to first contract completion at milestone tiers 10, 20, 30, 40, and 50 (0-indexed). Measured by automated strategy simulation tests under `tests/simulation/` (run with `cargo test --features simulation --test simulation --release -- --nocapture`).
 
 **Known limitation of current pressure model**: The current pressure signal tracks gross token production per token type. In a well-developed deck, most token types will be in regular use simultaneously — so nearly all token pressures grow together. The system may behave more like a global difficulty escalator than a targeted strategy-detection mechanism, tightening requirements on nearly all tokens at once rather than selectively penalizing the dominant strategy.
 
@@ -301,6 +296,74 @@ The existing [my_little_card_game](https://github.com/RobbingDaHood/my_little_ca
 - Compute a dominance score for the leading tag (e.g., Gini coefficient or top-tag share vs total)
 - Apply elevated pressure only to requirements associated with the dominant strategy, not uniformly across all tokens
 - This correctly distinguishes "spam Production cards" from a balanced mixed approach and provides targeted resistance
+
+---
+
+### Phase 10.1 — Simulation Infrastructure & SimpleFirst Strategy ✅
+
+**Goal**: Create the simulation framework and one simple strategy. Report how far it gets at each tier milestone, and what blocks it.
+
+**Deliverables**:
+- `tests/simulation/` — simulation test binary (feature-gated: `--features simulation`)
+  - `game_driver.rs` — drives game sessions via in-process Rocket test client
+  - `runner.rs` — runs multiple seeds, aggregates milestone stats
+  - `strategies/mod.rs` — `Strategy` trait
+  - `strategies/simple_first.rs` — `SimpleFirstStrategy`
+  - `main.rs` — `#[test]` entry point with soft blocker reporting
+- `docs/design/roadmap.md` — this file updated with Phase 10 sub-phases
+
+**SimpleFirstStrategy behaviour**: always accepts the highest available tier contract, plays the first valid card, discards when no card can be played, never deckbuilds.
+
+**Finding from Phase 10.1**: `SimpleFirstStrategy` reaches **tier 3** and stalls permanently. After completing ~30–40 contracts (tiers 0–3), it accepts a contract whose token requirements the starter deck cannot fulfill. Because no `TurnWindow` constraint exists before tier 6, the contract neither completes nor fails — the game loop runs indefinitely on that single contract. This reveals two balance issues to address in Phase 10.5: (1) the starter deck should provide at least a minimal path through early tiers, and (2) a TurnWindow should apply at all tiers so uncompletable contracts eventually time out.
+
+---
+
+### Phase 10.2 — Multiple Simple Strategies
+
+**Goal**: Add 2–3 more simple strategies for comparison. Each reads only `possible_actions`, applies no contract-aware heuristics, and never deckbuilds.
+
+**Strategies to add**:
+- `RandomStrategy` — picks uniformly at random from all valid actions (seeded RNG for reproducibility)
+- `MaxProductionStrategy` — plays the card with the highest total output token production (by index as a tie-breaker); falls back to random
+- `AlwaysDiscardStrategy` — always discards instead of playing (worst-case baseline)
+
+**Expected outcome**: All simple strategies stall in the same tier range (0–5). `RandomStrategy` ≈ `SimpleFirst`; `MaxProduction` slightly better; `AlwaysDiscard` much worse or never advances.
+
+---
+
+### Phase 10.3 — First Advanced Strategy
+
+**Goal**: One strategy that reads contract requirements and makes smarter decisions.
+
+**Strategy: `ContractAwareStrategy`**:
+- Reads active contract token requirements from `GET /state`
+- Prefers cards that produce tokens the active contract needs
+- Avoids cards whose production would trigger `HarmfulTokenLimitExceeded`
+- Performs deckbuilding: replaces starter cards with reward cards between contracts
+
+**Expected outcome**: Reaches higher tiers than all simple strategies; demonstrates that the game is beatable with informed play.
+
+---
+
+### Phase 10.4 — Multiple Advanced Strategies
+
+**Additional advanced strategies**:
+- `TierFocusStrategy` — always accepts the highest available tier contract, reads requirements, prioritises matching cards
+- `SafePlayStrategy` — monitors harmful token levels vs. contract limits; discards instead of playing cards that would cause failures
+- `DeckbuilderStrategy` — extends `ContractAware` with aggressive deckbuilding: prioritises reward cards that unlock new token types
+
+---
+
+### Phase 10.5 — Iterative Balancing
+
+**Goal**: Use simulation results to tune adaptive balance parameters and verify the intended strategy hierarchy.
+
+**Balancing targets**:
+- Simple strategies should reach noticeably lower tiers per unit of actions than advanced strategies
+- Advanced strategies should show measurably better tier-milestone action counts (≥20% faster to tier 20+)
+- Parameters to tune: `alpha`, `decay_rate`, `failure_relaxation`, `max_tightening_pct`, `max_increase_pct`, `normalization_factor` in `game_rules.json`
+- Address Phase 10.1 finding: add `TurnWindow` constraints at all tiers (not just tier 6+) so no contract can run indefinitely
+- Add regression assertions once a good balance point is found (similar to card game's win-rate band assertions)
 
 ---
 

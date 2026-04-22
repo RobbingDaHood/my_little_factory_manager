@@ -11,15 +11,15 @@ use rand_pcg::Pcg64;
 
 use crate::action_log::{ActionLog, PlayerAction};
 use crate::adaptive_balance::AdaptiveBalanceTracker;
-use crate::config::GameRulesConfig;
-use crate::config_loader::load_game_rules;
-use crate::contract_generation::generate_contract;
+use crate::config::{CardEffectTypeConfig, GameRulesConfig, TokenDefinitionsConfig};
+use crate::config_loader::{load_game_rules, load_token_definitions};
+use crate::contract_generation::{generate_contract_with_types, generate_effect_types};
 use crate::metrics::{MetricsTracker, SessionMetrics};
 use crate::starter_cards::create_starter_deck;
 use crate::types::{
-    add_card_to_entries, CardEffect, CardEntry, CardLocation, Contract, ContractFailureReason,
-    ContractRequirementKind, ContractResolution, ContractTier, PlayerActionCard, TierContracts,
-    TokenAmount, TokenType,
+    add_card_to_entries, CardEffect, CardEntry, CardLocation, CardTag, Contract,
+    ContractFailureReason, ContractRequirementKind, ContractResolution, ContractTier,
+    PlayerActionCard, TierContracts, TokenAmount, TokenType,
 };
 
 use rocket::serde::Serialize;
@@ -74,7 +74,7 @@ pub enum ActionError {
         contract_index: usize,
     },
     NoActiveContract,
-    InvalidHandIndex {
+    InvalidCardIndex {
         index: usize,
     },
     InsufficientTokens {
@@ -110,6 +110,10 @@ pub enum ActionError {
     SacrificeIsTarget {
         index: usize,
     },
+    /// The card's tag is banned or limited by an active CardTagConstraint requirement.
+    CardTagBanned {
+        tag: CardTag,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -126,6 +130,9 @@ pub struct GameStateView {
     pub active_contract: Option<Contract>,
     pub contract_turns_played: u32,
     pub offered_contracts: Vec<TierContracts>,
+    /// Cards played per tag during the current contract (empty when no contract is active).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cards_played_per_tag_contract: Vec<CardTagCount>,
 }
 
 /// Token balances grouped by tag category for the `/player/tokens` endpoint.
@@ -135,6 +142,14 @@ pub struct PlayerTokensView {
     pub beneficial: Vec<TokenAmount>,
     pub harmful: Vec<TokenAmount>,
     pub progression: Vec<TokenAmount>,
+}
+
+/// A count of how many cards with a specific tag have been played in the current contract.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[serde(crate = "rocket::serde")]
+pub struct CardTagCount {
+    pub tag: CardTag,
+    pub count: u32,
 }
 
 /// A possible action the player can take in the current game state.
@@ -163,11 +178,14 @@ pub struct TierContractRange {
 #[serde(tag = "action_type", crate = "rocket::serde")]
 pub enum PossibleAction {
     NewGame,
+    /// Lists the specific card indices (into the /state cards Vec) that the player
+    /// can play given active CardTagConstraint limits and hand availability.
     PlayCard {
-        valid_hand_index_range: IndexRange,
+        valid_card_indices: Vec<usize>,
     },
+    /// Lists the card indices (into the /state cards Vec) that have hand > 0.
     DiscardCard {
-        valid_hand_index_range: IndexRange,
+        valid_card_indices: Vec<usize>,
     },
     AcceptContract {
         valid_tiers: Vec<TierContractRange>,
@@ -194,6 +212,7 @@ pub struct GameState {
     active_contract: Option<Contract>,
     offered_contracts: Vec<TierContracts>,
     contract_turns_played: u32,
+    cards_played_per_tag_contract: HashMap<CardTag, u32>,
 
     // RNG and metadata
     rng: Pcg64,
@@ -201,6 +220,10 @@ pub struct GameState {
 
     // Config
     rules: GameRulesConfig,
+
+    // Precomputed effect types (cached at init for performance)
+    token_defs: TokenDefinitionsConfig,
+    effect_types: Vec<CardEffectTypeConfig>,
 
     // Action log
     action_log: ActionLog,
@@ -246,15 +269,21 @@ impl GameState {
             draw_from_deck(&mut cards, &mut rng);
         }
 
+        let token_defs = load_token_definitions().expect("embedded token definitions must parse");
+        let effect_types = generate_effect_types(&token_defs);
+
         let mut state = Self {
             cards,
             tokens: HashMap::new(),
             active_contract: None,
             offered_contracts: Vec::new(),
             contract_turns_played: 0,
+            cards_played_per_tag_contract: HashMap::new(),
             rng,
             seed: actual_seed,
             rules: rules.clone(),
+            token_defs,
+            effect_types,
             action_log: ActionLog::new(),
             metrics_tracker: MetricsTracker::new(),
             adaptive_tracker: AdaptiveBalanceTracker::new(rules.adaptive_balance.clone()),
@@ -292,6 +321,18 @@ impl GameState {
             active_contract: self.active_contract.clone(),
             contract_turns_played: self.contract_turns_played,
             offered_contracts: self.offered_contracts.clone(),
+            cards_played_per_tag_contract: {
+                let mut v: Vec<_> = self
+                    .cards_played_per_tag_contract
+                    .iter()
+                    .map(|(tag, &count)| CardTagCount {
+                        tag: tag.clone(),
+                        count,
+                    })
+                    .collect();
+                v.sort_by(|a, b| format!("{:?}", a.tag).cmp(&format!("{:?}", b.tag)));
+                v
+            },
         }
     }
 
@@ -374,18 +415,25 @@ impl GameState {
         actions.push(PossibleAction::NewGame);
 
         if self.active_contract.is_some() {
-            let hand_size = hand_total(&self.cards);
-            if hand_size > 0 {
-                let range = IndexRange {
-                    min: 0,
-                    max: hand_size - 1,
-                };
-                actions.push(PossibleAction::PlayCard {
-                    valid_hand_index_range: range.clone(),
-                });
-                actions.push(PossibleAction::DiscardCard {
-                    valid_hand_index_range: range,
-                });
+            if self.cards.iter().any(|e| e.counts.hand > 0) {
+                let valid_play_indices = self.playable_card_indices();
+                if !valid_play_indices.is_empty() {
+                    actions.push(PossibleAction::PlayCard {
+                        valid_card_indices: valid_play_indices,
+                    });
+                }
+                let discard_indices: Vec<usize> = self
+                    .cards
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, e)| e.counts.hand > 0)
+                    .map(|(i, _)| i)
+                    .collect();
+                if !discard_indices.is_empty() {
+                    actions.push(PossibleAction::DiscardCard {
+                        valid_card_indices: discard_indices,
+                    });
+                }
             }
         } else {
             let valid_tiers: Vec<TierContractRange> = self
@@ -461,6 +509,61 @@ impl GameState {
         });
     }
 
+    /// Returns the set of card indices (into the cards Vec) that may currently be played.
+    /// A card is playable if it has hand > 0 and its tags are not banned or over the
+    /// active CardTagConstraint max limit.
+    fn playable_card_indices(&self) -> Vec<usize> {
+        let contract = match &self.active_contract {
+            Some(c) => c,
+            None => {
+                return self
+                    .cards
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, e)| e.counts.hand > 0)
+                    .map(|(i, _)| i)
+                    .collect();
+            }
+        };
+
+        // Collect tag constraints (max-bound only) for fast lookup
+        let mut banned_or_limited: HashMap<CardTag, u32> = HashMap::new();
+        for req in &contract.requirements {
+            if let ContractRequirementKind::CardTagConstraint {
+                tag,
+                max: Some(max),
+                ..
+            } = req
+            {
+                // Keep the tightest limit per tag
+                let entry = banned_or_limited.entry(tag.clone()).or_insert(u32::MAX);
+                *entry = (*entry).min(*max);
+            }
+        }
+
+        self.cards
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| e.counts.hand > 0)
+            .filter(|(_, e)| {
+                for tag in &e.card.tags {
+                    if let Some(&limit) = banned_or_limited.get(tag) {
+                        let played = self
+                            .cards_played_per_tag_contract
+                            .get(tag)
+                            .copied()
+                            .unwrap_or(0);
+                        if played >= limit {
+                            return false;
+                        }
+                    }
+                }
+                true
+            })
+            .map(|(i, _)| i)
+            .collect()
+    }
+
     // -------------------------------------------------------------------
     // Action dispatch
     // -------------------------------------------------------------------
@@ -475,8 +578,8 @@ impl GameState {
                 tier_index,
                 contract_index,
             } => self.handle_accept_contract(tier_index, contract_index),
-            PlayerAction::PlayCard { hand_index } => self.handle_play_card(hand_index),
-            PlayerAction::DiscardCard { hand_index } => self.handle_discard_card(hand_index),
+            PlayerAction::PlayCard { card_index } => self.handle_play_card(card_index),
+            PlayerAction::DiscardCard { card_index } => self.handle_discard_card(card_index),
             PlayerAction::ReplaceCard {
                 target_card_index,
                 replacement_card_index,
@@ -532,22 +635,48 @@ impl GameState {
         self.metrics_tracker
             .record_contract_accepted(contract.tier.0);
         self.contract_turns_played = 0;
+        self.cards_played_per_tag_contract.clear();
         self.active_contract = Some(contract);
         ActionResult::Success(ActionSuccess::ContractAccepted)
     }
 
-    fn handle_play_card(&mut self, hand_index: usize) -> ActionResult {
+    fn handle_play_card(&mut self, card_index: usize) -> ActionResult {
         if self.active_contract.is_none() {
             return ActionResult::Error(ActionError::NoActiveContract);
         }
 
-        let hand_size = hand_total(&self.cards);
-        if hand_index >= hand_size {
-            return ActionResult::Error(ActionError::InvalidHandIndex { index: hand_index });
+        if card_index >= self.cards.len() || self.cards[card_index].counts.hand == 0 {
+            return ActionResult::Error(ActionError::InvalidCardIndex { index: card_index });
         }
 
-        let entry_idx = resolve_hand_index(&self.cards, hand_index);
-        let card = self.cards[entry_idx].card.clone();
+        let card = self.cards[card_index].card.clone();
+
+        // Check CardTagConstraint bans / limits before applying the card
+        if let Some(contract) = &self.active_contract {
+            for tag in &card.tags {
+                for req in &contract.requirements {
+                    if let ContractRequirementKind::CardTagConstraint {
+                        tag: req_tag,
+                        max: Some(limit),
+                        ..
+                    } = req
+                    {
+                        if req_tag == tag {
+                            let played = self
+                                .cards_played_per_tag_contract
+                                .get(tag)
+                                .copied()
+                                .unwrap_or(0);
+                            if played >= *limit {
+                                return ActionResult::Error(ActionError::CardTagBanned {
+                                    tag: tag.clone(),
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         let missing = self.get_missing_tokens_for_effects(&card.effects);
         if !missing.is_empty() {
@@ -555,6 +684,14 @@ impl GameState {
         }
 
         self.apply_effects(&card.effects);
+
+        // Track per-tag plays for CardTagConstraint enforcement
+        for tag in &card.tags {
+            *self
+                .cards_played_per_tag_contract
+                .entry(tag.clone())
+                .or_insert(0) += 1;
+        }
 
         // Record metrics: tag counts and token flow from effects
         let (produced, consumed) = collect_effect_token_flow(&card.effects);
@@ -567,8 +704,8 @@ impl GameState {
                 .record_token_produced(token_type, *amount);
         }
 
-        self.cards[entry_idx].counts.hand -= 1;
-        self.cards[entry_idx].counts.discard += 1;
+        self.cards[card_index].counts.hand -= 1;
+        self.cards[card_index].counts.discard += 1;
 
         self.contract_turns_played += 1;
 
@@ -580,19 +717,17 @@ impl GameState {
         })
     }
 
-    fn handle_discard_card(&mut self, hand_index: usize) -> ActionResult {
+    fn handle_discard_card(&mut self, card_index: usize) -> ActionResult {
         if self.active_contract.is_none() {
             return ActionResult::Error(ActionError::NoActiveContract);
         }
 
-        let hand_size = hand_total(&self.cards);
-        if hand_index >= hand_size {
-            return ActionResult::Error(ActionError::InvalidHandIndex { index: hand_index });
+        if card_index >= self.cards.len() || self.cards[card_index].counts.hand == 0 {
+            return ActionResult::Error(ActionError::InvalidCardIndex { index: card_index });
         }
 
-        let entry_idx = resolve_hand_index(&self.cards, hand_index);
-        self.cards[entry_idx].counts.hand -= 1;
-        self.cards[entry_idx].counts.discard += 1;
+        self.cards[card_index].counts.hand -= 1;
+        self.cards[card_index].counts.discard += 1;
 
         let bonus = self.rules.general.discard_production_unit_bonus;
         *self.tokens.entry(TokenType::ProductionUnit).or_insert(0) += bonus;
@@ -789,10 +924,12 @@ impl GameState {
 
             let new_contracts: Vec<Contract> = (0..needed)
                 .map(|_| {
-                    generate_contract(
+                    generate_contract_with_types(
                         tier,
                         &mut self.rng,
                         &self.rules.contract_formulas,
+                        &self.token_defs,
+                        &self.effect_types,
                         &self.adaptive_tracker,
                     )
                 })
@@ -840,6 +977,7 @@ impl GameState {
             self.adaptive_tracker.on_contract_failed();
             self.active_contract = None;
             self.contract_turns_played = 0;
+            self.cards_played_per_tag_contract.clear();
             self.refill_contract_market();
             return Some(ContractResolution::Failed { contract, reason });
         }
@@ -859,6 +997,7 @@ impl GameState {
 
         self.active_contract = None;
         self.contract_turns_played = 0;
+        self.cards_played_per_tag_contract.clear();
         self.refill_contract_market();
 
         Some(ContractResolution::Completed { contract })
@@ -868,9 +1007,8 @@ impl GameState {
     /// violation found (deterministic order: harmful limits by token sort order,
     /// then turn window).
     fn check_contract_failure(&self, contract: &Contract) -> Option<ContractFailureReason> {
-        let (_, harmful_limits) = Self::aggregate_requirements(&contract.requirements);
-
         // Check HarmfulTokenLimit violations (sorted by TokenType for determinism)
+        let (_, harmful_limits) = Self::aggregate_requirements(&contract.requirements);
         let mut sorted_limits: Vec<_> = harmful_limits.into_iter().collect();
         sorted_limits.sort_by(|a, b| a.0.cmp(&b.0));
 
@@ -887,10 +1025,14 @@ impl GameState {
 
         // Check TurnWindow max_turn
         for req in &contract.requirements {
-            if let ContractRequirementKind::TurnWindow { max_turn, .. } = req {
-                if self.contract_turns_played > *max_turn {
+            if let ContractRequirementKind::TurnWindow {
+                max_turn: Some(max),
+                ..
+            } = req
+            {
+                if self.contract_turns_played > *max {
                     return Some(ContractFailureReason::TurnWindowExceeded {
-                        max_turn: *max_turn,
+                        max_turn: *max,
                         current_turn: self.contract_turns_played,
                     });
                 }
@@ -922,8 +1064,31 @@ impl GameState {
 
         // TurnWindow min_turn: prevent premature completion
         for req in &contract.requirements {
-            if let ContractRequirementKind::TurnWindow { min_turn, .. } = req {
-                if self.contract_turns_played < *min_turn {
+            if let ContractRequirementKind::TurnWindow {
+                min_turn: Some(min),
+                ..
+            } = req
+            {
+                if self.contract_turns_played < *min {
+                    return false;
+                }
+            }
+        }
+
+        // CardTagConstraint min: must have played enough cards of this tag
+        for req in &contract.requirements {
+            if let ContractRequirementKind::CardTagConstraint {
+                tag,
+                min: Some(required),
+                ..
+            } = req
+            {
+                let played = self
+                    .cards_played_per_tag_contract
+                    .get(tag)
+                    .copied()
+                    .unwrap_or(0);
+                if played < *required {
                     return false;
                 }
             }
@@ -945,20 +1110,20 @@ impl GameState {
 
         for req in requirements {
             match req {
-                ContractRequirementKind::OutputThreshold {
+                ContractRequirementKind::TokenRequirement {
                     token_type,
-                    min_amount,
+                    min,
+                    max,
                 } => {
-                    *output_thresholds.entry(token_type.clone()).or_insert(0) += min_amount;
+                    if let Some(min_amount) = min {
+                        *output_thresholds.entry(token_type.clone()).or_insert(0) += min_amount;
+                    }
+                    if let Some(max_amount) = max {
+                        let entry = harmful_limits.entry(token_type.clone()).or_insert(u32::MAX);
+                        *entry = (*entry).min(*max_amount);
+                    }
                 }
-                ContractRequirementKind::HarmfulTokenLimit {
-                    token_type,
-                    max_amount,
-                } => {
-                    let entry = harmful_limits.entry(token_type.clone()).or_insert(u32::MAX);
-                    *entry = (*entry).min(*max_amount);
-                }
-                ContractRequirementKind::CardTagRestriction { .. }
+                ContractRequirementKind::CardTagConstraint { .. }
                 | ContractRequirementKind::TurnWindow { .. } => {}
             }
         }
@@ -977,25 +1142,6 @@ impl GameState {
 // ---------------------------------------------------------------------------
 // Card helper functions (free functions operating on Vec<CardEntry>)
 // ---------------------------------------------------------------------------
-
-/// Total number of cards currently in hand.
-fn hand_total(cards: &[CardEntry]) -> usize {
-    cards.iter().map(|e| e.counts.hand as usize).sum()
-}
-
-/// Given a hand_index (position in the expanded hand), return the
-/// index into the cards Vec for the corresponding entry.
-fn resolve_hand_index(cards: &[CardEntry], hand_index: usize) -> usize {
-    let mut remaining = hand_index;
-    for (i, entry) in cards.iter().enumerate() {
-        let count = entry.counts.hand as usize;
-        if remaining < count {
-            return i;
-        }
-        remaining -= count;
-    }
-    unreachable!("hand_index validated before calling resolve_hand_index")
-}
 
 /// Draw one card from deck to hand via random selection.
 /// If deck is empty, recycles discard counts back into deck first.

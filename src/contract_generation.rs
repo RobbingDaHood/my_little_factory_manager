@@ -14,8 +14,9 @@ use rand_pcg::Pcg64;
 
 use crate::adaptive_balance::AdaptiveBalanceTracker;
 use crate::config::{
-    CardEffectTypeConfig, CardEffectVariation, ContractFormulasConfig, ModifierRange,
-    TierScalingFormula, TokenDefinitionsConfig, VariationDefaultsConfig,
+    CardEffectTypeConfig, CardEffectVariation, CardTagConstraintFormulaConfig,
+    ContractFormulasConfig, ModifierRange, TierScalingFormula, TokenDefinitionsConfig,
+    TurnWindowFormulaConfig, VariationDefaultsConfig,
 };
 use crate::config_loader::load_token_definitions;
 use crate::types::{
@@ -320,6 +321,22 @@ fn unlocked_token_types(tier: u32, effect_types: &[CardEffectTypeConfig]) -> Vec
     tokens
 }
 
+/// Returns card tags associated with effect types unlocked at or before the given tier.
+/// Used to ensure CardTagConstraint only references tags that have actual cards.
+fn unlocked_card_tags(tier: u32, effect_types: &[CardEffectTypeConfig]) -> Vec<CardTag> {
+    let mut tags = Vec::new();
+    for et in effect_types {
+        if et.available_at_tier <= tier {
+            for tag in &et.tags {
+                if !tags.contains(tag) {
+                    tags.push(tag.clone());
+                }
+            }
+        }
+    }
+    tags
+}
+
 /// Returns the requirement types available at the given tier, paired with
 /// generator functions. Only uses token types with unlocked card effects.
 fn available_requirement_generators(
@@ -330,35 +347,159 @@ fn available_requirement_generators(
     let mut generators: Vec<RequirementGenerator> = Vec::new();
     let available_tokens = unlocked_token_types(tier, effect_types);
 
-    // OutputThreshold generators for each beneficial token that's unlocked
+    // TokenRequirement generators for each beneficial token that's unlocked
     for token in &available_tokens {
         if token.is_beneficial() {
             let t = token.clone();
             let formula = formulas.output_threshold.clone();
             generators.push(Box::new(move |rng: &mut Pcg64| {
-                ContractRequirementKind::OutputThreshold {
+                ContractRequirementKind::TokenRequirement {
                     token_type: t.clone(),
-                    min_amount: roll_from_formula(tier, &formula, rng),
+                    min: Some(roll_from_formula(tier, &formula, rng)),
+                    max: None,
                 }
             }));
         }
     }
 
-    // HarmfulTokenLimit generators for each harmful token that's unlocked
+    // TokenRequirement generators for each harmful token that's unlocked
     for token in &available_tokens {
         if token.is_harmful() {
             let t = token.clone();
             let formula = formulas.harmful_token_limit.clone();
             generators.push(Box::new(move |rng: &mut Pcg64| {
-                ContractRequirementKind::HarmfulTokenLimit {
+                ContractRequirementKind::TokenRequirement {
                     token_type: t.clone(),
-                    max_amount: roll_from_formula(tier, &formula, rng),
+                    min: None,
+                    max: Some(roll_from_formula(tier, &formula, rng)),
                 }
             }));
         }
     }
 
+    // TurnWindow generator — unlocks in the Energy→Waste gap
+    if let Some(tw_config) = formulas.turn_window.as_ref() {
+        if tier >= tw_config.unlock_tier_only_max {
+            let tw = tw_config.clone();
+            generators.push(Box::new(move |rng: &mut Pcg64| {
+                generate_turn_window(tier, &tw, rng)
+            }));
+        }
+    }
+
+    // CardTagConstraint generator — unlocks in the Waste→QP gap
+    if let Some(ctc_config) = formulas.card_tag_constraint.as_ref() {
+        if tier >= ctc_config.unlock_tier_only_max {
+            let available_tags = unlocked_card_tags(tier, effect_types);
+            if !available_tags.is_empty() {
+                let ctc = ctc_config.clone();
+                generators.push(Box::new(move |rng: &mut Pcg64| {
+                    generate_card_tag_constraint(tier, &ctc, &available_tags, rng)
+                }));
+            }
+        }
+    }
+
     generators
+}
+
+fn generate_turn_window(
+    tier: u32,
+    config: &TurnWindowFormulaConfig,
+    rng: &mut Pcg64,
+) -> ContractRequirementKind {
+    // Select variant based on which have unlocked at this tier.
+    let variant = if tier >= config.unlock_tier_both {
+        rng.next_u32() % 3
+    } else if tier >= config.unlock_tier_only_min {
+        rng.next_u32() % 2
+    } else {
+        0 // Only-Max
+    };
+
+    // min_turn rolls in [0, min(base + tier×per_tier, max_min_turn)].
+    // 0 is always possible so the contract may start immediately.
+    let min_turn_max =
+        (config.min_turns_base + tier * config.min_turns_per_tier).min(config.max_min_turn);
+    let min_turn = rng.next_u32() % (min_turn_max + 1);
+
+    // window_size decreases with tier (harder at higher tiers) but always has ≥2 choices.
+    let extra_range = config.window_size_extra_base.saturating_sub(
+        tier.saturating_sub(config.unlock_tier_only_max)
+            * config.window_size_extra_decrease_per_tier,
+    );
+    let window_size = config.window_size_min + rng.next_u32() % (extra_range.max(1) + 1);
+
+    match variant {
+        0 => ContractRequirementKind::TurnWindow {
+            min_turn: None,
+            max_turn: Some(window_size),
+        },
+        1 => ContractRequirementKind::TurnWindow {
+            min_turn: Some(min_turn),
+            max_turn: None,
+        },
+        _ => ContractRequirementKind::TurnWindow {
+            min_turn: Some(min_turn),
+            max_turn: Some(min_turn + window_size),
+        },
+    }
+}
+
+fn generate_card_tag_constraint(
+    tier: u32,
+    config: &CardTagConstraintFormulaConfig,
+    available_tags: &[CardTag],
+    rng: &mut Pcg64,
+) -> ContractRequirementKind {
+    let tag_idx = rng.next_u32() as usize % available_tags.len();
+    let tag = available_tags[tag_idx].clone();
+
+    // Select variant based on which have unlocked at this tier.
+    let variant = if tier >= config.unlock_tier_both {
+        rng.next_u32() % 3
+    } else if tier >= config.unlock_tier_only_min {
+        rng.next_u32() % 2
+    } else {
+        0 // Only-Max
+    };
+
+    // Only-Max: max_count decreases with tier (harder = fewer allowed).
+    // Rolling 0 is a full ban — no special-case needed.
+    let max_count_at_tier = config.max_count_base.saturating_sub(
+        tier.saturating_sub(config.unlock_tier_only_max) * config.max_count_decrease_per_tier,
+    );
+    let max_count = rng.next_u32() % (max_count_at_tier.max(1) + 1); // [0, max_count_at_tier.max(1)]
+
+    // Only-Min: min_count increases with tier (harder = must play more), capped.
+    let min_count_max = (config.min_count_per_tier
+        * tier.saturating_sub(config.unlock_tier_only_min))
+    .min(config.min_count_cap);
+    let min_count = rng.next_u32() % (min_count_max + 1); // [0, min_count_max]
+
+    // Window for Both: decreasing with tier, always ≥2 possible values.
+    let extra_range = config.count_window_extra_base.saturating_sub(
+        tier.saturating_sub(config.unlock_tier_both) * config.count_window_extra_decrease_per_tier,
+    );
+    let window_size = config.count_window_min + rng.next_u32() % (extra_range.max(1) + 1);
+
+    match variant {
+        0 => ContractRequirementKind::CardTagConstraint {
+            tag,
+            min: None,
+            max: Some(max_count),
+        },
+        1 => ContractRequirementKind::CardTagConstraint {
+            tag,
+            min: Some(min_count),
+            max: None,
+        },
+        _ => ContractRequirementKind::CardTagConstraint {
+            tag,
+            min: Some(min_count),
+            max: Some(min_count + window_size),
+        },
+    }
 }
 
 /// Determine the number of requirements for a contract at the given tier.

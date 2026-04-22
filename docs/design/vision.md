@@ -293,7 +293,7 @@ The factory is never "solved." Each new contract, each shift in the adaptive sys
 Items that are not yet implemented but may be addressed in future phases:
 
 * **Card entry lookup performance** — currently the card collection is a `Vec<CardEntry>` with linear scan for lookups by card hash. With N unique card types, lookup is O(N). Late game might have ~100–500 unique cards; linear scan on small in-memory structs is fast up to ~10,000+ entries. If card variety grows into thousands, consider switching to a `HashMap` keyed by card hash for O(1) lookups.
-* **Additional requirement types** — Future phases may introduce requirement types beyond `OutputThreshold`, `HarmfulTokenLimit`, and `TurnWindow`, such as `CardTagRestriction`.
+* **Additional requirement types** — Future phases may introduce requirement types beyond the currently implemented set (`TokenRequirement`, `TurnWindow`, `CardTagConstraint`).
 
 ---
 

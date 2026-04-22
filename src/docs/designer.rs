@@ -177,31 +177,35 @@ fn build_contract_requirements() -> DesignerSection {
             .to_string(),
         entries: vec![
             ReferenceEntry {
-                name: "OutputThreshold".to_string(),
-                description: "Produce at least min_amount of a token_type (always \
-                    ProductionUnit in current tiers). Mandatory on every contract. The \
-                    threshold scales with tier via the output_threshold formula."
+                name: "TokenRequirement (tiers 0+)".to_string(),
+                description: "Unified range requirement for a token_type. \
+                    'min: Some(n)' — must accumulate at least n tokens (beneficial tokens, \
+                    replaces old OutputThreshold). \
+                    'max: Some(m)' — must not exceed m tokens at any point (harmful tokens, \
+                    replaces old HarmfulTokenLimit). \
+                    Both bounds may be set simultaneously at higher tiers for efficiency \
+                    requirements. Absent bound fields are omitted from JSON."
                     .to_string(),
             },
             ReferenceEntry {
-                name: "HarmfulTokenLimit".to_string(),
-                description: "Complete the contract without exceeding max_amount of a \
-                    specific harmful token type. Forces players to manage waste and \
-                    pollution alongside production. Introduced in higher tiers."
+                name: "TurnWindow (tier 6+)".to_string(),
+                description: "A turn-window constraint with optional lower and upper bounds. \
+                    Three variants unlock progressively: Only-Max (tier 6) — max_turn only, \
+                    immediate failure if exceeded; Only-Min (tier 10) — min_turn only, \
+                    prevents premature completion; Both (tier 14) — full window. \
+                    Window size decreases with tier, making high-tier contracts harder. \
+                    Both bounds are optional and omitted from JSON when absent."
                     .to_string(),
             },
             ReferenceEntry {
-                name: "CardTagRestriction".to_string(),
-                description: "Certain card tags are unavailable during this contract. \
-                    Forces players to work with a restricted subset of their deck. \
-                    Introduced in higher tiers."
-                    .to_string(),
-            },
-            ReferenceEntry {
-                name: "TurnWindow".to_string(),
-                description: "The contract must be completed between min_turn and \
-                    max_turn (inclusive). Creates time pressure and rewards efficient \
-                    play. Introduced in higher tiers."
+                name: "CardTagConstraint (tier 12+)".to_string(),
+                description: "Unified range requirement for a card tag category. \
+                    Three variants unlock progressively: Only-Max (tier 12) — at most N cards \
+                    with this tag; max=0 is a full ban. Only-Min (tier 16) — must play at least \
+                    N cards. Both (tier 20) — must play between N and M cards of this tag. \
+                    Max count decreases with tier (harder caps); min count increases (harder floors). \
+                    The valid_card_indices in /actions/possible already excludes banned \
+                    and over-limit cards."
                     .to_string(),
             },
         ],
@@ -348,18 +352,26 @@ fn build_contract_failure() -> DesignerSection {
             .to_string(),
         entries: vec![
             ReferenceEntry {
-                name: "HarmfulTokenLimit Violation".to_string(),
-                description: "If the player's current balance of a harmful token exceeds \
-                    the contract's HarmfulTokenLimit max_amount, the contract fails. Tokens \
-                    persist between contracts, so players must clean up before accepting \
-                    tight contracts."
+                name: "TokenRequirement max Violation".to_string(),
+                description: "If the player's current balance of a token type exceeds \
+                    the contract's TokenRequirement max bound, the contract fails. Tokens \
+                    persist between contracts, so players must manage harmful levels \
+                    before accepting contracts with tight max bounds."
                     .to_string(),
             },
             ReferenceEntry {
                 name: "TurnWindow Exceeded".to_string(),
-                description: "If contract_turns_played exceeds the TurnWindow's max_turn, \
-                    the contract fails. The TurnWindow also has a min_turn that prevents \
-                    premature completion (the contract cannot complete before min_turn)."
+                description: "If contract_turns_played exceeds a TurnWindow's max_turn, \
+                    the contract fails immediately. Only-Min TurnWindow contracts (min_turn only) \
+                    cannot exceed this failure — they only block premature completion."
+                    .to_string(),
+            },
+            ReferenceEntry {
+                name: "CardTagBanned Play Blocked".to_string(),
+                description: "Playing a card whose tag has reached its CardTagConstraint max \
+                    (including max=0, a full ban) is blocked outright — the play action is \
+                    rejected before it can trigger failure. The /actions/possible valid_card_indices \
+                    already excludes such cards so well-behaved clients never see this error."
                     .to_string(),
             },
             ReferenceEntry {
@@ -399,8 +411,8 @@ fn build_adaptive_balance() -> DesignerSection {
             ReferenceEntry {
                 name: "Contract Overlay".to_string(),
                 description: "After base requirements are rolled, the overlay adjusts: \
-                    HarmfulTokenLimit max_amount is reduced (up to 30%) for high-pressure \
-                    harmful tokens; OutputThreshold min_amount is increased (up to 20%) \
+                    TokenRequirement max bounds are reduced (up to 30%) for high-pressure \
+                    harmful tokens; TokenRequirement min bounds are increased (up to 20%) \
                     for high-pressure beneficial tokens."
                     .to_string(),
             },
@@ -501,9 +513,10 @@ fn build_configuration() -> DesignerSection {
                 name: "configurations/general/game_rules.json".to_string(),
                 description: "Contains general rules (starting_hand_size, \
                     starting_deck_size, contracts_per_tier_to_advance, \
-                    contract_market_size_per_tier, discard_production_unit_bonus) \
-                    and contract formula parameters (output_threshold, \
-                    harmful_token_limit scaling formulas)."
+                    contract_market_size_per_tier, discard_production_unit_bonus), \
+                    contract formula parameters (output_threshold, harmful_token_limit \
+                    scaling formulas), turn_window and card_tag_constraint formula configs \
+                    with unlock_tier gating, and adaptive_balance parameters."
                     .to_string(),
             },
             ReferenceEntry {

@@ -122,30 +122,35 @@ fn build_tutorial() -> Tutorial {
             TutorialStep {
                 step: 6,
                 title: "Play Cards to Produce Tokens".to_string(),
-                description: "Play cards from your hand by index. Each card's effects \
-                    add or remove tokens. A replacement card is drawn from the deck."
+                description: "Play a card by its index in the /state cards Vec. The card \
+                    must have hand > 0. Each card's effects add or remove tokens. A \
+                    replacement card is drawn from the deck. Check /actions/possible for \
+                    valid_card_indices — at higher tiers, some cards may be excluded due \
+                    to CardTagConstraint limits."
                     .to_string(),
                 endpoint: "/action".to_string(),
                 method: "POST".to_string(),
                 example_body: Some(
-                    r#"{"action_type": "PlayCard", "hand_index": 0}"#.to_string(),
+                    r#"{"action_type": "PlayCard", "card_index": 0}"#.to_string(),
                 ),
                 tips: vec![
                     "Playing a card applies all its effects (inputs consumed, outputs produced).".to_string(),
                     "After playing, a new card is drawn from the deck.".to_string(),
                     "The contract auto-completes as soon as all requirements are met.".to_string(),
+                    "valid_card_indices in /actions/possible already filters out banned/over-limit cards.".to_string(),
                 ],
             },
             TutorialStep {
                 step: 7,
                 title: "Discard for Progress".to_string(),
                 description: "If your hand isn't ideal, you can discard any card for a \
-                    small baseline production bonus (1 ProductionUnit)."
+                    small baseline production bonus (1 ProductionUnit). Pass the card_index \
+                    (into the /state cards Vec) of a card with hand > 0."
                     .to_string(),
                 endpoint: "/action".to_string(),
                 method: "POST".to_string(),
                 example_body: Some(
-                    r#"{"action_type": "DiscardCard", "hand_index": 0}"#.to_string(),
+                    r#"{"action_type": "DiscardCard", "card_index": 0}"#.to_string(),
                 ),
                 tips: vec![
                     "Discarding prevents dead turns — every card has some value.".to_string(),
@@ -173,16 +178,21 @@ fn build_tutorial() -> Tutorial {
             TutorialStep {
                 step: 9,
                 title: "Contract Failure".to_string(),
-                description: "Contracts can fail! If your harmful token balance exceeds a \
-                    HarmfulTokenLimit requirement, or if you exceed the TurnWindow's \
-                    max_turn, the contract fails immediately. You lose the contract \
-                    (no reward) and the market refills."
+                description: "Some contracts have a turn-window constraint with optional \
+                    lower and upper bounds. A deadline-only contract (max_turn set) fails if \
+                    you exceed max_turn. An earliest-start contract (min_turn set) cannot \
+                    complete before min_turn. A full window contract has both. \
+                    At tier 12+, playing a banned tag (CardTagConstraint max=0) is blocked \
+                    outright — the server rejects the action before it can cause failure."
                     .to_string(),
                 endpoint: "/state".to_string(),
                 method: "GET".to_string(),
                 example_body: None,
                 tips: vec![
-                    "Check contract requirements before accepting — HarmfulTokenLimit means you must manage those tokens.".to_string(),
+                    "Check TokenRequirement max bounds before accepting — exceeding them fails the contract.".to_string(),
+                    "TurnWindow max_turn is a hard deadline — exceeding it is an immediate failure.".to_string(),
+                    "TurnWindow min_turn prevents rushing — the contract cannot complete before that turn.".to_string(),
+                    "At tier 12+, check valid_card_indices in /actions/possible to avoid banned tag plays.".to_string(),
                     "Failure is not game-over — it just means no reward and a broken streak.".to_string(),
                     "After failure, the adaptive system eases difficulty, giving you breathing room.".to_string(),
                     "The contract_turns_played field in /state shows how many turns you've used.".to_string(),

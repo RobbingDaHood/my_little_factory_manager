@@ -75,7 +75,7 @@ for i in $(seq 1 20); do
 
   RESULT=$(curl -s -X POST "${BASE_URL}/action" \
     -H "Content-Type: application/json" \
-    -d "{\"action_type\": \"PlayCard\", \"hand_index\": 0}")
+    -d "{\"action_type\": \"PlayCard\", \"card_index\": $(curl -s "${BASE_URL}/actions/possible" | jq '[ .[] | select(.action_type == "PlayCard") ] | .[0].valid_card_indices[0] // 0')}")
   echo "   Play ${i}: $(echo "$RESULT" | jq -r '.result_type // .error_type // "unknown"')"
 done
 echo

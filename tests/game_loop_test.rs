@@ -65,6 +65,34 @@ fn card_count_total(state: &serde_json::Value, field: &str) -> u64 {
         .sum()
 }
 
+fn first_card_in_hand(client: &Client) -> usize {
+    let state = get_state(client);
+    state["cards"]
+        .as_array()
+        .expect("cards array")
+        .iter()
+        .enumerate()
+        .find(|(_, e)| e["counts"]["hand"].as_u64().unwrap_or(0) > 0)
+        .map(|(i, _)| i)
+        .expect("at least one card in hand")
+}
+
+fn play_card(client: &Client) -> (Status, serde_json::Value) {
+    let idx = first_card_in_hand(client);
+    post_action(
+        client,
+        &format!(r#"{{"action_type":"PlayCard","card_index":{idx}}}"#),
+    )
+}
+
+fn discard_card(client: &Client) -> (Status, serde_json::Value) {
+    let idx = first_card_in_hand(client);
+    post_action(
+        client,
+        &format!(r#"{{"action_type":"DiscardCard","card_index":{idx}}}"#),
+    )
+}
+
 // ---------------------------------------------------------------------------
 // New game
 // ---------------------------------------------------------------------------
@@ -171,7 +199,7 @@ fn play_card_adds_tokens_and_moves_card() {
     let state_before = get_state(&client);
     let pu_before = token_amount(&state_before, r#""ProductionUnit""#);
 
-    let (status, result) = post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
+    let (status, result) = play_card(&client);
     assert_eq!(status, Status::Ok);
     assert_eq!(result["outcome"], "Success");
     assert_eq!(detail(&result)["result_type"], "CardPlayed");
@@ -191,7 +219,7 @@ fn play_card_fails_without_active_contract() {
     let client = client();
     post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
 
-    let (status, result) = post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
+    let (status, result) = post_action(&client, r#"{"action_type":"PlayCard","card_index":0}"#);
     assert_eq!(status, Status::Ok);
     assert_eq!(result["outcome"], "Error");
     assert_eq!(detail(&result)["error_type"], "NoActiveContract");
@@ -206,11 +234,11 @@ fn play_card_fails_with_invalid_index() {
         r#"{"action_type":"AcceptContract","tier_index":0,"contract_index":0}"#,
     );
 
-    let (status, result) = post_action(&client, r#"{"action_type":"PlayCard","hand_index":99}"#);
+    let (status, result) = post_action(&client, r#"{"action_type":"PlayCard","card_index":9999}"#);
     assert_eq!(status, Status::Ok);
     assert_eq!(result["outcome"], "Error");
-    assert_eq!(detail(&result)["error_type"], "InvalidHandIndex");
-    assert_eq!(detail(&result)["index"], 99);
+    assert_eq!(detail(&result)["error_type"], "InvalidCardIndex");
+    assert_eq!(detail(&result)["index"], 9999);
 }
 
 // ---------------------------------------------------------------------------
@@ -226,7 +254,7 @@ fn discard_card_gives_baseline_bonus() {
         r#"{"action_type":"AcceptContract","tier_index":0,"contract_index":0}"#,
     );
 
-    let (status, result) = post_action(&client, r#"{"action_type":"DiscardCard","hand_index":0}"#);
+    let (status, result) = discard_card(&client);
     assert_eq!(status, Status::Ok);
     assert_eq!(result["outcome"], "Success");
     assert_eq!(detail(&result)["result_type"], "CardDiscarded");
@@ -242,7 +270,7 @@ fn discard_card_fails_without_active_contract() {
     let client = client();
     post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
 
-    let (status, result) = post_action(&client, r#"{"action_type":"DiscardCard","hand_index":0}"#);
+    let (status, result) = post_action(&client, r#"{"action_type":"DiscardCard","card_index":0}"#);
     assert_eq!(status, Status::Ok);
     assert_eq!(result["outcome"], "Error");
     assert_eq!(detail(&result)["error_type"], "NoActiveContract");
@@ -263,15 +291,15 @@ fn contract_auto_completes_when_threshold_met() {
 
     // Get the required threshold from the active contract
     let state = get_state(&client);
-    let min_amount = state["active_contract"]["requirements"][0]["min_amount"]
+    let min_amount = state["active_contract"]["requirements"][0]["min"]
         .as_u64()
-        .expect("min_amount");
+        .expect("min");
 
     // Play cards until we accumulate enough production units
     let mut total_pu: u64 = 0;
     let mut completed = false;
     for _ in 0..50 {
-        let (_, result) = post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
+        let (_, result) = play_card(&client);
         if detail(&result)["contract_resolution"]["resolution_type"] == "Completed" {
             completed = true;
             break;
@@ -312,7 +340,7 @@ fn full_game_loop_two_contracts() {
 
         let mut completed = false;
         for _ in 0..100 {
-            let (_, result) = post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
+            let (_, result) = play_card(&client);
             if detail(&result)["contract_resolution"]["resolution_type"] == "Completed" {
                 completed = true;
                 break;
@@ -342,7 +370,7 @@ fn tokens_persist_between_contracts() {
     // Play cards until the contract completes
     let mut completed = false;
     for _ in 0..100 {
-        let (_, result) = post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
+        let (_, result) = play_card(&client);
         if detail(&result)["contract_resolution"]["resolution_type"] == "Completed" {
             completed = true;
             break;
@@ -386,7 +414,7 @@ fn hand_persists_between_contracts() {
     // Complete a contract by playing enough cards
     let mut completed = false;
     for _ in 0..100 {
-        let (_, result) = post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
+        let (_, result) = play_card(&client);
         if detail(&result)["contract_resolution"]["resolution_type"] == "Completed" {
             completed = true;
             break;
@@ -417,7 +445,7 @@ fn deck_recycles_discard_when_empty() {
 
     // Play more cards than the deck size to force a reshuffle
     for _ in 0..15 {
-        let (_, result) = post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
+        let (_, result) = play_card(&client);
         if detail(&result)["contract_resolution"]["resolution_type"] == "Completed" {
             // If contract completes, accept the new one and continue
             post_action(
@@ -446,7 +474,7 @@ fn action_history_records_all_actions() {
         &client,
         r#"{"action_type":"AcceptContract","tier_index":0,"contract_index":0}"#,
     );
-    post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
+    play_card(&client);
 
     let history = get_history(&client);
     let entries = history.as_array().expect("history array");

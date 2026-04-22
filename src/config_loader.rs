@@ -9,6 +9,24 @@ static GAME_RULES_JSON: &str = include_str!("../configurations/general/game_rule
 static TOKEN_DEFINITIONS_JSON: &str =
     include_str!("../configurations/card_effects/token_definitions.json");
 
+/// FNV-1a 64-bit hash of a byte string.
+pub fn fnv1a_hash(data: &[u8]) -> u64 {
+    const FNV_OFFSET: u64 = 14_695_981_039_346_656_037;
+    const FNV_PRIME: u64 = 1_099_511_628_211;
+    let mut hash = FNV_OFFSET;
+    for &byte in data {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(FNV_PRIME);
+    }
+    hash
+}
+
+/// Deterministic fingerprint of all embedded config files (FNV-1a XOR, hex).
+pub fn config_hash() -> String {
+    let h = fnv1a_hash(GAME_RULES_JSON.as_bytes()) ^ fnv1a_hash(TOKEN_DEFINITIONS_JSON.as_bytes());
+    format!("{h:016x}")
+}
+
 /// Load game rules from the embedded configuration.
 ///
 /// # Errors

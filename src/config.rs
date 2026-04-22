@@ -37,6 +37,75 @@ pub struct GeneralRules {
 pub struct ContractFormulasConfig {
     pub output_threshold: TierScalingFormula,
     pub harmful_token_limit: TierScalingFormula,
+    #[serde(default)]
+    pub turn_window: Option<TurnWindowFormulaConfig>,
+    #[serde(default)]
+    pub card_tag_constraint: Option<CardTagConstraintFormulaConfig>,
+}
+
+/// Formula config for TurnWindow requirement generation.
+///
+/// Three variants unlock progressively:
+///   1. Only-Max (deadline): `max_turn` only — must complete before turn X. Unlocks at `unlock_tier_only_max`.
+///   2. Only-Min (earliest-start): `min_turn` only — must not complete before turn X. Unlocks at `unlock_tier_only_min`.
+///   3. Both (window): `min_turn` and `max_turn` — must complete between turns. Unlocks at `unlock_tier_both`.
+///
+/// `min_turn` rolls uniformly in `[0, min(base + tier×per_tier, max_min_turn)]` — 0 is always possible.
+/// `window_size` rolls in `[window_size_min, window_size_min + extra]` where `extra` decreases with tier,
+/// so higher tiers have tighter (harder) windows. `extra` is always ≥1 to ensure at least two possible values.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(crate = "rocket::serde")]
+pub struct TurnWindowFormulaConfig {
+    /// Tier at which the Only-Max (deadline) variant unlocks.
+    pub unlock_tier_only_max: u32,
+    /// Tier at which the Only-Min (earliest-start) variant unlocks.
+    pub unlock_tier_only_min: u32,
+    /// Tier at which the Both (window) variant unlocks.
+    pub unlock_tier_both: u32,
+    pub min_turns_base: u32,
+    pub min_turns_per_tier: u32,
+    /// Maximum value min_turn can reach (caps the range to avoid boring wait turns).
+    pub max_min_turn: u32,
+    /// Minimum window size (turns) — the floor for all window rolls.
+    pub window_size_min: u32,
+    /// Extra window width added at the unlock tier; decreases by `window_size_extra_decrease_per_tier` each tier.
+    pub window_size_extra_base: u32,
+    pub window_size_extra_decrease_per_tier: u32,
+}
+
+/// Formula config for CardTagConstraint requirement generation.
+///
+/// Three variants unlock progressively:
+///   1. Only-Max (upper limit/ban): `max` only — at most N cards of this tag. Unlocks at `unlock_tier_only_max`.
+///   2. Only-Min (must-play): `min` only — must play at least N cards of this tag. Unlocks at `unlock_tier_only_min`.
+///   3. Both (range): `min` and `max` — must play between N and M cards of this tag. Unlocks at `unlock_tier_both`.
+///
+/// Only-Max `max_count` rolls in `[0, max_count_at_tier]` where `max_count_at_tier` decreases with tier
+/// (higher tier = tighter cap = harder). Rolling 0 is a full ban — the ban special-case is subsumed here.
+/// Only-Min `min_count` rolls in `[0, min(min_count_per_tier × tier, min_count_cap)]` — increasing with tier.
+/// Both uses `min_count` from the Only-Min formula plus a window (same decreasing pattern as TurnWindow).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(crate = "rocket::serde")]
+pub struct CardTagConstraintFormulaConfig {
+    /// Tier at which the Only-Max (upper limit/ban) variant unlocks.
+    pub unlock_tier_only_max: u32,
+    /// Tier at which the Only-Min (must-play) variant unlocks.
+    pub unlock_tier_only_min: u32,
+    /// Tier at which the Both (range) variant unlocks.
+    pub unlock_tier_both: u32,
+    /// Maximum count at the unlock tier; decreases by `max_count_decrease_per_tier` each tier.
+    /// Rolling 0 acts as a full ban.
+    pub max_count_base: u32,
+    pub max_count_decrease_per_tier: u32,
+    /// Only-Min min_count scales as `min_count_per_tier × (tier - unlock_tier_only_min)`.
+    pub min_count_per_tier: u32,
+    /// Cap on min_count to prevent requirement from becoming impossibly high.
+    pub min_count_cap: u32,
+    /// Minimum window size for the Both variant (max_count = min_count + window).
+    pub count_window_min: u32,
+    /// Extra window width at the unlock tier; decreases by `count_window_extra_decrease_per_tier`.
+    pub count_window_extra_base: u32,
+    pub count_window_extra_decrease_per_tier: u32,
 }
 
 /// A linear tier-scaling formula: for a given tier, produces a range

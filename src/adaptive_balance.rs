@@ -79,57 +79,59 @@ impl AdaptiveBalanceTracker {
 
         for (idx, req) in requirements.iter_mut().enumerate() {
             match req {
-                ContractRequirementKind::HarmfulTokenLimit {
+                ContractRequirementKind::TokenRequirement {
                     token_type,
-                    max_amount,
+                    min,
+                    max,
                 } => {
                     let pressure = self.token_pressure.get(token_type).copied().unwrap_or(0.0);
                     if pressure.abs() < f64::EPSILON {
                         continue;
                     }
-                    let ratio = (pressure / self.config.normalization_factor)
-                        .clamp(0.0, self.config.max_tightening_pct);
-                    let original = *max_amount;
-                    let reduction = (original as f64 * ratio).round() as u32;
-                    let adjusted = original.saturating_sub(reduction).max(1);
-                    if adjusted != original {
-                        let pct = -((original as f64 - adjusted as f64) / original as f64 * 100.0)
-                            .round() as i32;
-                        adjustments.push(AdaptiveAdjustment {
-                            requirement_index: idx,
-                            original_value: original,
-                            adjusted_value: adjusted,
-                            adjustment_percent: pct,
-                        });
-                        *max_amount = adjusted;
+
+                    // Tighten max (harmful bound)
+                    if let Some(max_amount) = max {
+                        let ratio = (pressure / self.config.normalization_factor)
+                            .clamp(0.0, self.config.max_tightening_pct);
+                        let original = *max_amount;
+                        let reduction = (original as f64 * ratio).round() as u32;
+                        let adjusted = original.saturating_sub(reduction).max(1);
+                        if adjusted != original {
+                            let pct = -((original as f64 - adjusted as f64) / original as f64
+                                * 100.0)
+                                .round() as i32;
+                            adjustments.push(AdaptiveAdjustment {
+                                requirement_index: idx,
+                                original_value: original,
+                                adjusted_value: adjusted,
+                                adjustment_percent: pct,
+                            });
+                            *max_amount = adjusted;
+                        }
+                    }
+
+                    // Raise min (beneficial bound)
+                    if let Some(min_amount) = min {
+                        let ratio = (pressure / self.config.normalization_factor)
+                            .clamp(0.0, self.config.max_increase_pct);
+                        let original = *min_amount;
+                        let increase = (original as f64 * ratio).round() as u32;
+                        let adjusted = original + increase;
+                        if adjusted != original {
+                            let pct = ((adjusted as f64 - original as f64) / original as f64
+                                * 100.0)
+                                .round() as i32;
+                            adjustments.push(AdaptiveAdjustment {
+                                requirement_index: idx,
+                                original_value: original,
+                                adjusted_value: adjusted,
+                                adjustment_percent: pct,
+                            });
+                            *min_amount = adjusted;
+                        }
                     }
                 }
-                ContractRequirementKind::OutputThreshold {
-                    token_type,
-                    min_amount,
-                } => {
-                    let pressure = self.token_pressure.get(token_type).copied().unwrap_or(0.0);
-                    if pressure.abs() < f64::EPSILON {
-                        continue;
-                    }
-                    let ratio = (pressure / self.config.normalization_factor)
-                        .clamp(0.0, self.config.max_increase_pct);
-                    let original = *min_amount;
-                    let increase = (original as f64 * ratio).round() as u32;
-                    let adjusted = original + increase;
-                    if adjusted != original {
-                        let pct = ((adjusted as f64 - original as f64) / original as f64 * 100.0)
-                            .round() as i32;
-                        adjustments.push(AdaptiveAdjustment {
-                            requirement_index: idx,
-                            original_value: original,
-                            adjusted_value: adjusted,
-                            adjustment_percent: pct,
-                        });
-                        *min_amount = adjusted;
-                    }
-                }
-                ContractRequirementKind::CardTagRestriction { .. }
+                ContractRequirementKind::CardTagConstraint { .. }
                 | ContractRequirementKind::TurnWindow { .. } => {}
             }
         }

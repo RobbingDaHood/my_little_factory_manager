@@ -62,6 +62,18 @@ fn active_total(state: &serde_json::Value) -> u64 {
         + card_count_total(state, "discard")
 }
 
+fn first_card_in_hand(client: &Client) -> usize {
+    let state = get_state(client);
+    state["cards"]
+        .as_array()
+        .expect("cards array")
+        .iter()
+        .enumerate()
+        .find(|(_, e)| e["counts"]["hand"].as_u64().unwrap_or(0) > 0)
+        .map(|(i, _)| i)
+        .expect("at least one card in hand")
+}
+
 /// Complete one contract cycle: accept contract 0 from tier 0, play all hand cards.
 /// Returns the state after the cycle.
 fn complete_one_contract(client: &Client) -> serde_json::Value {
@@ -76,7 +88,11 @@ fn complete_one_contract(client: &Client) -> serde_json::Value {
         if state["active_contract"].is_null() {
             return state;
         }
-        post_action(client, r#"{"action_type":"PlayCard","hand_index":0}"#);
+        let idx = first_card_in_hand(client);
+        post_action(
+            client,
+            &format!(r#"{{"action_type":"PlayCard","card_index":{idx}}}"#),
+        );
     }
     get_state(client)
 }
@@ -234,7 +250,13 @@ fn replace_card_allows_sacrifice_is_target_with_enough_copies() {
                 r#"{"action_type":"AcceptContract","tier_index":0,"contract_index":0}"#,
             );
         } else {
-            post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
+            {
+                let idx = first_card_in_hand(&client);
+                post_action(
+                    &client,
+                    &format!(r#"{{"action_type":"PlayCard","card_index":{}}}"#, idx),
+                );
+            };
         }
     }
 
@@ -320,7 +342,13 @@ fn replace_card_swaps_deck_card_with_shelved_card() {
                 r#"{"action_type":"AcceptContract","tier_index":0,"contract_index":0}"#,
             );
         } else {
-            post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
+            {
+                let idx = first_card_in_hand(&client);
+                post_action(
+                    &client,
+                    &format!(r#"{{"action_type":"PlayCard","card_index":{}}}"#, idx),
+                );
+            };
         }
     }
 
@@ -490,7 +518,13 @@ fn replace_card_is_deterministic() {
                 r#"{"action_type":"AcceptContract","tier_index":0,"contract_index":0}"#,
             );
         } else {
-            post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
+            {
+                let idx = first_card_in_hand(&client);
+                post_action(
+                    &client,
+                    &format!(r#"{{"action_type":"PlayCard","card_index":{}}}"#, idx),
+                );
+            };
         }
     }
     let state_run1 = get_state(&client);
@@ -505,7 +539,13 @@ fn replace_card_is_deterministic() {
                 r#"{"action_type":"AcceptContract","tier_index":0,"contract_index":0}"#,
             );
         } else {
-            post_action(&client, r#"{"action_type":"PlayCard","hand_index":0}"#);
+            {
+                let idx = first_card_in_hand(&client);
+                post_action(
+                    &client,
+                    &format!(r#"{{"action_type":"PlayCard","card_index":{}}}"#, idx),
+                );
+            };
         }
     }
     let state_run2 = get_state(&client);

@@ -46,6 +46,7 @@ pub struct StrategyReport {
     pub overall_max_tier: Option<u32>,
     pub total_contracts_completed: u64,
     pub total_contracts_failed: u64,
+    pub total_contracts_abandoned: u64,
     /// Top contract failure reasons sorted by frequency (descending).
     pub top_failure_reasons: Vec<(String, u64)>,
     pub stuck_games: u32,
@@ -81,10 +82,11 @@ impl SimulationRunner {
             );
             let result = driver.play_game(seed, strategy);
             eprintln!(
-                "  max_tier={:?} completed={} failed={} actions={}{}",
+                "  max_tier={:?} completed={} failed={} abandoned={} actions={}{}",
                 result.max_tier_reached,
                 result.contracts_completed,
                 result.contracts_failed,
+                result.contracts_abandoned,
                 result.total_actions,
                 if result.hit_action_limit {
                     " [LIMIT]"
@@ -137,6 +139,10 @@ impl SimulationRunner {
             .sum();
         let total_contracts_failed: u64 =
             results.iter().map(|r| u64::from(r.contracts_failed)).sum();
+        let total_contracts_abandoned: u64 = results
+            .iter()
+            .map(|r| u64::from(r.contracts_abandoned))
+            .sum();
 
         let mut failure_totals: HashMap<String, u64> = HashMap::new();
         for result in &results {
@@ -157,6 +163,7 @@ impl SimulationRunner {
             overall_max_tier,
             total_contracts_completed,
             total_contracts_failed,
+            total_contracts_abandoned,
             top_failure_reasons,
             stuck_games,
             action_limit_games,

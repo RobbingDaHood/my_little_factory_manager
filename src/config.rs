@@ -29,6 +29,8 @@ pub struct GeneralRules {
     pub contract_market_size_per_tier: u32,
     /// Production units gained when discarding a card for baseline benefit.
     pub discard_production_unit_bonus: u32,
+    /// Minimum turns played on the active contract before AbandonContract is allowed.
+    pub min_turns_before_abandon: u32,
 }
 
 /// Formula parameters for contract and reward card generation.

@@ -312,9 +312,16 @@ The existing [my_little_card_game](https://github.com/RobbingDaHood/my_little_ca
   - `main.rs` — `#[test]` entry point with soft blocker reporting
 - `docs/design/roadmap.md` — this file updated with Phase 10 sub-phases
 
-**SimpleFirstStrategy behaviour**: always accepts the highest available tier contract, plays the first valid card, discards when no card can be played, never deckbuilds.
+**SimpleFirstStrategy behaviour**: always accepts the highest available tier contract, plays the first valid card, discards when no card can be played, uses `AbandonContract` as a last resort when neither play nor discard is possible, never deckbuilds.
 
-**Finding from Phase 10.1**: `SimpleFirstStrategy` reaches **tier 3** and stalls permanently. After completing ~30–40 contracts (tiers 0–3), it accepts a contract whose token requirements the starter deck cannot fulfill. Because no `TurnWindow` constraint exists before tier 6, the contract neither completes nor fails — the game loop runs indefinitely on that single contract. This reveals two balance issues to address in Phase 10.5: (1) the starter deck should provide at least a minimal path through early tiers, and (2) a TurnWindow should apply at all tiers so uncompletable contracts eventually time out.
+**Finding from Phase 10.1 (original)**: `SimpleFirstStrategy` reaches **tier 3** and stalls permanently due to no escape from uncompletable contracts.
+
+**Finding from Phase 10.1 (after Issues #13 and #14)**:
+- Issues #13 (`AbandonContract` action) and #14 (beneficial-token min requirement tier-gating) were implemented.
+- `SimpleFirstStrategy` now reaches **tier 5** with 52–54 contract completions across 3 seeds, hitting the 2M action limit.
+- Zero contract failures, zero abandonments — the strategy completes every contract it starts, but progresses slowly at higher tiers (~38K actions per contract at tier 5).
+- The bottleneck is **action efficiency**, not correctness: the starter deck has ~10% PU-producing cards, so accumulating enough PUs for a tier-5 threshold takes many shuffles.
+- The strategy never reaches tier 10 within 2M actions, confirming that smarter card selection is required for higher-tier progress.
 
 ---
 
@@ -362,8 +369,9 @@ The existing [my_little_card_game](https://github.com/RobbingDaHood/my_little_ca
 - Simple strategies should reach noticeably lower tiers per unit of actions than advanced strategies
 - Advanced strategies should show measurably better tier-milestone action counts (≥20% faster to tier 20+)
 - Parameters to tune: `alpha`, `decay_rate`, `failure_relaxation`, `max_tightening_pct`, `max_increase_pct`, `normalization_factor` in `game_rules.json`
-- Address Phase 10.1 finding: add `TurnWindow` constraints at all tiers (not just tier 6+) so no contract can run indefinitely
 - Add regression assertions once a good balance point is found (similar to card game's win-rate band assertions)
+- **Abandonment rate requirement**: advanced strategies must show near-zero abandonment; simple strategies that frequently abandon must perform measurably worse than those that complete contracts. High abandonment rates are a balance signal — a sign that a requirement class is too tight or the starter deck is missing critical card types.
+- **Action efficiency target for Phase 10.2+**: the `SimpleFirstStrategy` currently takes ~38K actions per tier-5 contract. A `ContractAwareStrategy` that selects PU-producing cards preferentially should reduce this by at least 50%, enabling tier-10+ progress within 2M actions.
 
 ---
 

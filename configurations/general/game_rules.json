@@ -4,7 +4,8 @@
         "starting_deck_size": 50,
         "contracts_per_tier_to_advance": 10,
         "contract_market_size_per_tier": 3,
-        "discard_production_unit_bonus": 1
+        "discard_production_unit_bonus": 1,
+        "min_turns_before_abandon": 5
     },
     "contract_formulas": {
         "output_threshold": {

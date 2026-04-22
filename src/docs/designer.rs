@@ -382,10 +382,22 @@ fn build_contract_failure() -> DesignerSection {
                     .to_string(),
             },
             ReferenceEntry {
+                name: "AbandonContract — Emergency Escape".to_string(),
+                description: "After min_turns_before_abandon turns (default: 5) on a contract, \
+                    the AbandonContract action becomes available. Using it immediately ends the \
+                    contract as a failure with reason 'Abandoned'. This is a last-resort mechanism \
+                    for players genuinely stuck (e.g., all playable cards banned by tag constraints). \
+                    Abandonment counts in total_contracts_failed AND has its own \
+                    total_contracts_abandoned counter in /metrics. The streak resets to zero. \
+                    min_turns_before_abandon is configurable in game_rules.json."
+                    .to_string(),
+            },
+            ReferenceEntry {
                 name: "ContractResolution".to_string(),
                 description: "The action response includes a contract_resolution field \
                     with resolution_type 'Completed' (with contract and reward) or 'Failed' \
-                    (with contract and failure reason including which requirement was violated)."
+                    (with contract and failure reason including which requirement was violated, \
+                    or failure_type 'Abandoned' with turns_played for abandonment)."
                     .to_string(),
             },
         ],
@@ -462,7 +474,9 @@ fn build_metrics_system() -> DesignerSection {
                 name: "Contract Metrics".to_string(),
                 description: "Total contracts completed and failed, broken down per tier \
                     with completion rates (completed / attempted). Tracks attempted, \
-                    completed, and failed counts per tier."
+                    completed, and failed counts per tier. total_contracts_abandoned is a \
+                    subset of total_contracts_failed — it counts contracts ended via \
+                    AbandonContract; all abandoned contracts are also counted as failed."
                     .to_string(),
             },
             ReferenceEntry {
@@ -513,7 +527,8 @@ fn build_configuration() -> DesignerSection {
                 name: "configurations/general/game_rules.json".to_string(),
                 description: "Contains general rules (starting_hand_size, \
                     starting_deck_size, contracts_per_tier_to_advance, \
-                    contract_market_size_per_tier, discard_production_unit_bonus), \
+                    contract_market_size_per_tier, discard_production_unit_bonus, \
+                    min_turns_before_abandon), \
                     contract formula parameters (output_threshold, harmful_token_limit \
                     scaling formulas), turn_window and card_tag_constraint formula configs \
                     with unlock_tier gating, and adaptive_balance parameters."

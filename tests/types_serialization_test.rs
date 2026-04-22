@@ -390,7 +390,8 @@ fn load_custom_game_rules_json() {
             "starting_deck_size": 15,
             "contracts_per_tier_to_advance": 5,
             "contract_market_size_per_tier": 4,
-            "discard_production_unit_bonus": 2
+            "discard_production_unit_bonus": 2,
+            "min_turns_before_abandon": 8
         },
         "contract_formulas": {
             "output_threshold": {
@@ -421,6 +422,7 @@ fn load_custom_game_rules_json() {
     assert_eq!(config.general.contracts_per_tier_to_advance, 5);
     assert_eq!(config.general.contract_market_size_per_tier, 4);
     assert_eq!(config.general.discard_production_unit_bonus, 2);
+    assert_eq!(config.general.min_turns_before_abandon, 8);
 }
 
 #[test]

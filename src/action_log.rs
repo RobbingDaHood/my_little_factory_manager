@@ -32,6 +32,14 @@ pub enum PlayerAction {
         replacement_card_index: usize,
         sacrifice_card_index: usize,
     },
+    /// Abandon the active contract before it resolves naturally.
+    ///
+    /// Only allowed after at least `min_turns_before_abandon` turns have been
+    /// played on the contract. Abandoning counts as a contract failure in all
+    /// failure metrics and also increments `total_contracts_abandoned`.
+    /// Abandonment is an emergency escape — no well-balanced strategy should
+    /// rely on it routinely.
+    AbandonContract,
 }
 
 /// A single entry in the action log.

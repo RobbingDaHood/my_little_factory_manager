@@ -23,6 +23,8 @@ pub struct MetricsTracker {
     contracts_failed: u32,
     contracts_failed_per_tier: HashMap<u32, u32>,
     contracts_attempted_per_tier: HashMap<u32, u32>,
+    contracts_abandoned: u32,
+    contracts_abandoned_per_tier: HashMap<u32, u32>,
 
     // Card counters
     total_cards_played: u32,
@@ -53,6 +55,8 @@ impl MetricsTracker {
             contracts_failed: 0,
             contracts_failed_per_tier: HashMap::new(),
             contracts_attempted_per_tier: HashMap::new(),
+            contracts_abandoned: 0,
+            contracts_abandoned_per_tier: HashMap::new(),
             total_cards_played: 0,
             total_cards_discarded: 0,
             cards_played_per_tag: HashMap::new(),
@@ -120,6 +124,18 @@ impl MetricsTracker {
         self.current_streak = 0;
     }
 
+    /// Record a contract abandonment.
+    ///
+    /// Abandonment counts as a failure in all failure metrics (calls
+    /// `record_contract_failed` internally) and also increments its own
+    /// dedicated counter so callers can distinguish voluntary abandons from
+    /// mechanical failures.
+    pub fn record_contract_abandoned(&mut self, tier: u32) {
+        self.record_contract_failed(tier);
+        self.contracts_abandoned += 1;
+        *self.contracts_abandoned_per_tier.entry(tier).or_insert(0) += 1;
+    }
+
     pub fn record_card_replaced(&mut self) {
         self.total_cards_replaced += 1;
     }
@@ -142,6 +158,7 @@ impl MetricsTracker {
         SessionMetrics {
             total_contracts_completed: self.contracts_completed,
             total_contracts_failed: self.contracts_failed,
+            total_contracts_abandoned: self.contracts_abandoned,
             contracts_per_tier,
             total_cards_played: self.total_cards_played,
             total_cards_discarded: self.total_cards_discarded,
@@ -307,8 +324,11 @@ fn compute_strategy_analysis(tag_counts: &HashMap<CardTag, u32>) -> (Option<Stri
 pub struct SessionMetrics {
     /// Total contracts completed across all tiers.
     pub total_contracts_completed: u32,
-    /// Total contracts failed across all tiers.
+    /// Total contracts failed across all tiers (includes abandoned contracts).
     pub total_contracts_failed: u32,
+    /// Total contracts abandoned via `AbandonContract`.
+    /// These are a subset of `total_contracts_failed`.
+    pub total_contracts_abandoned: u32,
     /// Per-tier completion statistics.
     pub contracts_per_tier: Vec<TierCompletionMetrics>,
 

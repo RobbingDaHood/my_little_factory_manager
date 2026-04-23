@@ -2,7 +2,8 @@
 //!
 //! Validates the combinatorial effect type generator, proportional model,
 //! HarmfulTokenLimit requirements, requirement tier-gating, duplicate
-//! requirement stacking, and direction_sign correctness.
+//! requirement stacking, direction_sign correctness, and the Issue #14
+//! beneficial-token-min one-tier delay invariant.
 
 use my_little_factory_manager::adaptive_balance::AdaptiveBalanceTracker;
 use my_little_factory_manager::config_loader::{load_game_rules, load_token_definitions};
@@ -738,4 +739,191 @@ fn contracts_valid_across_many_tiers_and_seeds() {
             }
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Issue #14: beneficial-token min requirement one-tier delay invariant
+// ---------------------------------------------------------------------------
+
+/// For every non-ProductionUnit beneficial token, the token must NOT appear as
+/// a `TokenRequirement { min: Some(_) }` in contracts generated at the exact
+/// req_tier where that token's producer card-effect first unlocks.  It should
+/// only start appearing one tier later.
+///
+/// ProductionUnit is exempt: it unlocks at tier 0 and `0.saturating_sub(1) == 0`,
+/// so tier 0 beneficial-min pool still includes it.
+#[test]
+fn beneficial_min_requirement_absent_at_token_producer_unlock_tier() {
+    let token_defs = load_token_definitions().expect("config");
+    let effect_types = generate_effect_types(&token_defs);
+    let game_rules = load_game_rules().expect("game rules");
+    let adaptive = my_little_factory_manager::adaptive_balance::AdaptiveBalanceTracker::new(
+        game_rules.adaptive_balance.clone(),
+    );
+
+    // Find (token, producer_unlock_tier) for each non-PU beneficial token.
+    let beneficial_tokens: Vec<(TokenType, u32)> = {
+        let mut seen = std::collections::HashMap::new();
+        for et in &effect_types {
+            if et.primary_token.is_beneficial()
+                && et.primary_token != TokenType::ProductionUnit
+                && matches!(et.main_direction, MainEffectDirection::Producer)
+            {
+                seen.entry(et.primary_token.clone())
+                    .or_insert(et.available_at_tier);
+            }
+        }
+        seen.into_iter().collect()
+    };
+
+    assert!(
+        !beneficial_tokens.is_empty(),
+        "should have at least one non-PU beneficial token with a producer"
+    );
+
+    for (token, unlock_tier) in &beneficial_tokens {
+        // Generate 200 contracts at exactly the unlock tier; none should have a
+        // beneficial-min requirement for this token.
+        for seed in 0u64..200 {
+            let mut rng = Pcg64::seed_from_u64(seed);
+            let contract = generate_contract_with_types(
+                ContractTier(*unlock_tier),
+                &mut rng,
+                &game_rules.contract_formulas,
+                &token_defs,
+                &effect_types,
+                &adaptive,
+            );
+
+            for req in &contract.requirements {
+                if let ContractRequirementKind::TokenRequirement {
+                    token_type,
+                    min: Some(_),
+                    ..
+                } = req
+                {
+                    assert_ne!(
+                        token_type, token,
+                        "token {:?} (unlocks at tier {}) must NOT appear as a beneficial-min \
+                         requirement in contracts at req_tier {} (seed {})",
+                        token, unlock_tier, unlock_tier, seed
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// At req_tier = unlock_tier + 1, the token's beneficial-min pool now includes it
+/// (since we use `tier.saturating_sub(1) = unlock_tier`).  Over 200 seeds, the
+/// token must appear at least once so the feature is also reachable.
+#[test]
+fn beneficial_min_requirement_reachable_one_tier_after_unlock() {
+    let token_defs = load_token_definitions().expect("config");
+    let effect_types = generate_effect_types(&token_defs);
+    let game_rules = load_game_rules().expect("game rules");
+    let adaptive = my_little_factory_manager::adaptive_balance::AdaptiveBalanceTracker::new(
+        game_rules.adaptive_balance.clone(),
+    );
+
+    let beneficial_tokens: Vec<(TokenType, u32)> = {
+        let mut seen = std::collections::HashMap::new();
+        for et in &effect_types {
+            if et.primary_token.is_beneficial()
+                && et.primary_token != TokenType::ProductionUnit
+                && matches!(et.main_direction, MainEffectDirection::Producer)
+            {
+                seen.entry(et.primary_token.clone())
+                    .or_insert(et.available_at_tier);
+            }
+        }
+        seen.into_iter().collect()
+    };
+
+    for (token, unlock_tier) in &beneficial_tokens {
+        let req_tier = unlock_tier + 1;
+        let mut found = false;
+
+        for seed in 0u64..200 {
+            let mut rng = Pcg64::seed_from_u64(seed);
+            let contract = generate_contract_with_types(
+                ContractTier(req_tier),
+                &mut rng,
+                &game_rules.contract_formulas,
+                &token_defs,
+                &effect_types,
+                &adaptive,
+            );
+
+            for req in &contract.requirements {
+                if let ContractRequirementKind::TokenRequirement {
+                    token_type,
+                    min: Some(_),
+                    ..
+                } = req
+                {
+                    if token_type == token {
+                        found = true;
+                    }
+                }
+            }
+
+            if found {
+                break;
+            }
+        }
+
+        assert!(
+            found,
+            "token {:?} (unlocks at tier {}) should appear as a beneficial-min \
+             requirement in at least one contract at req_tier {} (over 200 seeds)",
+            token, unlock_tier, req_tier
+        );
+    }
+}
+
+/// ProductionUnit unlocks at tier 0.  Because `0.saturating_sub(2) == 0`, it
+/// should still be reachable as a beneficial-min requirement in tier-0 contracts.
+#[test]
+fn production_unit_min_requirement_reachable_at_tier_0() {
+    let token_defs = load_token_definitions().expect("config");
+    let effect_types = generate_effect_types(&token_defs);
+    let game_rules = load_game_rules().expect("game rules");
+    let adaptive = my_little_factory_manager::adaptive_balance::AdaptiveBalanceTracker::new(
+        game_rules.adaptive_balance.clone(),
+    );
+
+    let mut found = false;
+    for seed in 0u64..500 {
+        let mut rng = Pcg64::seed_from_u64(seed);
+        let contract = generate_contract_with_types(
+            ContractTier(0),
+            &mut rng,
+            &game_rules.contract_formulas,
+            &token_defs,
+            &effect_types,
+            &adaptive,
+        );
+
+        for req in &contract.requirements {
+            if let ContractRequirementKind::TokenRequirement {
+                token_type: TokenType::ProductionUnit,
+                min: Some(_),
+                ..
+            } = req
+            {
+                found = true;
+            }
+        }
+
+        if found {
+            break;
+        }
+    }
+
+    assert!(
+        found,
+        "ProductionUnit should still appear as a min requirement in tier-0 contracts \
+         (saturating_sub(2) == 0 preserves tier-0 inclusion)"
+    );
 }

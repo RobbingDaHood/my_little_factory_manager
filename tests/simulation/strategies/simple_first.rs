@@ -7,6 +7,9 @@ use crate::strategies::Strategy;
 /// - Accepts the highest available tier contract (last in valid_tiers list)
 /// - Always plays the first valid card
 /// - Discards only when no card can be played
+/// - Abandons the contract as last resort (after min_turns_before_abandon) when
+///   neither PlayCard nor DiscardCard is possible — this prevents permanent stalls
+///   on uncompletable contracts
 /// - Never deckbuilds (ignores ReplaceCard)
 ///
 /// Picking the highest tier ensures the strategy actually attempts to advance
@@ -77,6 +80,16 @@ impl Strategy for SimpleFirstStrategy {
                     });
                 }
             }
+        }
+
+        // 3.5. Abandon the contract as a last resort when stuck — no PlayCard or
+        //      DiscardCard available (e.g. all cards banned by a CardTagConstraint
+        //      and hand is empty after exhausting the deck).
+        if possible_actions
+            .iter()
+            .any(|a| a["action_type"] == "AbandonContract")
+        {
+            return json!({ "action_type": "AbandonContract" });
         }
 
         panic!(

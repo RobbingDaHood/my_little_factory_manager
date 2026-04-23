@@ -59,6 +59,12 @@ pub enum ActionSuccess {
     },
     /// A deck/discard card was replaced with a shelved card; sacrifice destroyed.
     CardReplaced,
+    /// The active contract was voluntarily abandoned after the required minimum turns.
+    ///
+    /// The `contract_resolution` is always a `Failed` resolution with reason `Abandoned`.
+    ContractAbandoned {
+        contract_resolution: ContractResolution,
+    },
 }
 
 /// Error outcomes — explicit variants for every failure mode.
@@ -114,6 +120,13 @@ pub enum ActionError {
     CardTagBanned {
         tag: CardTag,
     },
+    /// AbandonContract was attempted but the required minimum turns have not been played yet.
+    AbandonContractNotAllowed {
+        turns_played: u32,
+        turns_required: u32,
+    },
+    /// AbandonContract was attempted but there is no active contract.
+    NoContractToAbandon,
 }
 
 // ---------------------------------------------------------------------------
@@ -195,6 +208,9 @@ pub enum PossibleAction {
         valid_replacement_card_indices: Vec<usize>,
         valid_sacrifice_card_indices: Vec<usize>,
     },
+    /// Available when an active contract has been running for at least
+    /// `min_turns_before_abandon` turns. Abandoning counts as a failure.
+    AbandonContract,
 }
 
 // ---------------------------------------------------------------------------
@@ -435,6 +451,11 @@ impl GameState {
                     });
                 }
             }
+
+            // AbandonContract becomes available after the minimum turns threshold
+            if self.contract_turns_played >= self.rules.general.min_turns_before_abandon {
+                actions.push(PossibleAction::AbandonContract);
+            }
         } else {
             let valid_tiers: Vec<TierContractRange> = self
                 .offered_contracts
@@ -589,6 +610,7 @@ impl GameState {
                 replacement_card_index,
                 sacrifice_card_index,
             ),
+            PlayerAction::AbandonContract => self.handle_abandon_contract(),
         }
     }
 
@@ -851,6 +873,36 @@ impl GameState {
         self.metrics_tracker.record_card_replaced();
 
         ActionResult::Success(ActionSuccess::CardReplaced)
+    }
+
+    fn handle_abandon_contract(&mut self) -> ActionResult {
+        let contract = match self.active_contract.as_ref() {
+            Some(c) => c.clone(),
+            None => return ActionResult::Error(ActionError::NoContractToAbandon),
+        };
+
+        let turns_required = self.rules.general.min_turns_before_abandon;
+        if self.contract_turns_played < turns_required {
+            return ActionResult::Error(ActionError::AbandonContractNotAllowed {
+                turns_played: self.contract_turns_played,
+                turns_required,
+            });
+        }
+
+        let turns_played = self.contract_turns_played;
+        self.metrics_tracker
+            .record_contract_abandoned(contract.tier.0);
+        self.adaptive_tracker.on_contract_failed();
+        self.active_contract = None;
+        self.contract_turns_played = 0;
+        self.cards_played_per_tag_contract.clear();
+        self.refill_contract_market();
+
+        let reason = ContractFailureReason::Abandoned { turns_played };
+        let contract_resolution = ContractResolution::Failed { contract, reason };
+        ActionResult::Success(ActionSuccess::ContractAbandoned {
+            contract_resolution,
+        })
     }
 
     // -------------------------------------------------------------------

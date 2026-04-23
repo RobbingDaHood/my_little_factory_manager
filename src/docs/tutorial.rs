@@ -85,6 +85,7 @@ fn build_tutorial() -> Tutorial {
                 tips: vec![
                     "Without an active contract, you'll see AcceptContract actions.".to_string(),
                     "With an active contract, you'll see PlayCard and DiscardCard actions.".to_string(),
+                    "After 5 turns on a contract, AbandonContract also appears as an emergency escape.".to_string(),
                 ],
             },
             TutorialStep {
@@ -196,6 +197,8 @@ fn build_tutorial() -> Tutorial {
                     "Failure is not game-over — it just means no reward and a broken streak.".to_string(),
                     "After failure, the adaptive system eases difficulty, giving you breathing room.".to_string(),
                     "The contract_turns_played field in /state shows how many turns you've used.".to_string(),
+                    "AbandonContract becomes available after 5 turns as a last resort — it counts as a failure.".to_string(),
+                    "Use AbandonContract only if truly stuck (e.g., all cards banned); it breaks your streak.".to_string(),
                 ],
             },
             TutorialStep {

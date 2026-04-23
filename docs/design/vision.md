@@ -115,6 +115,14 @@ Contracts are:
 * but always followed by **new opportunities** — the market never runs dry
 * failure does not end progression, only **slows it**
 
+### Emergency Escape — AbandonContract
+
+After a minimum number of turns on a contract (configurable; default 5), the `AbandonContract` action becomes available. This is a last-resort escape for players who are genuinely stuck — for example, all playable cards are banned by tag constraints.
+
+Abandonment counts as a failure: it breaks the streak, increments `total_contracts_failed`, and adds its own `total_contracts_abandoned` counter in metrics. No reward is earned.
+
+**Design principle**: no viable strategy should rely on abandonment. Game balance must ensure that players who frequently abandon perform measurably worse than those who complete contracts. High abandonment rates in simulation are a balance signal that something is wrong — either a requirement class is too tight at a given tier, or the starter deck is missing a critical card type.
+
 ---
 
 ## 🏗 Contract Tier System

@@ -339,16 +339,32 @@ fn unlocked_card_tags(tier: u32, effect_types: &[CardEffectTypeConfig]) -> Vec<C
 
 /// Returns the requirement types available at the given tier, paired with
 /// generator functions. Only uses token types with unlocked card effects.
+///
+/// Beneficial-token minimum requirements are gated two tiers behind the
+/// token's card-effect unlock tier. Because `roll_requirement_tier` may
+/// produce `req_tier = contract_tier + 1`, a one-tier offset is not enough:
+/// a token unlocking at T could still appear via req_tier = T+1. Using
+/// `saturating_sub(2)` ensures tokens only enter the pool at req_tier ≥ T+2,
+/// which is only reachable in contracts at contract_tier ≥ T+1 (one full tier
+/// after unlock). `0.saturating_sub(2) == 0` keeps ProductionUnit in the
+/// tier-0 pool.
+/// Harmful-token maximum requirements use the full current-tier unlock set
+/// because the player can only exceed them by actively playing cards that
+/// produce the harmful token, which are also only unlocked progressively.
 fn available_requirement_generators(
     tier: u32,
     formulas: &ContractFormulasConfig,
     effect_types: &[CardEffectTypeConfig],
 ) -> Vec<RequirementGenerator> {
     let mut generators: Vec<RequirementGenerator> = Vec::new();
-    let available_tokens = unlocked_token_types(tier, effect_types);
 
-    // TokenRequirement generators for each beneficial token that's unlocked
-    for token in &available_tokens {
+    // Beneficial min requirements: two tiers prior. Requirements are generated at
+    // req_tier which can be up to contract_tier + 1, so we need to subtract 2 to
+    // guarantee the token's producer was unlocked a full tier before the contract
+    // tier. `0.saturating_sub(2) == 0` keeps ProductionUnit (unlock tier 0) in
+    // the tier-0 pool.
+    let beneficial_min_tokens = unlocked_token_types(tier.saturating_sub(2), effect_types);
+    for token in &beneficial_min_tokens {
         if token.is_beneficial() {
             let t = token.clone();
             let formula = formulas.output_threshold.clone();
@@ -362,8 +378,10 @@ fn available_requirement_generators(
         }
     }
 
-    // TokenRequirement generators for each harmful token that's unlocked
-    for token in &available_tokens {
+    // Harmful max requirements: full current-tier set — safe because the player
+    // only accumulates harmful tokens by playing cards that produce them.
+    let harmful_max_tokens = unlocked_token_types(tier, effect_types);
+    for token in &harmful_max_tokens {
         if token.is_harmful() {
             let t = token.clone();
             let formula = formulas.harmful_token_limit.clone();

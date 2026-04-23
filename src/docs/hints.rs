@@ -51,6 +51,7 @@ fn build_hints() -> HintsGuide {
             "After a contract failure, the adaptive system eases difficulty — it's okay to fail occasionally.".to_string(),
             "Check adaptive_adjustments on offered contracts to see how the game is adapting to your style.".to_string(),
             "Diversify your strategies to keep adaptive pressure balanced — specialization gets punished over time.".to_string(),
+            "AbandonContract is an emergency escape available after 5 turns — it counts as a failure and breaks your streak. Use it only when genuinely stuck, not as a routine strategy.".to_string(),
         ],
         tiers: vec![
             build_tier0_hints(),

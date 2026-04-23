@@ -404,6 +404,11 @@ pub enum ContractFailureReason {
     },
     /// The contract's turn window expired.
     TurnWindowExceeded { max_turn: u32, current_turn: u32 },
+    /// The player voluntarily abandoned the contract.
+    ///
+    /// Only allowed after `min_turns_before_abandon` turns have been played.
+    /// Counts as a failure in all failure metrics.
+    Abandoned { turns_played: u32 },
 }
 
 /// A group of contract offers for a single tier.

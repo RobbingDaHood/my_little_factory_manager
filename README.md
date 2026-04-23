@@ -80,7 +80,7 @@ The game also provides self-documenting endpoints:
 #### Game Actions
 | Endpoint | Purpose |
 |----------|---------|
-| `POST /action` | Submit a player action (NewGame, AcceptContract, PlayCard, DiscardCard, ReplaceCard) |
+| `POST /action` | Submit a player action (NewGame, AcceptContract, PlayCard, DiscardCard, ReplaceCard, AbandonContract) |
 | `GET /actions/possible` | List currently valid actions with index ranges |
 | `GET /actions/history` | Full action history for deterministic replay |
 

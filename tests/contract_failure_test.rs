@@ -515,3 +515,278 @@ fn pressure_snapshot_sorted() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// Issue #13: AbandonContract action
+// ---------------------------------------------------------------------------
+
+fn get_possible_actions(client: &Client) -> serde_json::Value {
+    let response = client.get("/actions/possible").dispatch();
+    assert_eq!(response.status(), Status::Ok);
+    let body = response.into_string().expect("response body");
+    serde_json::from_str(&body).expect("valid json")
+}
+
+fn has_possible_action(client: &Client, action_type: &str) -> bool {
+    let actions = get_possible_actions(client);
+    actions
+        .as_array()
+        .expect("array")
+        .iter()
+        .any(|a| a["action_type"] == action_type)
+}
+
+/// Play N turns on the active contract without checking for resolution.
+fn play_n_turns(client: &Client, n: u32) {
+    for _ in 0..n {
+        let state = get_state(client);
+        if state["active_contract"].is_null() {
+            return;
+        }
+        let idx = first_card_in_hand(client);
+        let (_, result) = post_action(
+            client,
+            &format!(r#"{{"action_type":"PlayCard","card_index":{idx}}}"#),
+        );
+        // If PlayCard fails (e.g. insufficient tokens), fall back to DiscardCard
+        if result["outcome"] == "Error" {
+            let idx = first_card_in_hand(client);
+            post_action(
+                client,
+                &format!(r#"{{"action_type":"DiscardCard","card_index":{idx}}}"#),
+            );
+        }
+    }
+}
+
+#[test]
+fn abandon_contract_not_available_before_min_turns() {
+    let client = client();
+    post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
+    post_action(
+        &client,
+        r#"{"action_type":"AcceptContract","tier_index":0,"contract_index":0}"#,
+    );
+
+    // After 0 turns, AbandonContract should not be available
+    assert!(
+        !has_possible_action(&client, "AbandonContract"),
+        "AbandonContract should not be available immediately after accepting"
+    );
+}
+
+#[test]
+fn abandon_contract_available_after_min_turns() {
+    let client = client();
+    post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
+    post_action(
+        &client,
+        r#"{"action_type":"AcceptContract","tier_index":0,"contract_index":0}"#,
+    );
+
+    // Play exactly min_turns_before_abandon turns (default: 5)
+    play_n_turns(&client, 5);
+
+    let state = get_state(&client);
+    if state["active_contract"].is_null() {
+        // Contract already resolved, skip test — just verify no panic occurred
+        return;
+    }
+
+    assert!(
+        has_possible_action(&client, "AbandonContract"),
+        "AbandonContract should be available after min_turns_before_abandon turns"
+    );
+}
+
+#[test]
+fn abandon_contract_error_when_not_enough_turns() {
+    let client = client();
+    post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
+    post_action(
+        &client,
+        r#"{"action_type":"AcceptContract","tier_index":0,"contract_index":0}"#,
+    );
+
+    // Attempt abandon at turn 0 — should get an error
+    let (status, result) = post_action(&client, r#"{"action_type":"AbandonContract"}"#);
+    assert_eq!(status, Status::Ok);
+    assert_eq!(result["outcome"], "Error");
+    assert_eq!(
+        result["detail"]["error_type"], "AbandonContractNotAllowed",
+        "error should be AbandonContractNotAllowed"
+    );
+    let turns_played = result["detail"]["turns_played"].as_u64().unwrap_or(99);
+    let turns_required = result["detail"]["turns_required"].as_u64().unwrap_or(0);
+    assert!(
+        turns_played < turns_required,
+        "turns_played ({}) should be less than turns_required ({})",
+        turns_played,
+        turns_required
+    );
+}
+
+#[test]
+fn abandon_contract_no_active_contract_error() {
+    let client = client();
+    post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
+
+    // No contract active — should get NoContractToAbandon error
+    let (status, result) = post_action(&client, r#"{"action_type":"AbandonContract"}"#);
+    assert_eq!(status, Status::Ok);
+    assert_eq!(result["outcome"], "Error");
+    assert_eq!(result["detail"]["error_type"], "NoContractToAbandon");
+}
+
+#[test]
+fn abandon_contract_counts_as_failure_in_metrics() {
+    let client = client();
+    post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
+    post_action(
+        &client,
+        r#"{"action_type":"AcceptContract","tier_index":0,"contract_index":0}"#,
+    );
+
+    // Play 5 turns so abandon becomes available
+    play_n_turns(&client, 5);
+
+    let state = get_state(&client);
+    if state["active_contract"].is_null() {
+        // Contract resolved before we could abandon; skip.
+        return;
+    }
+
+    let (status, result) = post_action(&client, r#"{"action_type":"AbandonContract"}"#);
+    assert_eq!(status, Status::Ok);
+    assert_eq!(result["outcome"], "Success");
+    assert_eq!(result["detail"]["result_type"], "ContractAbandoned");
+
+    let resolution = &result["detail"]["contract_resolution"];
+    assert_eq!(resolution["resolution_type"], "Failed");
+    assert_eq!(resolution["reason"]["failure_type"], "Abandoned");
+    let turns_played = resolution["reason"]["turns_played"].as_u64().unwrap_or(0);
+    assert!(
+        turns_played >= 5,
+        "abandoned turns_played should be >= min_turns_before_abandon"
+    );
+
+    let metrics = get_metrics(&client);
+    assert_eq!(
+        metrics["total_contracts_failed"].as_u64().unwrap_or(0),
+        1,
+        "total_contracts_failed should be 1 after abandonment"
+    );
+    assert_eq!(
+        metrics["total_contracts_abandoned"].as_u64().unwrap_or(0),
+        1,
+        "total_contracts_abandoned should be 1"
+    );
+}
+
+#[test]
+fn abandon_contract_resets_contract_state() {
+    let client = client();
+    post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
+    post_action(
+        &client,
+        r#"{"action_type":"AcceptContract","tier_index":0,"contract_index":0}"#,
+    );
+
+    play_n_turns(&client, 5);
+
+    let state = get_state(&client);
+    if state["active_contract"].is_null() {
+        return; // Contract resolved naturally; skip test.
+    }
+
+    post_action(&client, r#"{"action_type":"AbandonContract"}"#);
+
+    let state_after = get_state(&client);
+    assert!(
+        state_after["active_contract"].is_null(),
+        "active_contract should be cleared after abandonment"
+    );
+    assert_eq!(
+        state_after["contract_turns_played"].as_u64().unwrap_or(99),
+        0,
+        "contract_turns_played should reset to 0 after abandonment"
+    );
+}
+
+#[test]
+fn abandon_contract_breaks_streak() {
+    let client = client();
+    post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
+
+    // Complete one contract to build a streak
+    complete_one_contract(&client);
+    let metrics_before = get_metrics(&client);
+    let streak_before = metrics_before["current_streak"].as_u64().unwrap_or(0);
+    assert!(
+        streak_before >= 1,
+        "streak should be >= 1 after a completion"
+    );
+
+    // Accept another contract and abandon it
+    post_action(
+        &client,
+        r#"{"action_type":"AcceptContract","tier_index":0,"contract_index":0}"#,
+    );
+    play_n_turns(&client, 5);
+
+    let state = get_state(&client);
+    if state["active_contract"].is_null() {
+        return; // Resolved naturally.
+    }
+
+    post_action(&client, r#"{"action_type":"AbandonContract"}"#);
+
+    let metrics_after = get_metrics(&client);
+    assert_eq!(
+        metrics_after["current_streak"].as_u64().unwrap_or(99),
+        0,
+        "current_streak should reset to 0 after abandonment"
+    );
+}
+
+#[test]
+fn abandon_contract_refills_market() {
+    let client = client();
+    post_action(&client, r#"{"action_type":"NewGame","seed":42}"#);
+
+    let state_before = get_state(&client);
+    let contracts_before: usize = state_before["offered_contracts"]
+        .as_array()
+        .expect("array")
+        .iter()
+        .map(|tc| tc["contracts"].as_array().map(|a| a.len()).unwrap_or(0))
+        .sum();
+
+    post_action(
+        &client,
+        r#"{"action_type":"AcceptContract","tier_index":0,"contract_index":0}"#,
+    );
+    play_n_turns(&client, 5);
+
+    let state = get_state(&client);
+    if state["active_contract"].is_null() {
+        return;
+    }
+
+    post_action(&client, r#"{"action_type":"AbandonContract"}"#);
+
+    let state_after = get_state(&client);
+    let contracts_after: usize = state_after["offered_contracts"]
+        .as_array()
+        .expect("array")
+        .iter()
+        .map(|tc| tc["contracts"].as_array().map(|a| a.len()).unwrap_or(0))
+        .sum();
+
+    assert!(
+        contracts_after >= contracts_before,
+        "market should refill after abandonment (before={}, after={})",
+        contracts_before,
+        contracts_after
+    );
+}

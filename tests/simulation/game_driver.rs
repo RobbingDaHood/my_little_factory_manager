@@ -32,6 +32,7 @@ pub struct GameResult {
     pub total_actions: u64,
     pub contracts_completed: u32,
     pub contracts_failed: u32,
+    pub contracts_abandoned: u32,
     /// Count of each contract failure reason observed.
     pub failure_reasons: HashMap<String, u32>,
     /// True when max_actions was exhausted before all milestones were reached.
@@ -49,6 +50,7 @@ impl GameResult {
             total_actions: 0,
             contracts_completed: 0,
             contracts_failed: 0,
+            contracts_abandoned: 0,
             failure_reasons: HashMap::new(),
             hit_action_limit: false,
             stuck: false,
@@ -133,6 +135,9 @@ impl GameDriver {
                             .as_str()
                             .unwrap_or("Unknown")
                             .to_string();
+                        if failure_type == "Abandoned" {
+                            result.contracts_abandoned += 1;
+                        }
                         *result.failure_reasons.entry(failure_type).or_insert(0) += 1;
                     }
                     _ => {}

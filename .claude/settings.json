@@ -1,0 +1,24 @@
+{
+  "allowedTools": [
+    "Bash(cargo build:*)",
+    "Bash(cargo test:*)",
+    "Bash(cargo clippy:*)",
+    "Bash(cargo fmt:*)",
+    "Bash(cargo llvm-cov:*)",
+    "Bash(cargo run:*)",
+    "Bash(make:*)",
+    "Bash(git status:*)",
+    "Bash(git diff:*)",
+    "Bash(git log:*)",
+    "Bash(git fetch:*)",
+    "Bash(git rebase:*)",
+    "Bash(git push:*)",
+    "Bash(git add:*)",
+    "Bash(git commit:*)",
+    "Bash(gh pr:*)",
+    "Bash(gh issue:*)",
+    "Bash(gh run:*)",
+    "Bash(scripts/worktree-manage.sh:*)",
+    "Bash(scripts/check_all.sh:*)"
+  ]
+}

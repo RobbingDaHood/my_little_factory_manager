@@ -5,8 +5,8 @@
 
 use rand_pcg::Pcg64;
 
-use crate::config_loader::load_token_definitions;
-use crate::contract_generation::{generate_effect_types, roll_base_effect};
+use crate::config::CardEffectTypeConfig;
+use crate::contract_generation::roll_base_effect;
 use crate::types::{add_card_to_entries, CardEntry, CardLocation, PlayerActionCard};
 
 /// Build the starter deck by round-robin rolling `count` cards from all
@@ -14,10 +14,11 @@ use crate::types::{add_card_to_entries, CardEntry, CardLocation, PlayerActionCar
 ///
 /// Duplicate cards (same effects and tags) are grouped into a single
 /// `CardEntry` with the appropriate copy count.
-pub fn create_starter_deck(count: u32, rng: &mut Pcg64) -> Vec<CardEntry> {
-    let token_defs = load_token_definitions().expect("embedded token definitions must parse");
-    let effect_types = generate_effect_types(&token_defs);
-
+pub fn create_starter_deck(
+    count: u32,
+    rng: &mut Pcg64,
+    effect_types: &[CardEffectTypeConfig],
+) -> Vec<CardEntry> {
     let available: Vec<_> = effect_types
         .iter()
         .filter(|et| et.available_at_tier == 0)

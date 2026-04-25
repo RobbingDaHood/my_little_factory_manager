@@ -3,6 +3,8 @@
 //! These types are deserialized from JSON files under `configurations/` at
 //! compile time and used to configure game behaviour.
 
+use std::collections::HashMap;
+
 use crate::types::{CardTag, MainEffectDirection, TokenType, VariationDirection};
 use rocket::serde::Deserialize;
 
@@ -194,6 +196,40 @@ pub struct CardEffectVariation {
     /// -1 = costs primary (removes harm / gets extra beneficial output).
     pub direction_sign: i8,
     pub unlock_tier: u32,
+}
+
+// ---------------------------------------------------------------------------
+// Cached config: all immutable derived data pre-computed at game creation
+// ---------------------------------------------------------------------------
+
+/// All config-derived data pre-computed once when a new game is created.
+///
+/// Constructed via `contract_generation::build_cached_config`. Passed by
+/// reference to all generation functions so configs are never re-loaded
+/// or re-derived during a game.
+pub struct CachedConfig {
+    pub rules: GameRulesConfig,
+    pub token_defs: TokenDefinitionsConfig,
+    pub effect_types: Vec<CardEffectTypeConfig>,
+    pub unlocked_tokens_by_tier: HashMap<u32, Vec<TokenType>>,
+    pub unlocked_tags_by_tier: HashMap<u32, Vec<CardTag>>,
+    pub max_precomputed_tier: u32,
+}
+
+impl CachedConfig {
+    pub fn unlocked_tokens_at(&self, tier: u32) -> &[TokenType] {
+        let capped = tier.min(self.max_precomputed_tier);
+        self.unlocked_tokens_by_tier
+            .get(&capped)
+            .map_or(&[], Vec::as_slice)
+    }
+
+    pub fn unlocked_tags_at(&self, tier: u32) -> &[CardTag] {
+        let capped = tier.min(self.max_precomputed_tier);
+        self.unlocked_tags_by_tier
+            .get(&capped)
+            .map_or(&[], Vec::as_slice)
+    }
 }
 
 // ---------------------------------------------------------------------------

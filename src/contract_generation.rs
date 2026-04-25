@@ -12,18 +12,18 @@
 use rand::RngCore;
 use rand_pcg::Pcg64;
 
+use std::collections::{BTreeSet, HashMap};
+
 use crate::adaptive_balance::AdaptiveBalanceTracker;
 use crate::config::{
-    CardEffectTypeConfig, CardEffectVariation, CardTagConstraintFormulaConfig,
-    ContractFormulasConfig, ModifierRange, TierScalingFormula, TokenDefinitionsConfig,
-    TurnWindowFormulaConfig, VariationDefaultsConfig,
+    CachedConfig, CardEffectTypeConfig, CardEffectVariation, CardTagConstraintFormulaConfig,
+    ContractFormulasConfig, GameRulesConfig, ModifierRange, TierScalingFormula,
+    TokenDefinitionsConfig, TurnWindowFormulaConfig, VariationDefaultsConfig,
 };
-use crate::config_loader::load_token_definitions;
 use crate::types::{
     CardEffect, CardTag, Contract, ContractRequirementKind, ContractTier, MainEffectDirection,
     PlayerActionCard, TokenAmount, TokenType, VariationDirection,
 };
-use std::collections::BTreeSet;
 
 type RequirementGenerator = Box<dyn Fn(&mut Pcg64) -> ContractRequirementKind>;
 
@@ -379,7 +379,7 @@ fn unlocked_card_tags(tier: u32, effect_types: &[CardEffectTypeConfig]) -> Vec<C
 fn available_requirement_generators(
     tier: u32,
     formulas: &ContractFormulasConfig,
-    effect_types: &[CardEffectTypeConfig],
+    cached_config: &CachedConfig,
 ) -> Vec<RequirementGenerator> {
     let mut generators: Vec<RequirementGenerator> = Vec::new();
 
@@ -388,8 +388,8 @@ fn available_requirement_generators(
     // guarantee the token's producer was unlocked a full tier before the contract
     // tier. `0.saturating_sub(2) == 0` keeps ProductionUnit (unlock tier 0) in
     // the tier-0 pool.
-    let beneficial_min_tokens = unlocked_token_types(tier.saturating_sub(2), effect_types);
-    for token in &beneficial_min_tokens {
+    let beneficial_min_tokens = cached_config.unlocked_tokens_at(tier.saturating_sub(2));
+    for token in beneficial_min_tokens {
         if token.is_beneficial() {
             let t = token.clone();
             let formula = formulas.output_threshold.clone();
@@ -405,8 +405,8 @@ fn available_requirement_generators(
 
     // Harmful max requirements: full current-tier set — safe because the player
     // only accumulates harmful tokens by playing cards that produce them.
-    let harmful_max_tokens = unlocked_token_types(tier, effect_types);
-    for token in &harmful_max_tokens {
+    let harmful_max_tokens = cached_config.unlocked_tokens_at(tier);
+    for token in harmful_max_tokens {
         if token.is_harmful() {
             let t = token.clone();
             let formula = formulas.harmful_token_limit.clone();
@@ -433,7 +433,7 @@ fn available_requirement_generators(
     // CardTagConstraint generator — unlocks in the Waste→QP gap
     if let Some(ctc_config) = formulas.card_tag_constraint.as_ref() {
         if tier >= ctc_config.unlock_tier_only_max {
-            let available_tags = unlocked_card_tags(tier, effect_types);
+            let available_tags = cached_config.unlocked_tags_at(tier).to_vec();
             if !available_tags.is_empty() {
                 let ctc = ctc_config.clone();
                 generators.push(Box::new(move |rng: &mut Pcg64| {
@@ -567,42 +567,62 @@ fn roll_requirement_tier(contract_tier: u32, rng: &mut Pcg64) -> u32 {
     min_tier + (rng.next_u32() % range)
 }
 
-/// Generate a single contract for the given tier.
-pub fn generate_contract(
-    tier: ContractTier,
-    rng: &mut Pcg64,
-    formulas: &ContractFormulasConfig,
-    adaptive_tracker: &AdaptiveBalanceTracker,
-) -> Contract {
-    let token_defs = load_token_definitions().expect("embedded token definitions must parse");
+/// Build a `CachedConfig` from raw configs, pre-computing all tier-derived data.
+///
+/// Pre-computes `unlocked_tokens_by_tier` and `unlocked_tags_by_tier` for
+/// tiers 0..=max_effect_tier+50 so that contract generation never re-derives
+/// these from config at runtime.
+pub fn build_cached_config(
+    rules: GameRulesConfig,
+    token_defs: TokenDefinitionsConfig,
+) -> CachedConfig {
     let effect_types = generate_effect_types(&token_defs);
-    generate_contract_with_types(
-        tier,
-        rng,
-        formulas,
-        &token_defs,
-        &effect_types,
-        adaptive_tracker,
-    )
+    let max_effect_tier = effect_types
+        .iter()
+        .map(|e| e.available_at_tier)
+        .max()
+        .unwrap_or(0);
+    let max_precomputed_tier = max_effect_tier + 50;
+
+    let unlocked_tokens_by_tier: HashMap<u32, Vec<TokenType>> = (0..=max_precomputed_tier)
+        .map(|t| (t, unlocked_token_types(t, &effect_types)))
+        .collect();
+    let unlocked_tags_by_tier: HashMap<u32, Vec<CardTag>> = (0..=max_precomputed_tier)
+        .map(|t| (t, unlocked_card_tags(t, &effect_types)))
+        .collect();
+
+    CachedConfig {
+        rules,
+        token_defs,
+        effect_types,
+        unlocked_tokens_by_tier,
+        unlocked_tags_by_tier,
+        max_precomputed_tier,
+    }
 }
 
-/// Generate a contract using explicit effect types (for testing).
+/// Generate a contract for the given tier using pre-computed cached config.
 pub fn generate_contract_with_types(
     tier: ContractTier,
     rng: &mut Pcg64,
-    formulas: &ContractFormulasConfig,
-    token_defs: &TokenDefinitionsConfig,
-    effect_types: &[CardEffectTypeConfig],
+    cached_config: &CachedConfig,
     adaptive_tracker: &AdaptiveBalanceTracker,
 ) -> Contract {
-    let generators_at_contract_tier =
-        available_requirement_generators(tier.0, formulas, effect_types);
+    let generators_at_contract_tier = available_requirement_generators(
+        tier.0,
+        &cached_config.rules.contract_formulas,
+        cached_config,
+    );
     let req_count = roll_requirement_count(tier.0, generators_at_contract_tier.len(), rng);
 
     let mut requirements = Vec::with_capacity(req_count);
     for _ in 0..req_count {
         let req_tier = roll_requirement_tier(tier.0, rng);
-        let generators = available_requirement_generators(req_tier, formulas, effect_types);
+        let generators = available_requirement_generators(
+            req_tier,
+            &cached_config.rules.contract_formulas,
+            cached_config,
+        );
         if generators.is_empty() {
             continue;
         }
@@ -613,8 +633,7 @@ pub fn generate_contract_with_types(
     // Apply adaptive balance overlay after base requirements are rolled
     let adaptive_adjustments = adaptive_tracker.apply_overlay(&mut requirements);
 
-    let reward_card =
-        generate_reward_card_with_types(tier, requirements.len(), rng, token_defs, effect_types);
+    let reward_card = generate_reward_card_with_types(tier, requirements.len(), rng, cached_config);
 
     Contract {
         tier,
@@ -633,10 +652,9 @@ pub fn generate_reward_card_with_types(
     tier: ContractTier,
     num_effects: usize,
     rng: &mut Pcg64,
-    token_defs: &TokenDefinitionsConfig,
-    effect_types: &[CardEffectTypeConfig],
+    cached_config: &CachedConfig,
 ) -> PlayerActionCard {
-    let choices = build_effect_choices(tier.0, effect_types);
+    let choices = build_effect_choices(tier.0, &cached_config.effect_types);
 
     let mut all_tags: Vec<CardTag> = Vec::new();
     let effects: Vec<CardEffect> = (0..num_effects)
@@ -663,7 +681,7 @@ pub fn generate_reward_card_with_types(
                     tier.0,
                     selected.root,
                     v,
-                    &token_defs.variation_defaults,
+                    &cached_config.token_defs.variation_defaults,
                     rng,
                 ),
                 None => roll_base_effect(tier.0, selected.root, rng),

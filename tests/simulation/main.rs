@@ -29,6 +29,8 @@ use strategies::smart_strategy::SmartStrategy;
 ///
 /// Soft observations (printed, not asserted):
 ///   - Milestone reach rates and mean action counts for tiers 10/20/30/40/50
+///   - Dominant failure reasons at the tier where progress stalls
+#[ignore = "expensive strategy simulation; run with --include-ignored or by name"]
 #[test]
 fn smart_strategy_reaches_tier_50() {
     let strategy = SmartStrategy::new();

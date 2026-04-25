@@ -46,6 +46,8 @@ fi
 # --- 4. Tests ---
 echo ""
 echo "=== cargo test ==="
+# Intentionally excludes --features simulation: strategy tests are expensive and opt-in.
+# To run them: cargo test --features simulation --test simulation -- --include-ignored
 cargo test 2>&1
 TEST_EXIT=$?
 if [ $TEST_EXIT -ne 0 ]; then

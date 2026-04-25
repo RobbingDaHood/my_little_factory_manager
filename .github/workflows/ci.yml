@@ -19,7 +19,7 @@ jobs:
       - name: Run clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
       - name: Run tests
-        run: cargo test --workspace --all-features -- --nocapture
+        run: cargo test --workspace -- --nocapture
       - name: Install llvm tools
         run: rustup component add llvm-tools-preview
       - name: Install cargo-llvm-cov

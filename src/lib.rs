@@ -16,7 +16,6 @@ pub mod adaptive_balance;
 pub mod config;
 pub mod config_loader;
 pub mod contract_generation;
-pub mod docs;
 pub mod endpoints;
 pub mod game_state;
 pub mod metrics;
@@ -24,9 +23,6 @@ pub mod starter_cards;
 pub mod types;
 pub mod version;
 
-use crate::docs::designer::{get_designer_guide, okapi_add_operation_for_get_designer_guide_};
-use crate::docs::hints::{get_hints, okapi_add_operation_for_get_hints_};
-use crate::docs::tutorial::{get_tutorial, okapi_add_operation_for_get_tutorial_};
 use crate::endpoints::{
     get_actions_history, get_actions_possible, get_contracts_active, get_contracts_available,
     get_library_cards, get_metrics, get_player_tokens, get_state, post_action,
@@ -65,9 +61,6 @@ pub fn rocket_initialize() -> rocket::Rocket<rocket::Build> {
                 get_contracts_active,
                 get_actions_possible,
                 get_metrics,
-                get_tutorial,
-                get_hints,
-                get_designer_guide,
             ],
         )
         .mount("/swagger", make_swagger_ui(&swagger_config()))

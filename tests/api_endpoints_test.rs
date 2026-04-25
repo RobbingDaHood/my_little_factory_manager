@@ -262,83 +262,6 @@ fn actions_possible_with_contract_shows_play_and_discard() {
 }
 
 // -----------------------------------------------------------------------
-// GET /docs/tutorial
-// -----------------------------------------------------------------------
-
-#[test]
-fn docs_tutorial_returns_structured_response() {
-    let client = create_client();
-    let response = client.get("/docs/tutorial").dispatch();
-    assert_eq!(response.status(), Status::Ok);
-
-    let body: serde_json::Value =
-        serde_json::from_str(&response.into_string().expect("body")).expect("valid json");
-    assert!(body.get("title").is_some(), "should have title");
-    assert!(
-        body.get("introduction").is_some(),
-        "should have introduction"
-    );
-    assert!(
-        body.get("core_concepts").is_some(),
-        "should have core_concepts"
-    );
-    assert!(body.get("steps").is_some(), "should have steps");
-    assert!(body.get("next_steps").is_some(), "should have next_steps");
-
-    let steps = body["steps"].as_array().expect("steps array");
-    assert!(steps.len() >= 5, "tutorial should have at least 5 steps");
-}
-
-// -----------------------------------------------------------------------
-// GET /docs/hints
-// -----------------------------------------------------------------------
-
-#[test]
-fn docs_hints_returns_structured_response() {
-    let client = create_client();
-    let response = client.get("/docs/hints").dispatch();
-    assert_eq!(response.status(), Status::Ok);
-
-    let body: serde_json::Value =
-        serde_json::from_str(&response.into_string().expect("body")).expect("valid json");
-    assert!(body.get("title").is_some(), "should have title");
-    assert!(
-        body.get("general_tips").is_some(),
-        "should have general_tips"
-    );
-    assert!(body.get("tiers").is_some(), "should have tiers");
-
-    let tiers = body["tiers"].as_array().expect("tiers array");
-    assert!(!tiers.is_empty(), "should have at least 1 tier hints");
-}
-
-// -----------------------------------------------------------------------
-// GET /docs/designer
-// -----------------------------------------------------------------------
-
-#[test]
-fn docs_designer_returns_structured_response() {
-    let client = create_client();
-    let response = client.get("/docs/designer").dispatch();
-    assert_eq!(response.status(), Status::Ok);
-
-    let body: serde_json::Value =
-        serde_json::from_str(&response.into_string().expect("body")).expect("valid json");
-    assert!(body.get("title").is_some(), "should have title");
-    assert!(
-        body.get("introduction").is_some(),
-        "should have introduction"
-    );
-    assert!(body.get("sections").is_some(), "should have sections");
-
-    let sections = body["sections"].as_array().expect("sections array");
-    assert!(
-        sections.len() >= 5,
-        "designer guide should have at least 5 sections"
-    );
-}
-
-// -----------------------------------------------------------------------
 // OpenAPI includes new endpoints
 // -----------------------------------------------------------------------
 
@@ -357,9 +280,6 @@ fn openapi_includes_new_endpoints() {
         "/player/tokens",
         "/contracts/active",
         "/actions/possible",
-        "/docs/tutorial",
-        "/docs/hints",
-        "/docs/designer",
     ];
 
     for path in &expected_paths {

@@ -1,12 +1,4 @@
-# CLAUDE.md — my_little_factory_manager
-
-Guidance for Claude Code sessions in this repository.
-
-## Slash commands
-
-- `/pre-commit` — validate, format, and prepare a commit
-- `/start-work` — set up a worktree before making changes
-- `/handle-pr` — process a pull request review
+# CLAUDE.md
 
 ## Build, test, and lint commands
 
@@ -31,6 +23,7 @@ Guidance for Claude Code sessions in this repository.
 - Place tests in `tests/` (not inline in `src/`). Prefer integration tests over unit tests.
 - Do not make items `pub` solely to enable unit testing — test through the HTTP API.
 - Aim for ≥90% coverage before committing.
+- Test driven development: Write failing tests first, Then implement minimal fix, then refactor.
 
 **Code style**
 - No `unwrap()` in production code; propagate `Result` explicitly.
@@ -48,27 +41,14 @@ Guidance for Claude Code sessions in this repository.
 
 **Features and dependencies**: follow existing `Cargo.toml` features when adding dependencies.
 
-## Design doc authority
-
-- Everything in `docs/design/` is authoritative. Follow it without contradiction.
-- `docs/design/vision.md` is final-destination only — written in present tense as if complete. Never add "not yet implemented" language there.
-
 ## Documentation maintenance
 
 - **OpenAPI doc comments**: update `///` comments on handler functions and action enum variants when adding or changing endpoints. Explain strategic purpose, not just the signature.
-- **Self-documenting endpoints**: update `src/docs/tutorial.rs`, `src/docs/hints.rs`, and `src/docs/designer.rs` to reflect the current implementation when changing mechanics.
 - **README.md**: add new endpoints to the API endpoint table.
-- **Examples**: keep `docs/examples/api_examples.sh` working — update curl commands when endpoints or payloads change.
-- After documentation changes, spot-check `/swagger/`, `/docs/tutorial`, `/docs/hints`, and `/docs/designer`.
 
 ## GitHub operations
 
 Use `gh` and `git` for all repository and GitHub operations. `gh` authenticates via `GH_TOKEN` in `.env` (never commit `.env`). If `GH_TOKEN` is not set, source it: `export $(cat .env | xargs)`.
-
-## Post-change reminders
-
-- Review `docs/design/vision.md` and suggest improvements based on what was learned.
-- Review this file (`CLAUDE.md`) and suggest updates if anything is stale — new key files, removed references, etc.
 
 ## Key project files
 
@@ -85,9 +65,6 @@ Use `gh` and `git` for all repository and GitHub operations. `gh` authenticates 
 - `src/contract_generation.rs` — formula-based contract and reward card generation
 - `src/endpoints.rs` — HTTP handlers
 - `src/starter_cards.rs` — starter deck generation
-- `src/docs/tutorial.rs` — `GET /docs/tutorial`
-- `src/docs/hints.rs` — `GET /docs/hints`
-- `src/docs/designer.rs` — `GET /docs/designer`
 - `configurations/general/game_rules.json` — externalized game constants
 - `configurations/card_effects/effect_types.json` — card effect type definitions
 - `Makefile` — `check`, `coverage`, `install-hooks` targets
@@ -95,5 +72,4 @@ Use `gh` and `git` for all repository and GitHub operations. `gh` authenticates 
 - `scripts/worktree-manage.sh` — worktree lifecycle management
 - `rust-toolchain.toml` — nightly Rust toolchain
 - `.github/workflows/ci.yml` — CI pipeline
-- `docs/design/dictionary.md` — canonical game terminology
 - `tests/smoke_test.rs`, `tests/game_loop_test.rs`, `tests/contract_system_test.rs`, `tests/determinism_test.rs`, `tests/api_endpoints_test.rs`, `tests/deckbuilding_test.rs`, `tests/metrics_test.rs`

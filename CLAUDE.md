@@ -1,12 +1,4 @@
-# CLAUDE.md — my_little_factory_manager
-
-Guidance for Claude Code sessions in this repository.
-
-## Slash commands
-
-- `/pre-commit` — validate, format, and prepare a commit
-- `/start-work` — set up a worktree before making changes
-- `/handle-pr` — process a pull request review
+# CLAUDE.md
 
 ## Build, test, and lint commands
 
@@ -31,6 +23,7 @@ Guidance for Claude Code sessions in this repository.
 - Place tests in `tests/` (not inline in `src/`). Prefer integration tests over unit tests.
 - Do not make items `pub` solely to enable unit testing — test through the HTTP API.
 - Aim for ≥90% coverage before committing.
+- Test driven development: Write failing tests first, Then implement minimal fix, then refactor.
 
 **Code style**
 - No `unwrap()` in production code; propagate `Result` explicitly.
@@ -56,10 +49,6 @@ Guidance for Claude Code sessions in this repository.
 ## GitHub operations
 
 Use `gh` and `git` for all repository and GitHub operations. `gh` authenticates via `GH_TOKEN` in `.env` (never commit `.env`). If `GH_TOKEN` is not set, source it: `export $(cat .env | xargs)`.
-
-## Post-change reminders
-
-- Review this file (`CLAUDE.md`) and suggest updates if anything is stale — new key files, removed references, etc.
 
 ## Key project files
 

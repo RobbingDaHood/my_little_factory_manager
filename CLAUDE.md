@@ -51,7 +51,7 @@ Guidance for Claude Code sessions in this repository.
 ## Design doc authority
 
 - Everything in `docs/design/` is authoritative. Follow it without contradiction.
-- `docs/design/vision.md` is final-destination only — written in present tense as if complete. Never add "not yet implemented" language there. Implementation sequencing belongs in `docs/design/roadmap.md`.
+- `docs/design/vision.md` is final-destination only — written in present tense as if complete. Never add "not yet implemented" language there.
 
 ## Documentation maintenance
 
@@ -67,7 +67,7 @@ Use `gh` and `git` for all repository and GitHub operations. `gh` authenticates 
 
 ## Post-change reminders
 
-- Review `docs/design/vision.md` and `docs/design/roadmap.md` and suggest improvements based on what was learned.
+- Review `docs/design/vision.md` and suggest improvements based on what was learned.
 - Review this file (`CLAUDE.md`) and suggest updates if anything is stale — new key files, removed references, etc.
 
 ## Key project files

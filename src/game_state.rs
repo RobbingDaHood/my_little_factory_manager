@@ -217,6 +217,13 @@ pub enum PossibleAction {
 // GameState
 // ---------------------------------------------------------------------------
 
+/// Core game state for My Little Factory Manager.
+///
+/// **Simulation tests only**: `GameState` and its methods (`possible_actions`,
+/// `view`, `dispatch`) are called directly by `tests/simulation/game_driver`
+/// to avoid HTTP overhead in the hot loop.  All other integration tests must
+/// interact with the game exclusively through the HTTP API so that the actual
+/// endpoints remain exercised.
 pub struct GameState {
     // Card management (count-based)
     cards: Vec<CardEntry>,

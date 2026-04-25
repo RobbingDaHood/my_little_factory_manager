@@ -14,6 +14,7 @@ Guidance for Claude Code sessions in this repository.
 - **Run dev server**: `cargo run` (listens on http://localhost:8000).
 - **Single test**: `cargo test <test_name>` (substring matching supported).
 - **Tests with output**: `cargo test -- --nocapture`.
+- **Strategy simulation tests** (expensive, opt-in): `cargo test --features simulation --test simulation -- --include-ignored --nocapture`.
 - **Coverage only**: `cargo llvm-cov --workspace --fail-under-lines 80`.
 - Pre-commit hooks auto-run `cargo fmt` and `cargo clippy` on every commit.
 - All tests and coverage must pass before pushing. CI enforces ≥80% line coverage. Never commit known test failures.

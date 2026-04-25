@@ -287,7 +287,7 @@ The existing [my_little_card_game](https://github.com/RobbingDaHood/my_little_ca
 
 **Goal**: Fine-tune the game so that simple, repetitive strategies perform measurably worse than adaptive, multi-dimensional strategies. Ensure the difficulty curve feels fair and purposeful across all tiers.
 
-**Success metric**: Total actions from game start to first contract completion at milestone tiers 10, 20, 30, 40, and 50 (0-indexed). Measured by automated strategy simulation tests under `tests/simulation/` (run with `cargo test --features simulation --test simulation --release -- --nocapture`).
+**Success metric**: Total actions from game start to first contract completion at milestone tiers 10, 20, 30, 40, and 50 (0-indexed). Measured by automated strategy simulation tests under `tests/simulation/` (run with `cargo test --features simulation --test simulation --release -- --include-ignored --nocapture`).
 
 **Known limitation of current pressure model**: The current pressure signal tracks gross token production per token type. In a well-developed deck, most token types will be in regular use simultaneously — so nearly all token pressures grow together. The system may behave more like a global difficulty escalator than a targeted strategy-detection mechanism, tightening requirements on nearly all tokens at once rather than selectively penalizing the dominant strategy.
 

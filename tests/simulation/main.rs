@@ -27,6 +27,7 @@ use strategies::simple_first::SimpleFirstStrategy;
 /// Soft observations (printed, not asserted):
 ///   - Milestone reach rates and mean action counts for tiers 10/20/30/40/50
 ///   - Dominant failure reasons at the tier where progress stalls
+#[ignore = "expensive strategy simulation; run with --include-ignored or by name"]
 #[test]
 fn simple_first_strategy_progression() {
     let strategy = SimpleFirstStrategy::new();

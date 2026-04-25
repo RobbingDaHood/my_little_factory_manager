@@ -4,6 +4,7 @@ use my_little_factory_manager::starter_cards::create_starter_deck;
 use my_little_factory_manager::types::{CardTag, TokenType};
 use rand::SeedableRng;
 use rand_pcg::Pcg64;
+use std::collections::BTreeSet;
 
 #[test]
 fn starter_deck_has_correct_size() {
@@ -30,7 +31,13 @@ fn all_starter_cards_are_pure_production() {
     let mut rng = Pcg64::seed_from_u64(42);
     let entries = create_starter_deck(50, &mut rng);
     for entry in &entries {
-        assert_eq!(entry.card.tags, vec![CardTag::Production]);
+        assert_eq!(
+            entry.card.tags,
+            vec![CardTag {
+                input: BTreeSet::new(),
+                output: BTreeSet::from([TokenType::ProductionUnit]),
+            }]
+        );
         assert_eq!(entry.card.effects.len(), 1);
         assert!(entry.card.effects[0].inputs.is_empty());
         assert_eq!(entry.card.effects[0].outputs.len(), 1);

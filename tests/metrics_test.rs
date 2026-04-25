@@ -210,9 +210,17 @@ fn metrics_track_per_tag_counts() {
         .expect("cards_per_tag array");
     assert!(!tags.is_empty(), "should have at least one tag count");
 
-    // Verify tag entries have expected structure
+    // Verify tag entries have expected structure (tag is now a JSON object with input/output arrays)
     for tag_entry in tags {
-        assert!(tag_entry["tag"].is_string());
+        assert!(tag_entry["tag"].is_object(), "tag should be a JSON object");
+        assert!(
+            tag_entry["tag"]["input"].is_array(),
+            "tag.input should be an array"
+        );
+        assert!(
+            tag_entry["tag"]["output"].is_array(),
+            "tag.output should be an array"
+        );
         assert!(tag_entry["count"].as_u64().unwrap_or(0) > 0);
     }
 }

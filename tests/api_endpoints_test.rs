@@ -60,19 +60,30 @@ fn library_cards_returns_all_cards() {
 #[test]
 fn library_cards_filter_by_production_tag() {
     let client = create_client();
-    let response = client.get("/library/cards?tag=Production").dispatch();
+    // Tags are now JSON objects: {"input":[],"output":["ProductionUnit"]}
+    // URL-encoded to avoid invalid URI characters in the test client
+    let response = client
+        .get("/library/cards?tag=%7B%22input%22%3A%5B%5D%2C%22output%22%3A%5B%22ProductionUnit%22%5D%7D")
+        .dispatch();
     assert_eq!(response.status(), Status::Ok);
 
     let body: serde_json::Value =
         serde_json::from_str(&response.into_string().expect("body")).expect("valid json");
     let cards = body.as_array().expect("array");
-    assert!(cards.len() >= 3, "all starter cards are Production tagged");
+    assert!(
+        cards.len() >= 3,
+        "all starter cards are ProductionUnit producers"
+    );
 
     for card in cards {
         let tags = card["card"]["tags"].as_array().expect("tags array");
         assert!(
-            tags.iter().any(|t| t.as_str() == Some("Production")),
-            "filtered cards must have Production tag"
+            tags.iter().any(|t| {
+                t["output"]
+                    .as_array()
+                    .is_some_and(|arr| arr.iter().any(|v| v.as_str() == Some("ProductionUnit")))
+            }),
+            "filtered cards must have ProductionUnit in their tag output"
         );
     }
 }

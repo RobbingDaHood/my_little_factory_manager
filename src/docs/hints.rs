@@ -237,9 +237,10 @@ fn build_tier12_hints() -> TierHints {
             },
             Strategy {
                 name: "Build a balanced deck across tags".to_string(),
-                description: "If your deck is all Production cards, a contract banning \
-                    Production will be nearly impossible. Diversify your deck across \
-                    Production, Transformation, and QualityControl to handle any ban."
+                description: "Tags are now precise input/output token signatures. A ban on \
+                    cards that output Heat is far narrower than the old Production ban. \
+                    Diversify your deck so no single token type dominates both your inputs \
+                    and outputs — this keeps you flexible against any tag constraint."
                     .to_string(),
             },
             Strategy {

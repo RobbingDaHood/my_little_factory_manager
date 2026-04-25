@@ -19,7 +19,6 @@ Tokens represent persistent resources — **beneficial** (ProductionUnit, Energy
 - Config-driven card effect types (`configurations/card_effects/token_definitions.json`)
 - Deterministic replay via seed + action log (save/load)
 - Externalized game-rules configuration (`configurations/general/game_rules.json`)
-- Self-documenting API: `/docs/tutorial`, `/docs/hints`, `/docs/designer`
 - Version fingerprint via `GET /version` (game version + config hash)
 - OpenAPI/Swagger documentation at `/swagger/`
 - Comprehensive test coverage (integration tests, ≥80% line coverage)
@@ -66,14 +65,6 @@ Once the server is running, access the interactive Swagger UI at:
 ```
 http://localhost:8000/swagger/
 ```
-
-The game also provides self-documenting endpoints:
-
-| Endpoint | Purpose |
-|----------|---------|
-| `GET /docs/tutorial` | Step-by-step new-player walkthrough |
-| `GET /docs/hints` | Strategies and tips per contract tier |
-| `GET /docs/designer` | Token/card/contract authoring reference |
 
 ### Key Endpoints
 
@@ -142,8 +133,6 @@ curl -X POST http://localhost:8000/action \
   -d '{"action_type": "ReplaceCard", "target_card_index": 0, "replacement_card_index": 3, "sacrifice_card_index": 1}'
 ```
 
-See `docs/examples/api_examples.sh` for a complete gameplay walkthrough.
-
 ## Development
 
 ### Seeding and Reproducibility
@@ -205,12 +194,7 @@ src/
 ├── starter_cards.rs        # Starter deck generation from generated effect types
 ├── config.rs               # Config struct definitions (GameRulesConfig)
 ├── config_loader.rs        # JSON config embedding and loading
-├── version.rs              # GET /version endpoint
-└── docs/                   # Self-documenting API endpoints
-    ├── mod.rs
-    ├── tutorial.rs          # New-player walkthrough
-    ├── hints.rs             # Per-tier strategies
-    └── designer.rs          # Designer reference guide
+└── version.rs              # GET /version endpoint
 
 tests/
 ├── api_endpoints_test.rs       # New endpoint integration tests
@@ -224,10 +208,8 @@ tests/
 └── types_serialization_test.rs # Type serialization roundtrip tests
 
 docs/
-├── design/
-│   └── vision.md            # High-level design principles
-└── examples/
-    └── api_examples.sh      # Curl-based gameplay walkthrough
+└── design/
+   └── vision.md            # High-level design principles
 ```
 
 ## Game Configuration
@@ -236,8 +218,6 @@ Card, effect, and game-rules definitions are externalized as JSON in `configurat
 
 - **`general/game_rules.json`** — Game-wide constants (hand size, market size, discard bonus, tier progression thresholds, deck slot reward chance, scaling formulas for output_threshold and harmful_token_limit)
 - **`card_effects/token_definitions.json`** — Defines all 7 game tokens with primary formulas, tags, and beneficial/harmful classification. The combinatorial generator auto-produces 98 card effect types (13 mains + 85 variations) from ~5 parameters per token.
-
-To modify game content, edit the JSON files and recompile. See `GET /docs/designer` for the full authoring reference.
 
 ## Card Locations
 
@@ -260,7 +240,7 @@ The active cycle (Deck + Hand + Discard) is fixed at 50 cards and never changes.
 
 - **Encapsulation**: Internal APIs remain private; all interactions go through public HTTP endpoints
 - **Type Safety**: Leverages Rust enums and the type system for correctness
-- **Self-Documenting**: The API explains itself via `/docs/*` endpoints and rich OpenAPI comments
+- **Self-Documenting**: The API explains itself via rich OpenAPI comments
 - **Error Handling**: No panics in production code; all errors return proper HTTP status codes
 - **Formula-Based Balance**: Card values and contract difficulty derive from ~5-10 design-intent parameters rather than tuning 100+ config values
 - **Testing**: Comprehensive integration tests covering all endpoints and edge cases

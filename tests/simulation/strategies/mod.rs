@@ -2,7 +2,7 @@ use serde_json::Value;
 
 use crate::game_driver::GameSnapshot;
 
-pub mod simple_first;
+pub mod smart_strategy;
 
 /// A pluggable gameplay strategy for simulation.
 ///

@@ -11,9 +11,9 @@ use rand_pcg::Pcg64;
 
 use crate::action_log::{ActionLog, PlayerAction};
 use crate::adaptive_balance::AdaptiveBalanceTracker;
-use crate::config::{CardEffectTypeConfig, GameRulesConfig, TokenDefinitionsConfig};
+use crate::config::{CachedConfig, GameRulesConfig};
 use crate::config_loader::{load_game_rules, load_token_definitions};
-use crate::contract_generation::{generate_contract_with_types, generate_effect_types};
+use crate::contract_generation::{build_cached_config, generate_contract_with_types};
 use crate::metrics::{MetricsTracker, SessionMetrics};
 use crate::starter_cards::create_starter_deck;
 use crate::types::{
@@ -234,12 +234,8 @@ pub struct GameState {
     rng: Pcg64,
     seed: u64,
 
-    // Config
-    rules: GameRulesConfig,
-
-    // Precomputed effect types (cached at init for performance)
-    token_defs: TokenDefinitionsConfig,
-    effect_types: Vec<CardEffectTypeConfig>,
+    // All config-derived data, pre-computed once at game creation
+    cached_config: CachedConfig,
 
     // Action log
     action_log: ActionLog,
@@ -277,16 +273,24 @@ impl GameState {
             0xa02b_dbf7_bb3c_0a7a_c28f_5c28_f5c2_8f5c,
         );
 
-        let mut cards = create_starter_deck(rules.general.starting_deck_size, &mut rng);
+        let token_defs = load_token_definitions().expect("embedded token definitions must parse");
+        let cached_config = build_cached_config(rules, token_defs);
+
+        let mut cards = create_starter_deck(
+            cached_config.rules.general.starting_deck_size,
+            &mut rng,
+            &cached_config.effect_types,
+        );
 
         // Deal starting hand
-        let hand_size = rules.general.starting_hand_size;
+        let hand_size = cached_config.rules.general.starting_hand_size;
         for _ in 0..hand_size {
             draw_from_deck(&mut cards, &mut rng);
         }
 
-        let token_defs = load_token_definitions().expect("embedded token definitions must parse");
-        let effect_types = generate_effect_types(&token_defs);
+        let starting_deck_size = cached_config.rules.general.starting_deck_size;
+        let adaptive_tracker =
+            AdaptiveBalanceTracker::new(cached_config.rules.adaptive_balance.clone());
 
         let mut state = Self {
             cards,
@@ -297,16 +301,14 @@ impl GameState {
             cards_played_per_tag_contract: HashMap::new(),
             rng,
             seed: actual_seed,
-            rules: rules.clone(),
-            token_defs,
-            effect_types,
+            cached_config,
             action_log: ActionLog::new(),
             metrics_tracker: MetricsTracker::new(),
-            adaptive_tracker: AdaptiveBalanceTracker::new(rules.adaptive_balance.clone()),
+            adaptive_tracker,
         };
 
         // Initialize deck slots to starting deck size
-        state.add_tokens(&TokenType::DeckSlots, rules.general.starting_deck_size);
+        state.add_tokens(&TokenType::DeckSlots, starting_deck_size);
 
         // Generate first offered contracts
         state.refill_contract_market();
@@ -453,7 +455,9 @@ impl GameState {
             }
 
             // AbandonContract becomes available after the minimum turns threshold
-            if self.contract_turns_played >= self.rules.general.min_turns_before_abandon {
+            if self.contract_turns_played
+                >= self.cached_config.rules.general.min_turns_before_abandon
+            {
                 actions.push(PossibleAction::AbandonContract);
             }
         } else {
@@ -619,7 +623,7 @@ impl GameState {
     // -------------------------------------------------------------------
 
     fn handle_new_game(&mut self, seed: Option<u64>) -> ActionResult {
-        let new_state = Self::new_with_rules(seed, self.rules.clone());
+        let new_state = Self::new_with_rules(seed, self.cached_config.rules.clone());
         let log = self.action_log.clone();
         *self = new_state;
         self.action_log = log;
@@ -751,7 +755,11 @@ impl GameState {
         self.cards[card_index].counts.hand -= 1;
         self.cards[card_index].counts.discard += 1;
 
-        let bonus = self.rules.general.discard_production_unit_bonus;
+        let bonus = self
+            .cached_config
+            .rules
+            .general
+            .discard_production_unit_bonus;
         *self.tokens.entry(TokenType::ProductionUnit).or_insert(0) += bonus;
 
         self.metrics_tracker
@@ -881,7 +889,7 @@ impl GameState {
             None => return ActionResult::Error(ActionError::NoContractToAbandon),
         };
 
-        let turns_required = self.rules.general.min_turns_before_abandon;
+        let turns_required = self.cached_config.rules.general.min_turns_before_abandon;
         if self.contract_turns_played < turns_required {
             return ActionResult::Error(ActionError::AbandonContractNotAllowed {
                 turns_played: self.contract_turns_played,
@@ -957,7 +965,11 @@ impl GameState {
     // -------------------------------------------------------------------
 
     fn refill_contract_market(&mut self) {
-        let target = self.rules.general.contract_market_size_per_tier;
+        let target = self
+            .cached_config
+            .rules
+            .general
+            .contract_market_size_per_tier;
 
         for tier_num in self.unlocked_tiers() {
             let tier = ContractTier(tier_num);
@@ -979,9 +991,7 @@ impl GameState {
                     generate_contract_with_types(
                         tier,
                         &mut self.rng,
-                        &self.rules.contract_formulas,
-                        &self.token_defs,
-                        &self.effect_types,
+                        &self.cached_config,
                         &self.adaptive_tracker,
                     )
                 })
@@ -1002,7 +1012,11 @@ impl GameState {
     /// Tier 0 is always unlocked. Tier N+1 unlocks when
     /// `ContractsTierCompleted(N) >= contracts_per_tier_to_advance`.
     fn unlocked_tiers(&self) -> Vec<u32> {
-        let threshold = self.rules.general.contracts_per_tier_to_advance;
+        let threshold = self
+            .cached_config
+            .rules
+            .general
+            .contracts_per_tier_to_advance;
         let mut tiers = vec![0u32];
         for tier in 0.. {
             let completed = self

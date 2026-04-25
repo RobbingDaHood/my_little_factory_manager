@@ -6,9 +6,11 @@
 //! beneficial-token-min one-tier delay invariant.
 
 use my_little_factory_manager::adaptive_balance::AdaptiveBalanceTracker;
+use my_little_factory_manager::config::CachedConfig;
 use my_little_factory_manager::config_loader::{load_game_rules, load_token_definitions};
 use my_little_factory_manager::contract_generation::{
-    generate_contract_with_types, generate_effect_types, generate_reward_card_with_types,
+    build_cached_config, generate_contract_with_types, generate_effect_types,
+    generate_reward_card_with_types,
 };
 use my_little_factory_manager::rocket_initialize;
 use my_little_factory_manager::types::{
@@ -22,6 +24,12 @@ use std::collections::HashMap;
 
 fn client() -> Client {
     Client::tracked(rocket_initialize()).expect("valid rocket instance")
+}
+
+fn make_cached_config() -> CachedConfig {
+    let token_defs = load_token_definitions().expect("config");
+    let game_rules = load_game_rules().expect("rules");
+    build_cached_config(game_rules, token_defs)
 }
 
 fn post_action(client: &Client, json: &str) -> serde_json::Value {
@@ -349,21 +357,14 @@ fn direction_sign_negative_for_beneficial_output_variation() {
 
 #[test]
 fn reward_card_variation_has_both_primary_and_secondary_tokens() {
-    let token_defs = load_token_definitions().expect("config");
-    let effect_types = generate_effect_types(&token_defs);
+    let cached_config = make_cached_config();
 
     // Generate many reward cards and find one with a variation (non-empty inputs+outputs)
     let mut rng = Pcg64::seed_from_u64(42);
     let mut found_variation = false;
 
     for _ in 0..50 {
-        let card = generate_reward_card_with_types(
-            ContractTier(5),
-            3,
-            &mut rng,
-            &token_defs,
-            &effect_types,
-        );
+        let card = generate_reward_card_with_types(ContractTier(5), 3, &mut rng, &cached_config);
 
         for effect in &card.effects {
             let total_entries = effect.inputs.len() + effect.outputs.len();
@@ -385,26 +386,15 @@ fn reward_card_variation_has_both_primary_and_secondary_tokens() {
 
 #[test]
 fn reward_card_amounts_scale_with_tier() {
-    let token_defs = load_token_definitions().expect("config");
-    let effect_types = generate_effect_types(&token_defs);
+    let cached_config = make_cached_config();
 
     let mut rng_low = Pcg64::seed_from_u64(42);
     let mut rng_high = Pcg64::seed_from_u64(42);
 
-    let low_tier_card = generate_reward_card_with_types(
-        ContractTier(0),
-        1,
-        &mut rng_low,
-        &token_defs,
-        &effect_types,
-    );
-    let high_tier_card = generate_reward_card_with_types(
-        ContractTier(20),
-        1,
-        &mut rng_high,
-        &token_defs,
-        &effect_types,
-    );
+    let low_tier_card =
+        generate_reward_card_with_types(ContractTier(0), 1, &mut rng_low, &cached_config);
+    let high_tier_card =
+        generate_reward_card_with_types(ContractTier(20), 1, &mut rng_high, &cached_config);
 
     let low_sum: u32 = low_tier_card
         .effects
@@ -442,23 +432,16 @@ fn reward_card_amounts_scale_with_tier() {
 
 #[test]
 fn harmful_token_limit_appears_in_generated_contracts() {
-    let token_defs = load_token_definitions().expect("config");
-    let effect_types = generate_effect_types(&token_defs);
-    let game_rules = load_game_rules().expect("rules");
+    let cached_config = make_cached_config();
+    let adaptive = AdaptiveBalanceTracker::new(cached_config.rules.adaptive_balance.clone());
 
     let mut found_limit = false;
 
     // Generate contracts at tiers where Heat is unlocked (tier >= 1)
     for seed in 0..100u64 {
         let mut rng = Pcg64::seed_from_u64(seed);
-        let contract = generate_contract_with_types(
-            ContractTier(3),
-            &mut rng,
-            &game_rules.contract_formulas,
-            &token_defs,
-            &effect_types,
-            &AdaptiveBalanceTracker::new(game_rules.adaptive_balance.clone()),
-        );
+        let contract =
+            generate_contract_with_types(ContractTier(3), &mut rng, &cached_config, &adaptive);
 
         for req in &contract.requirements {
             if matches!(
@@ -481,20 +464,13 @@ fn harmful_token_limit_appears_in_generated_contracts() {
 
 #[test]
 fn harmful_token_limit_targets_harmful_tokens_only() {
-    let token_defs = load_token_definitions().expect("config");
-    let effect_types = generate_effect_types(&token_defs);
-    let game_rules = load_game_rules().expect("rules");
+    let cached_config = make_cached_config();
+    let adaptive = AdaptiveBalanceTracker::new(cached_config.rules.adaptive_balance.clone());
 
     for seed in 0..50u64 {
         let mut rng = Pcg64::seed_from_u64(seed);
-        let contract = generate_contract_with_types(
-            ContractTier(5),
-            &mut rng,
-            &game_rules.contract_formulas,
-            &token_defs,
-            &effect_types,
-            &AdaptiveBalanceTracker::new(game_rules.adaptive_balance.clone()),
-        );
+        let contract =
+            generate_contract_with_types(ContractTier(5), &mut rng, &cached_config, &adaptive);
 
         for req in &contract.requirements {
             if let ContractRequirementKind::TokenRequirement {
@@ -519,20 +495,13 @@ fn harmful_token_limit_targets_harmful_tokens_only() {
 
 #[test]
 fn tier0_requirements_only_use_production_unit() {
-    let token_defs = load_token_definitions().expect("config");
-    let effect_types = generate_effect_types(&token_defs);
-    let game_rules = load_game_rules().expect("rules");
+    let cached_config = make_cached_config();
+    let adaptive = AdaptiveBalanceTracker::new(cached_config.rules.adaptive_balance.clone());
 
     for seed in 0..50u64 {
         let mut rng = Pcg64::seed_from_u64(seed);
-        let contract = generate_contract_with_types(
-            ContractTier(0),
-            &mut rng,
-            &game_rules.contract_formulas,
-            &token_defs,
-            &effect_types,
-            &AdaptiveBalanceTracker::new(game_rules.adaptive_balance.clone()),
-        );
+        let contract =
+            generate_contract_with_types(ContractTier(0), &mut rng, &cached_config, &adaptive);
 
         for req in &contract.requirements {
             if let ContractRequirementKind::TokenRequirement {
@@ -568,23 +537,16 @@ fn tier0_requirements_only_use_production_unit() {
 
 #[test]
 fn higher_tier_contracts_can_reference_more_token_types() {
-    let token_defs = load_token_definitions().expect("config");
-    let effect_types = generate_effect_types(&token_defs);
-    let game_rules = load_game_rules().expect("rules");
+    let cached_config = make_cached_config();
+    let adaptive = AdaptiveBalanceTracker::new(cached_config.rules.adaptive_balance.clone());
 
     let mut tier0_tokens = std::collections::HashSet::new();
     let mut tier10_tokens = std::collections::HashSet::new();
 
     for seed in 0..100u64 {
         let mut rng0 = Pcg64::seed_from_u64(seed);
-        let c0 = generate_contract_with_types(
-            ContractTier(0),
-            &mut rng0,
-            &game_rules.contract_formulas,
-            &token_defs,
-            &effect_types,
-            &AdaptiveBalanceTracker::new(game_rules.adaptive_balance.clone()),
-        );
+        let c0 =
+            generate_contract_with_types(ContractTier(0), &mut rng0, &cached_config, &adaptive);
         for req in &c0.requirements {
             if let ContractRequirementKind::TokenRequirement { token_type, .. } = req {
                 tier0_tokens.insert(format!("{:?}", token_type));
@@ -592,14 +554,8 @@ fn higher_tier_contracts_can_reference_more_token_types() {
         }
 
         let mut rng10 = Pcg64::seed_from_u64(seed + 1000);
-        let c10 = generate_contract_with_types(
-            ContractTier(10),
-            &mut rng10,
-            &game_rules.contract_formulas,
-            &token_defs,
-            &effect_types,
-            &AdaptiveBalanceTracker::new(game_rules.adaptive_balance.clone()),
-        );
+        let c10 =
+            generate_contract_with_types(ContractTier(10), &mut rng10, &cached_config, &adaptive);
         for req in &c10.requirements {
             if let ContractRequirementKind::TokenRequirement { token_type, .. } = req {
                 tier10_tokens.insert(format!("{:?}", token_type));
@@ -658,30 +614,17 @@ fn contract_completion_subtracts_summed_requirements() {
 
 #[test]
 fn same_seed_same_tier_produces_identical_contracts() {
-    let token_defs = load_token_definitions().expect("config");
-    let effect_types = generate_effect_types(&token_defs);
-    let game_rules = load_game_rules().expect("rules");
+    let cached_config = make_cached_config();
+    let adaptive = AdaptiveBalanceTracker::new(cached_config.rules.adaptive_balance.clone());
 
     for tier in [0, 5, 10, 20] {
         let mut rng1 = Pcg64::seed_from_u64(42);
-        let c1 = generate_contract_with_types(
-            ContractTier(tier),
-            &mut rng1,
-            &game_rules.contract_formulas,
-            &token_defs,
-            &effect_types,
-            &AdaptiveBalanceTracker::new(game_rules.adaptive_balance.clone()),
-        );
+        let c1 =
+            generate_contract_with_types(ContractTier(tier), &mut rng1, &cached_config, &adaptive);
 
         let mut rng2 = Pcg64::seed_from_u64(42);
-        let c2 = generate_contract_with_types(
-            ContractTier(tier),
-            &mut rng2,
-            &game_rules.contract_formulas,
-            &token_defs,
-            &effect_types,
-            &AdaptiveBalanceTracker::new(game_rules.adaptive_balance.clone()),
-        );
+        let c2 =
+            generate_contract_with_types(ContractTier(tier), &mut rng2, &cached_config, &adaptive);
 
         assert_eq!(
             format!("{:?}", c1.requirements),
@@ -698,9 +641,8 @@ fn same_seed_same_tier_produces_identical_contracts() {
 
 #[test]
 fn contracts_valid_across_many_tiers_and_seeds() {
-    let token_defs = load_token_definitions().expect("config");
-    let effect_types = generate_effect_types(&token_defs);
-    let game_rules = load_game_rules().expect("rules");
+    let cached_config = make_cached_config();
+    let adaptive = AdaptiveBalanceTracker::new(cached_config.rules.adaptive_balance.clone());
 
     for tier in [0, 1, 5, 10, 20, 30, 48] {
         for seed in [1, 42, 777, 12345] {
@@ -708,10 +650,8 @@ fn contracts_valid_across_many_tiers_and_seeds() {
             let contract = generate_contract_with_types(
                 ContractTier(tier),
                 &mut rng,
-                &game_rules.contract_formulas,
-                &token_defs,
-                &effect_types,
-                &AdaptiveBalanceTracker::new(game_rules.adaptive_balance.clone()),
+                &cached_config,
+                &adaptive,
             );
 
             assert!(
@@ -754,17 +694,13 @@ fn contracts_valid_across_many_tiers_and_seeds() {
 /// so tier 0 beneficial-min pool still includes it.
 #[test]
 fn beneficial_min_requirement_absent_at_token_producer_unlock_tier() {
-    let token_defs = load_token_definitions().expect("config");
-    let effect_types = generate_effect_types(&token_defs);
-    let game_rules = load_game_rules().expect("game rules");
-    let adaptive = my_little_factory_manager::adaptive_balance::AdaptiveBalanceTracker::new(
-        game_rules.adaptive_balance.clone(),
-    );
+    let cached_config = make_cached_config();
+    let adaptive = AdaptiveBalanceTracker::new(cached_config.rules.adaptive_balance.clone());
 
     // Find (token, producer_unlock_tier) for each non-PU beneficial token.
     let beneficial_tokens: Vec<(TokenType, u32)> = {
         let mut seen = std::collections::HashMap::new();
-        for et in &effect_types {
+        for et in &cached_config.effect_types {
             if et.primary_token.is_beneficial()
                 && et.primary_token != TokenType::ProductionUnit
                 && matches!(et.main_direction, MainEffectDirection::Producer)
@@ -789,9 +725,7 @@ fn beneficial_min_requirement_absent_at_token_producer_unlock_tier() {
             let contract = generate_contract_with_types(
                 ContractTier(*unlock_tier),
                 &mut rng,
-                &game_rules.contract_formulas,
-                &token_defs,
-                &effect_types,
+                &cached_config,
                 &adaptive,
             );
 
@@ -819,16 +753,12 @@ fn beneficial_min_requirement_absent_at_token_producer_unlock_tier() {
 /// token must appear at least once so the feature is also reachable.
 #[test]
 fn beneficial_min_requirement_reachable_one_tier_after_unlock() {
-    let token_defs = load_token_definitions().expect("config");
-    let effect_types = generate_effect_types(&token_defs);
-    let game_rules = load_game_rules().expect("game rules");
-    let adaptive = my_little_factory_manager::adaptive_balance::AdaptiveBalanceTracker::new(
-        game_rules.adaptive_balance.clone(),
-    );
+    let cached_config = make_cached_config();
+    let adaptive = AdaptiveBalanceTracker::new(cached_config.rules.adaptive_balance.clone());
 
     let beneficial_tokens: Vec<(TokenType, u32)> = {
         let mut seen = std::collections::HashMap::new();
-        for et in &effect_types {
+        for et in &cached_config.effect_types {
             if et.primary_token.is_beneficial()
                 && et.primary_token != TokenType::ProductionUnit
                 && matches!(et.main_direction, MainEffectDirection::Producer)
@@ -849,9 +779,7 @@ fn beneficial_min_requirement_reachable_one_tier_after_unlock() {
             let contract = generate_contract_with_types(
                 ContractTier(req_tier),
                 &mut rng,
-                &game_rules.contract_formulas,
-                &token_defs,
-                &effect_types,
+                &cached_config,
                 &adaptive,
             );
 
@@ -886,24 +814,14 @@ fn beneficial_min_requirement_reachable_one_tier_after_unlock() {
 /// should still be reachable as a beneficial-min requirement in tier-0 contracts.
 #[test]
 fn production_unit_min_requirement_reachable_at_tier_0() {
-    let token_defs = load_token_definitions().expect("config");
-    let effect_types = generate_effect_types(&token_defs);
-    let game_rules = load_game_rules().expect("game rules");
-    let adaptive = my_little_factory_manager::adaptive_balance::AdaptiveBalanceTracker::new(
-        game_rules.adaptive_balance.clone(),
-    );
+    let cached_config = make_cached_config();
+    let adaptive = AdaptiveBalanceTracker::new(cached_config.rules.adaptive_balance.clone());
 
     let mut found = false;
     for seed in 0u64..500 {
         let mut rng = Pcg64::seed_from_u64(seed);
-        let contract = generate_contract_with_types(
-            ContractTier(0),
-            &mut rng,
-            &game_rules.contract_formulas,
-            &token_defs,
-            &effect_types,
-            &adaptive,
-        );
+        let contract =
+            generate_contract_with_types(ContractTier(0), &mut rng, &cached_config, &adaptive);
 
         for req in &contract.requirements {
             if let ContractRequirementKind::TokenRequirement {

@@ -1,18 +1,28 @@
+//! IMPORTANT — simulation-only fast path
+//!
+//! This module is the ONLY test module permitted to call `GameState` methods
+//! directly (bypassing HTTP). Every other integration test MUST drive behaviour
+//! through the HTTP API so that the actual endpoints are exercised.
+//!
+//! Direct calls are used here solely to remove the ~800 µs/call HTTP pipeline
+//! overhead from the hot simulation loop. Game behaviour is identical to the
+//! HTTP path because the same `GameState::dispatch`, `possible_actions`, and
+//! `view` methods are called under the hood by the HTTP handlers.
+
 use std::collections::{HashMap, HashSet};
 
-use my_little_factory_manager::rocket_initialize;
-use rocket::http::ContentType;
-use rocket::local::blocking::Client;
+use my_little_factory_manager::action_log::PlayerAction;
+use my_little_factory_manager::game_state::GameState;
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::Value;
 
 use crate::strategies::Strategy;
 
 /// A point-in-time snapshot passed to the strategy for decision-making.
 pub struct GameSnapshot {
-    /// Full game state from `GET /state`.
+    /// Full game state from `GameState::view()` (serialised to JSON for strategy compatibility).
     pub state: Value,
-    /// Available actions with NewGame filtered out, from `GET /actions/possible`.
+    /// Available actions with NewGame filtered out.
     pub possible_actions: Vec<Value>,
 }
 
@@ -74,17 +84,19 @@ impl GameDriver {
     }
 
     pub fn play_game(&self, seed: u64, strategy: &dyn Strategy) -> GameResult {
-        let client = Client::tracked(rocket_initialize()).expect("valid rocket");
-
-        let new_game_action = json!({"action_type": "NewGame", "seed": seed});
-        post_action(&client, &new_game_action);
+        // Direct GameState construction bypasses HTTP — see module-level doc comment.
+        let mut state = GameState::new(Some(seed));
 
         let mut result = GameResult::new(seed);
         let milestone_set: HashSet<u32> = self.milestone_tiers.iter().cloned().collect();
         let mut reached_milestones: HashSet<u32> = HashSet::new();
 
         loop {
-            let all_possible = get_possible_actions(&client);
+            let all_possible: Vec<Value> = serde_json::to_value(state.possible_actions())
+                .expect("PossibleAction serializes")
+                .as_array()
+                .cloned()
+                .unwrap_or_default();
 
             // NewGame is always listed but must not be chosen during an active session.
             let non_new_game: Vec<Value> = all_possible
@@ -97,20 +109,23 @@ impl GameDriver {
                 break;
             }
 
-            let state = if strategy.needs_state() {
-                get_state(&client)
+            let state_value = if strategy.needs_state() {
+                serde_json::to_value(state.view()).expect("GameStateView serializes")
             } else {
                 Value::Null
             };
             let snapshot = GameSnapshot {
-                state,
+                state: state_value,
                 possible_actions: non_new_game.clone(),
             };
 
             let action = strategy.choose_action(&non_new_game, &snapshot);
             result.total_actions += 1;
 
-            let response = post_action(&client, &action);
+            let player_action: PlayerAction =
+                serde_json::from_value(action).expect("strategy returned valid PlayerAction JSON");
+            let response = serde_json::to_value(state.dispatch(player_action))
+                .expect("ActionResult serializes");
 
             if response["outcome"] == "Success" {
                 let resolution = &response["detail"]["contract_resolution"];
@@ -155,26 +170,4 @@ impl GameDriver {
 
         result
     }
-}
-
-fn post_action(client: &Client, action: &Value) -> Value {
-    let response = client
-        .post("/action")
-        .header(ContentType::JSON)
-        .body(action.to_string())
-        .dispatch();
-    let body = response.into_string().expect("response body");
-    serde_json::from_str(&body).expect("valid json response from /action")
-}
-
-fn get_state(client: &Client) -> Value {
-    let response = client.get("/state").dispatch();
-    let body = response.into_string().expect("response body");
-    serde_json::from_str(&body).expect("valid json from /state")
-}
-
-fn get_possible_actions(client: &Client) -> Vec<Value> {
-    let response = client.get("/actions/possible").dispatch();
-    let body = response.into_string().expect("response body");
-    serde_json::from_str::<Vec<Value>>(&body).expect("valid json array from /actions/possible")
 }

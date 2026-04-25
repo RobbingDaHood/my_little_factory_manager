@@ -3,51 +3,37 @@
         {
             "token_type": "ProductionUnit",
             "is_beneficial": true,
-            "primary_formula": { "base_min": 1, "base_max": 5, "per_tier_min": 1, "per_tier_max": 2 },
-            "producer_tags": ["Production"],
-            "consumer_tags": ["Transformation"]
+            "primary_formula": { "base_min": 1, "base_max": 5, "per_tier_min": 1, "per_tier_max": 2 }
         },
         {
             "token_type": "Heat",
             "is_beneficial": false,
-            "primary_formula": { "base_min": 1, "base_max": 3, "per_tier_min": 1, "per_tier_max": 2 },
-            "producer_tags": ["Production"],
-            "consumer_tags": ["QualityControl"]
+            "primary_formula": { "base_min": 1, "base_max": 3, "per_tier_min": 1, "per_tier_max": 2 }
         },
         {
             "token_type": "Energy",
             "is_beneficial": true,
-            "primary_formula": { "base_min": 1, "base_max": 4, "per_tier_min": 1, "per_tier_max": 2 },
-            "producer_tags": ["Production"],
-            "consumer_tags": ["Transformation"]
+            "primary_formula": { "base_min": 1, "base_max": 4, "per_tier_min": 1, "per_tier_max": 2 }
         },
         {
             "token_type": "Waste",
             "is_beneficial": false,
-            "primary_formula": { "base_min": 1, "base_max": 3, "per_tier_min": 1, "per_tier_max": 2 },
-            "producer_tags": ["Production"],
-            "consumer_tags": ["QualityControl"]
+            "primary_formula": { "base_min": 1, "base_max": 3, "per_tier_min": 1, "per_tier_max": 2 }
         },
         {
             "token_type": "QualityPoint",
             "is_beneficial": true,
-            "primary_formula": { "base_min": 1, "base_max": 4, "per_tier_min": 1, "per_tier_max": 2 },
-            "producer_tags": ["Production"],
-            "consumer_tags": ["Transformation"]
+            "primary_formula": { "base_min": 1, "base_max": 4, "per_tier_min": 1, "per_tier_max": 2 }
         },
         {
             "token_type": "Pollution",
             "is_beneficial": false,
-            "primary_formula": { "base_min": 1, "base_max": 3, "per_tier_min": 1, "per_tier_max": 2 },
-            "producer_tags": ["Production"],
-            "consumer_tags": ["QualityControl"]
+            "primary_formula": { "base_min": 1, "base_max": 3, "per_tier_min": 1, "per_tier_max": 2 }
         },
         {
             "token_type": "Innovation",
             "is_beneficial": true,
-            "primary_formula": { "base_min": 1, "base_max": 4, "per_tier_min": 1, "per_tier_max": 2 },
-            "producer_tags": ["Production"],
-            "consumer_tags": ["Transformation"]
+            "primary_formula": { "base_min": 1, "base_max": 4, "per_tier_min": 1, "per_tier_max": 2 }
         }
     ],
     "variation_defaults": {

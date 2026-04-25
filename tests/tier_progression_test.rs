@@ -117,8 +117,8 @@ fn all_mains_have_at_least_one_tag() {
 
     for et in &effect_types {
         assert!(
-            !et.tags.is_empty(),
-            "main '{}' should have at least one tag",
+            !et.tag.input.is_empty() || !et.tag.output.is_empty(),
+            "main '{}' should have at least one token in its tag",
             et.name
         );
     }

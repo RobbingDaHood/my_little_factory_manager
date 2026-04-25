@@ -69,8 +69,9 @@ pub fn get_contracts_available(game_state: &State<Mutex<GameState>>) -> Json<Vec
 ///
 /// Returns all player action cards in the game with their per-location copy
 /// counts (shelved, deck, hand, discard). Use the optional `?tag=` query
-/// parameter to filter by card tag (e.g., `Production`, `Transformation`,
-/// `QualityControl`, `SystemAdjustment`).
+/// parameter to filter by card tag. Tags are JSON objects with `input` and
+/// `output` arrays of token type names, e.g.
+/// `?tag={"input":[],"output":["ProductionUnit"]}`.
 #[openapi]
 #[get("/library/cards?<tag>")]
 pub fn get_library_cards(
@@ -80,7 +81,7 @@ pub fn get_library_cards(
     let gs = game_state.lock().expect("game state lock poisoned");
 
     let tag_filter = match tag {
-        Some(t) => match serde_json::from_value::<CardTag>(serde_json::Value::String(t)) {
+        Some(t) => match serde_json::from_str::<CardTag>(&t) {
             Ok(parsed) => Some(parsed),
             Err(_) => return Json(Vec::new()),
         },

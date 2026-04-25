@@ -95,7 +95,7 @@ The game also provides self-documenting endpoints:
 #### Library
 | Endpoint | Purpose |
 |----------|---------|
-| `GET /library/cards` | Card catalogue with optional `?tag=` filter |
+| `GET /library/cards` | Card catalogue with optional `?tag=` filter (JSON object: `{"input":[],"output":["ProductionUnit"]}`, URL-encoded) |
 
 #### Statistics
 | Endpoint | Purpose |

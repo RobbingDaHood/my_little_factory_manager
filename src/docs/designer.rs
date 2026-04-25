@@ -482,8 +482,8 @@ fn build_metrics_system() -> DesignerSection {
             ReferenceEntry {
                 name: "Card Usage".to_string(),
                 description: "Total cards played and discarded, with per-tag breakdown. \
-                    Tracks how often Production, Transformation, QualityControl, and \
-                    SystemAdjustment tagged cards are used."
+                    Each tag is a precise input/output token signature \
+                    ({\"input\":[...],\"output\":[...]}) rather than a coarse category."
                     .to_string(),
             },
             ReferenceEntry {
@@ -507,9 +507,10 @@ fn build_metrics_system() -> DesignerSection {
             },
             ReferenceEntry {
                 name: "Strategy Diversity".to_string(),
-                description: "Dominant strategy tag and a normalized Shannon entropy \
-                    diversity score (0.0 = single tag only, 1.0 = perfectly even). \
-                    Measures how varied the player's card usage is."
+                description: "Dominant strategy tag (as a JSON input/output signature) \
+                    and a normalized Shannon entropy diversity score (0.0 = single tag \
+                    only, 1.0 = perfectly even). Measures how varied the player's \
+                    card usage is across distinct token-effect profiles."
                     .to_string(),
             },
         ],
@@ -536,10 +537,12 @@ fn build_configuration() -> DesignerSection {
             },
             ReferenceEntry {
                 name: "configurations/card_effects/token_definitions.json".to_string(),
-                description: "Defines the 7 game tokens with their primary formulas, tags, \
-                    and classification (beneficial/harmful). The combinatorial generator \
+                description: "Defines the 7 game tokens with their primary formulas \
+                    and classification (beneficial/harmful). Tags are no longer stored \
+                    in this file — they are auto-derived from each effect type's \
+                    primary_token and direction. The combinatorial generator \
                     auto-produces all card effect types (13 mains + 85 variations = 98 items) \
-                    from these ~5 parameters per token, plus global variation defaults \
+                    from these parameters per token, plus global variation defaults \
                     (ratio_range, efficiency_per_tier, boost_factor, items_per_tier). \
                     2 items are unlocked per tier, spanning tiers 0–48."
                     .to_string(),

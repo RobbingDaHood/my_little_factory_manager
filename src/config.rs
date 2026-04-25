@@ -144,15 +144,13 @@ pub struct TokenDefinitionsConfig {
     pub variation_defaults: VariationDefaultsConfig,
 }
 
-/// One token's definition: type, classification, primary formula, and tags.
+/// One token's definition: type, classification, and primary formula.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(crate = "rocket::serde")]
 pub struct TokenDefinitionConfig {
     pub token_type: TokenType,
     pub is_beneficial: bool,
     pub primary_formula: TierScalingFormula,
-    pub producer_tags: Vec<CardTag>,
-    pub consumer_tags: Vec<CardTag>,
 }
 
 /// Global defaults for variation generation.
@@ -175,7 +173,8 @@ pub struct VariationDefaultsConfig {
 #[derive(Debug, Clone)]
 pub struct CardEffectTypeConfig {
     pub name: String,
-    pub tags: Vec<CardTag>,
+    /// Base input/output token signature for this effect type (no variation selected).
+    pub tag: CardTag,
     pub available_at_tier: u32,
     pub primary_token: TokenType,
     pub main_direction: MainEffectDirection,

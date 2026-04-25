@@ -38,8 +38,7 @@ impl SmartStrategy {
         let mut balances = HashMap::new();
         if let Some(tokens) = state["tokens"].as_array() {
             for t in tokens {
-                if let (Some(name), Some(amount)) =
-                    (t["token_type"].as_str(), t["amount"].as_i64())
+                if let (Some(name), Some(amount)) = (t["token_type"].as_str(), t["amount"].as_i64())
                 {
                     balances.insert(name.to_string(), amount);
                 }
@@ -52,9 +51,7 @@ impl SmartStrategy {
         let mut played = HashMap::new();
         if let Some(arr) = state["cards_played_per_tag_contract"].as_array() {
             for entry in arr {
-                if let (Some(tag), Some(count)) =
-                    (entry["tag"].as_str(), entry["count"].as_u64())
-                {
+                if let (Some(tag), Some(count)) = (entry["tag"].as_str(), entry["count"].as_u64()) {
                     played.insert(tag.to_string(), count as u32);
                 }
             }
@@ -127,7 +124,7 @@ impl SmartStrategy {
                     // Lighter harmful penalty: high-output cards with harmful side effects
                     // are still valuable as long as the contract's max isn't violated
                     // (which is checked separately in `card_contract_score`).
-                    score += if n >= 0.0 { -n * 1.5 } else { -n * 1.5 };
+                    score += -n * 1.5;
                 }
                 _ => {}
             }
@@ -178,7 +175,10 @@ impl SmartStrategy {
         tags_played: &HashMap<String, u32>,
     ) -> f64 {
         let mut score = 0.0;
-        let reqs = contract["requirements"].as_array().cloned().unwrap_or_default();
+        let reqs = contract["requirements"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
 
         if let Some(effects) = card["effects"].as_array() {
             for effect in effects {
@@ -484,9 +484,7 @@ impl SmartStrategy {
                 if req["requirement_type"].as_str() != Some("CardTagConstraint") {
                     continue;
                 }
-                if let (Some(max), Some(tag)) =
-                    (req["max"].as_f64(), req["tag"].as_str())
-                {
+                if let (Some(max), Some(tag)) = (req["max"].as_f64(), req["tag"].as_str()) {
                     let tagged = Self::deck_tag_count(cards, tag);
                     let banned = (tagged - max).max(0.0);
                     if banned / cycle_size > 0.5 {
@@ -689,7 +687,7 @@ impl SmartStrategy {
                     if let Some(min) = req["min"].as_f64() {
                         let deck_count = Self::deck_tag_count(cards, tag);
                         if deck_count < min {
-                            let tag_feasibility = (deck_count / min).min(1.0).max(0.0);
+                            let tag_feasibility = (deck_count / min).clamp(0.0, 1.0);
                             feasibility = feasibility.min(tag_feasibility);
                         }
                     }
@@ -830,14 +828,11 @@ impl SmartStrategy {
             })?;
             let worst_sacrifice =
                 Self::safe_sacrifice_index(cards, &sacrifice_indices, best_replacement)?;
-            let worst_target = target_indices
-                .iter()
-                .copied()
-                .min_by(|&a, &b| {
-                    Self::card_general_quality(&cards[a]["card"])
-                        .partial_cmp(&Self::card_general_quality(&cards[b]["card"]))
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                })?;
+            let worst_target = target_indices.iter().copied().min_by(|&a, &b| {
+                Self::card_general_quality(&cards[a]["card"])
+                    .partial_cmp(&Self::card_general_quality(&cards[b]["card"]))
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })?;
             return Some(json!({
                 "action_type": "ReplaceCard",
                 "target_card_index": worst_target,
@@ -872,10 +867,7 @@ impl SmartStrategy {
                 qa.partial_cmp(&qb).unwrap_or(std::cmp::Ordering::Equal)
             });
 
-        let worst_target = match worst_target {
-            Some(t) => t,
-            None => return None,
-        };
+        let worst_target = worst_target?;
 
         let replacement_q = Self::card_general_quality(&cards[best_replacement]["card"]);
         let target_q = Self::card_general_quality(&cards[worst_target]["card"]);
@@ -1064,8 +1056,7 @@ impl Strategy for SmartStrategy {
         //    skip PlayCard and fall through to DiscardCard to accumulate the required turns.
         let impossible_contract = state["cards"].as_array().is_some_and(|cards| {
             !state["active_contract"].is_null() && {
-                let turns_played =
-                    state["contract_turns_played"].as_u64().unwrap_or(0) as u32;
+                let turns_played = state["contract_turns_played"].as_u64().unwrap_or(0) as u32;
                 Self::is_contract_impossible(
                     &state["active_contract"],
                     cards,
@@ -1087,12 +1078,9 @@ impl Strategy for SmartStrategy {
                 .iter()
                 .find(|a| a["action_type"] == "DiscardCard")
             {
-                if let Some(action) = Self::choose_discard_card(
-                    discard,
-                    state,
-                    &token_balances,
-                    &tags_played,
-                ) {
+                if let Some(action) =
+                    Self::choose_discard_card(discard, state, &token_balances, &tags_played)
+                {
                     self.consecutive_discards
                         .set(self.consecutive_discards.get() + 1);
                     return action;
@@ -1101,7 +1089,9 @@ impl Strategy for SmartStrategy {
         }
 
         // 1. Deckbuild when available and beneficial.
-        if let Some(replace) = possible_actions.iter().find(|a| a["action_type"] == "ReplaceCard")
+        if let Some(replace) = possible_actions
+            .iter()
+            .find(|a| a["action_type"] == "ReplaceCard")
         {
             if let Some(action) = Self::choose_deckbuild_action(replace, state) {
                 return action;
@@ -1109,9 +1099,11 @@ impl Strategy for SmartStrategy {
         }
 
         // 2. Play the best-scoring card for the active contract.
-        if let Some(play) = possible_actions.iter().find(|a| a["action_type"] == "PlayCard") {
-            if let Some(action) =
-                Self::choose_play_card(play, state, &token_balances, &tags_played)
+        if let Some(play) = possible_actions
+            .iter()
+            .find(|a| a["action_type"] == "PlayCard")
+        {
+            if let Some(action) = Self::choose_play_card(play, state, &token_balances, &tags_played)
             {
                 self.consecutive_discards.set(0);
                 return action;

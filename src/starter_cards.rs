@@ -36,7 +36,7 @@ pub fn create_starter_deck(count: u32, rng: &mut Pcg64) -> Vec<CardEntry> {
         let effect = roll_base_effect(0, selected, rng);
 
         let card = PlayerActionCard {
-            tags: selected.tags.clone(),
+            tags: vec![selected.tag.clone()],
             effects: vec![effect],
         };
 

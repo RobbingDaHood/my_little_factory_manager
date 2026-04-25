@@ -23,6 +23,7 @@ use crate::types::{
     CardEffect, CardTag, Contract, ContractRequirementKind, ContractTier, MainEffectDirection,
     PlayerActionCard, TokenAmount, TokenType, VariationDirection,
 };
+use std::collections::BTreeSet;
 
 type RequirementGenerator = Box<dyn Fn(&mut Pcg64) -> ContractRequirementKind>;
 
@@ -76,7 +77,6 @@ pub fn generate_effect_types(config: &TokenDefinitionsConfig) -> Vec<CardEffectT
         let producer_name = format!("{:?}Producer", token_def.token_type);
         all_items.push(GeneratedItem::Main {
             name: producer_name,
-            tags: token_def.producer_tags.clone(),
             primary_token: token_def.token_type.clone(),
             direction: MainEffectDirection::Producer,
             formula: token_def.primary_formula.clone(),
@@ -91,7 +91,6 @@ pub fn generate_effect_types(config: &TokenDefinitionsConfig) -> Vec<CardEffectT
             };
             all_items.push(GeneratedItem::Main {
                 name: consumer_name,
-                tags: token_def.consumer_tags.clone(),
                 primary_token: token_def.token_type.clone(),
                 direction: MainEffectDirection::Consumer,
                 formula: token_def.primary_formula.clone(),
@@ -166,14 +165,23 @@ pub fn generate_effect_types(config: &TokenDefinitionsConfig) -> Vec<CardEffectT
         match item {
             GeneratedItem::Main {
                 name,
-                tags,
                 primary_token,
                 direction,
                 formula,
             } => {
+                let tag = match direction {
+                    MainEffectDirection::Producer => CardTag {
+                        input: BTreeSet::new(),
+                        output: BTreeSet::from([primary_token.clone()]),
+                    },
+                    MainEffectDirection::Consumer => CardTag {
+                        input: BTreeSet::from([primary_token.clone()]),
+                        output: BTreeSet::new(),
+                    },
+                };
                 effect_types.push(CardEffectTypeConfig {
                     name: name.clone(),
-                    tags: tags.clone(),
+                    tag,
                     available_at_tier: current_tier,
                     primary_token: primary_token.clone(),
                     main_direction: direction.clone(),
@@ -285,7 +293,6 @@ fn attach_variation(
 enum GeneratedItem {
     Main {
         name: String,
-        tags: Vec<CardTag>,
         primary_token: TokenType,
         direction: MainEffectDirection,
         formula: TierScalingFormula,
@@ -321,15 +328,33 @@ fn unlocked_token_types(tier: u32, effect_types: &[CardEffectTypeConfig]) -> Vec
     tokens
 }
 
-/// Returns card tags associated with effect types unlocked at or before the given tier.
-/// Used to ensure CardTagConstraint only references tags that have actual cards.
+/// Returns all distinct card tags that can appear on generated cards at or before the given tier.
+///
+/// Enumerates the base tag for each unlocked effect type, plus one tag per unlocked variation
+/// (base tag extended with the variation's secondary token). This mirrors exactly the tag space
+/// that `generate_reward_card_with_types` can produce, ensuring `CardTagConstraint` requirements
+/// only reference tag profiles that real cards can carry.
 fn unlocked_card_tags(tier: u32, effect_types: &[CardEffectTypeConfig]) -> Vec<CardTag> {
     let mut tags = Vec::new();
     for et in effect_types {
         if et.available_at_tier <= tier {
-            for tag in &et.tags {
-                if !tags.contains(tag) {
-                    tags.push(tag.clone());
+            if !tags.contains(&et.tag) {
+                tags.push(et.tag.clone());
+            }
+            for var in &et.variations {
+                if var.unlock_tier <= tier {
+                    let mut var_tag = et.tag.clone();
+                    match var.direction {
+                        VariationDirection::Input => {
+                            var_tag.input.insert(var.secondary_token.clone());
+                        }
+                        VariationDirection::Output => {
+                            var_tag.output.insert(var.secondary_token.clone());
+                        }
+                    }
+                    if !tags.contains(&var_tag) {
+                        tags.push(var_tag);
+                    }
                 }
             }
         }
@@ -618,10 +643,19 @@ pub fn generate_reward_card_with_types(
         .map(|_| {
             let selected = weighted_select(&choices, rng);
 
-            for tag in &selected.root.tags {
-                if !all_tags.contains(tag) {
-                    all_tags.push(tag.clone());
+            let mut tag = selected.root.tag.clone();
+            if let Some(v) = selected.variation {
+                match v.direction {
+                    VariationDirection::Input => {
+                        tag.input.insert(v.secondary_token.clone());
+                    }
+                    VariationDirection::Output => {
+                        tag.output.insert(v.secondary_token.clone());
+                    }
                 }
+            }
+            if !all_tags.contains(&tag) {
+                all_tags.push(tag);
             }
 
             match selected.variation {
@@ -636,10 +670,6 @@ pub fn generate_reward_card_with_types(
             }
         })
         .collect();
-
-    if all_tags.is_empty() {
-        all_tags.push(CardTag::Production);
-    }
 
     PlayerActionCard {
         tags: all_tags,

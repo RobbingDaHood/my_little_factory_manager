@@ -485,16 +485,23 @@ fn tier1_reward_cards_are_pure_production() {
     let state = get_state(&client);
     let cards = state["cards"].as_array().expect("cards array");
 
-    // Reward cards should only have Production tags at tier 0
+    // Reward cards at tier 0 should only involve ProductionUnit tokens
     for card_entry in cards {
         let tags = card_entry["card"]["tags"].as_array();
         if let Some(tags) = tags {
             for tag in tags {
-                assert_eq!(
-                    tag.as_str().unwrap_or(""),
-                    "Production",
-                    "tier 0 reward cards should only have Production tags"
-                );
+                let input_tokens = tag["input"].as_array().map(|a| a.as_slice()).unwrap_or(&[]);
+                let output_tokens = tag["output"]
+                    .as_array()
+                    .map(|a| a.as_slice())
+                    .unwrap_or(&[]);
+                for token in input_tokens.iter().chain(output_tokens.iter()) {
+                    assert_eq!(
+                        token.as_str().unwrap_or(""),
+                        "ProductionUnit",
+                        "tier 0 reward card tags should only reference ProductionUnit"
+                    );
+                }
             }
         }
     }

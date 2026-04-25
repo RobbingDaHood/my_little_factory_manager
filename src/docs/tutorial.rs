@@ -253,7 +253,7 @@ fn build_tutorial() -> Tutorial {
                 method: "GET".to_string(),
                 example_body: None,
                 tips: vec![
-                    "Use ?tag=Production to see only production cards.".to_string(),
+                    r#"Filter by tag using a JSON object: ?tag={"input":[],"output":["ProductionUnit"]} (URL-encoded in practice)."#.to_string(),
                     "Card counts show how many copies are in each location.".to_string(),
                     "shelved = copies on the shelf; deck+hand+discard = copies in the active cycle.".to_string(),
                 ],

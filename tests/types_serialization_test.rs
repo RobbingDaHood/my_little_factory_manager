@@ -3,6 +3,7 @@ use my_little_factory_manager::types::{
     CardEffect, CardLocation, CardTag, Contract, ContractRequirementKind, ContractTier,
     PlayerActionCard, TokenAmount, TokenTag, TokenType,
 };
+use std::collections::BTreeSet;
 
 // ---------------------------------------------------------------------------
 // TokenType tests
@@ -199,7 +200,10 @@ fn token_requirement_max_serialization_roundtrip() {
 #[test]
 fn card_tag_constraint_serialization_roundtrip() {
     let req = ContractRequirementKind::CardTagConstraint {
-        tag: CardTag::Production,
+        tag: CardTag {
+            input: BTreeSet::new(),
+            output: BTreeSet::from([TokenType::ProductionUnit]),
+        },
         min: None,
         max: Some(0),
     };
@@ -280,10 +284,22 @@ fn card_location_serialization_roundtrip() {
 #[test]
 fn card_tag_serialization_roundtrip() {
     let tags = vec![
-        CardTag::Production,
-        CardTag::Transformation,
-        CardTag::QualityControl,
-        CardTag::SystemAdjustment,
+        CardTag {
+            input: BTreeSet::new(),
+            output: BTreeSet::from([TokenType::ProductionUnit]),
+        },
+        CardTag {
+            input: BTreeSet::from([TokenType::Heat]),
+            output: BTreeSet::new(),
+        },
+        CardTag {
+            input: BTreeSet::from([TokenType::Energy]),
+            output: BTreeSet::from([TokenType::ProductionUnit]),
+        },
+        CardTag {
+            input: BTreeSet::new(),
+            output: BTreeSet::new(),
+        },
     ];
     for tag in &tags {
         let json = serde_json::to_string(tag).expect("serialize CardTag");
@@ -299,7 +315,16 @@ fn card_tag_serialization_roundtrip() {
 #[test]
 fn player_action_card_serialization_roundtrip() {
     let card = PlayerActionCard {
-        tags: vec![CardTag::Production, CardTag::Transformation],
+        tags: vec![
+            CardTag {
+                input: BTreeSet::new(),
+                output: BTreeSet::from([TokenType::ProductionUnit]),
+            },
+            CardTag {
+                input: BTreeSet::from([TokenType::Energy]),
+                output: BTreeSet::from([TokenType::ProductionUnit]),
+            },
+        ],
         effects: vec![
             CardEffect::new(
                 vec![],
@@ -345,7 +370,10 @@ fn contract_serialization_roundtrip() {
             },
         ],
         reward_card: PlayerActionCard {
-            tags: vec![CardTag::Production],
+            tags: vec![CardTag {
+                input: BTreeSet::new(),
+                output: BTreeSet::from([TokenType::ProductionUnit]),
+            }],
             effects: vec![CardEffect::new(
                 vec![],
                 vec![

@@ -1,5 +1,7 @@
 //! Core game types: tokens, cards, effects, contracts, and locations.
 
+use std::collections::BTreeSet;
+
 use rocket::serde::{Deserialize, Serialize};
 use schemars::JsonSchema;
 
@@ -120,21 +122,21 @@ pub enum VariationDirection {
 // Card system
 // ---------------------------------------------------------------------------
 
-/// Operational category tags for player action cards.
+/// Precise input/output token signature for a player action card effect.
 ///
-/// A card can have multiple tags indicating what kind of factory operation
-/// it represents.
+/// Each card effect carries one tag describing exactly which token types it
+/// consumes (`input`) and which it produces (`output`). Tags are derived
+/// automatically from the card-effect template and any selected variation,
+/// so two cards with different token signatures always carry different tags.
+/// Used by `CardTagConstraint` requirements to target specific effect profiles
+/// rather than broad operational categories.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(crate = "rocket::serde")]
-pub enum CardTag {
-    /// Cards that generate output tokens.
-    Production,
-    /// Cards that convert one token type into another.
-    Transformation,
-    /// Cards that manage waste and harmful byproducts.
-    QualityControl,
-    /// Utility and meta-operational cards.
-    SystemAdjustment,
+pub struct CardTag {
+    /// Token types consumed when this effect is played.
+    pub input: BTreeSet<TokenType>,
+    /// Token types produced when this effect is played.
+    pub output: BTreeSet<TokenType>,
 }
 
 /// A card effect with token inputs consumed and token outputs produced.

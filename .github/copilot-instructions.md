@@ -55,7 +55,7 @@ Key conventions and repository-specific notes
 Files to check for agent config
 
 - Always respect everything written in the files in the `docs/design` folder; treat those files as authoritative guidance for the repository and follow them without contradiction.
-- **`docs/design/vision.md` is final-destination only.** It describes the game as it will exist when complete — never reference current implementation state, future plans, phased rollouts, or "not yet implemented" language. If something is in the vision, write it as if it already exists. Implementation sequencing and current-state notes belong in `docs/design/roadmap.md`.
+- **`docs/design/vision.md` is final-destination only.** It describes the game as it will exist when complete — never reference current implementation state, future plans, phased rollouts, or "not yet implemented" language. If something is in the vision, write it as if it already exists.
 
 Key project files
 
@@ -93,10 +93,6 @@ Key project files
 - `tests/api_endpoints_test.rs` — integration tests for query and documentation endpoints
 - `tests/deckbuilding_test.rs` — integration tests for deckbuilding mechanics (ReplaceCard, DeckSlots, rewards)
 - `tests/metrics_test.rs` — integration tests for metrics tracking and GET /metrics endpoint
-
-Suggest changes to vision.md and roadmap.md
-
-- At the end of every change, review `docs/design/vision.md` and `docs/design/roadmap.md` and directly suggest improvements based on new information learned during planning and execution.
 
 Post-plan instruction review
 

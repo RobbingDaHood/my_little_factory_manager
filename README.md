@@ -225,8 +225,7 @@ tests/
 
 docs/
 ├── design/
-│   ├── vision.md            # High-level design principles
-│   └── roadmap.md           # Implementation roadmap
+│   └── vision.md            # High-level design principles
 └── examples/
     └── api_examples.sh      # Curl-based gameplay walkthrough
 ```

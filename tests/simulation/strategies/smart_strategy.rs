@@ -532,6 +532,62 @@ impl SmartStrategy {
 
     // Contract scoring
 
+    fn tag_diversity_bonus(reward_card: &PlayerActionCard, cards: &[CardEntry]) -> f64 {
+        let mut bonus = 0.0;
+        let cycle_size = Self::deck_cycle_size(cards);
+        if cycle_size <= 0.0 {
+            // Bonus is modest if deck is empty
+            return 10.0;
+        }
+
+        for tag in &reward_card.tags {
+            let tag_count = Self::deck_tag_count(cards, tag);
+            // Normalize: if less than 5% of deck, full bonus; if more than 15%, no bonus
+            let saturation = tag_count / (cycle_size * 0.15);
+            let tag_bonus = 5.0 * (1.0 - saturation.min(1.0));
+            bonus += tag_bonus;
+        }
+
+        bonus
+    }
+
+    fn token_diversity_bonus(reward_card: &PlayerActionCard, cards: &[CardEntry]) -> f64 {
+        let mut bonus = 0.0;
+
+        // Find all tokens produced by the reward card
+        for effect in &reward_card.effects {
+            for output in &effect.outputs {
+                let token_type = &output.token_type;
+                let reward_prod = Self::card_net_production(reward_card, token_type);
+                if reward_prod <= 0.0 {
+                    continue;
+                }
+
+                // Check how well the token is covered by existing deck
+                let deck_prod = Self::deck_effective_production(cards, token_type);
+                let deck_card_count = Self::deck_producing_card_count(cards, token_type);
+
+                // Bonus is high when:
+                // - Token has zero producers (deficit)
+                // - Token has very few producers (scarcity)
+                // - Token production is low relative to needs
+                let token_bonus = if deck_card_count == 0 {
+                    30.0 // Bonus for missing token types
+                } else if deck_card_count == 1 {
+                    15.0 // Bonus for single producer
+                } else if deck_prod <= reward_prod {
+                    8.0 // Bonus if deck production is low
+                } else {
+                    3.0 // Minimal bonus if well-covered
+                };
+
+                bonus += token_bonus;
+            }
+        }
+
+        bonus
+    }
+
     fn score_contract(
         contract: &Contract,
         cards: &[CardEntry],
@@ -542,6 +598,8 @@ impl SmartStrategy {
         const ZERO_PRODUCER_PENALTY: f64 = 30_000.0;
         const SOFT_INFEASIBILITY_PENALTY: f64 = 3_000.0;
         const ADVANCEMENT_BONUS: f64 = 2_000.0;
+        const BASE_REWARD_WEIGHT: f64 = 0.3;
+        const DIVERSITY_WEIGHT: f64 = 0.5;
 
         let tier = contract.tier.0 as f64;
         if contract.requirements.is_empty() {
@@ -645,9 +703,13 @@ impl SmartStrategy {
             0.0
         };
 
-        tier * TIER_WEIGHT - infeasibility_cost
-            + advancement_bonus
-            + Self::card_general_quality(&contract.reward_card) * 0.1
+        let base_quality = Self::card_general_quality(&contract.reward_card);
+        let tag_bonus = Self::tag_diversity_bonus(&contract.reward_card, cards);
+        let token_bonus = Self::token_diversity_bonus(&contract.reward_card, cards);
+        let reward_value =
+            base_quality * BASE_REWARD_WEIGHT + (tag_bonus + token_bonus) * DIVERSITY_WEIGHT;
+
+        tier * TIER_WEIGHT - infeasibility_cost + advancement_bonus + reward_value
     }
 
     // Card play/discard scoring

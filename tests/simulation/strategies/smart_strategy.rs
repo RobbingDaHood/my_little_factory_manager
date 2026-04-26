@@ -17,6 +17,7 @@ const DISCARD_STUCK_THRESHOLD: u32 = 50;
 const TOP_N: usize = 30;
 const BOTTOM_N: usize = 30;
 const PASS1_CANDIDATES: usize = 200;
+const SAFETY_MARGIN: f64 = 0.7;
 
 /// Contract-aware strategy with active deckbuilding.
 ///
@@ -449,7 +450,7 @@ impl SmartStrategy {
                             return true;
                         }
                         let mean_prod = Self::deck_effective_production(cards, token_type);
-                        if turns_left * mean_prod < remaining * 0.5 {
+                        if turns_left * mean_prod < remaining * SAFETY_MARGIN {
                             return true;
                         }
                     }
@@ -496,7 +497,7 @@ impl SmartStrategy {
                             continue;
                         }
                         let turns_to_complete = remaining / mean_beneficial_prod;
-                        if turns_to_overflow < turns_to_complete * 0.5 {
+                        if turns_to_overflow < turns_to_complete * SAFETY_MARGIN {
                             return true;
                         }
                     }

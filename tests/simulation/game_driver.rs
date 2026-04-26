@@ -11,19 +11,20 @@
 
 use std::collections::{HashMap, HashSet};
 
-use my_little_factory_manager::action_log::PlayerAction;
-use my_little_factory_manager::game_state::GameState;
+use my_little_factory_manager::game_state::{
+    ActionResult, ActionSuccess, GameState, GameStateView, PossibleAction,
+};
+use my_little_factory_manager::types::{ContractFailureReason, ContractResolution};
 use serde::Serialize;
-use serde_json::Value;
 
 use crate::strategies::Strategy;
 
 /// A point-in-time snapshot passed to the strategy for decision-making.
 pub struct GameSnapshot {
-    /// Full game state from `GameState::view()` (serialised to JSON for strategy compatibility).
-    pub state: Value,
+    /// Full game state from `GameState::view()`. `None` when `needs_state()` returns false.
+    pub state: Option<GameStateView>,
     /// Available actions with NewGame filtered out.
-    pub possible_actions: Vec<Value>,
+    pub possible_actions: Vec<PossibleAction>,
 }
 
 /// Total actions taken when the first contract at a specific milestone tier was completed.
@@ -92,16 +93,10 @@ impl GameDriver {
         let mut reached_milestones: HashSet<u32> = HashSet::new();
 
         loop {
-            let all_possible: Vec<Value> = serde_json::to_value(state.possible_actions())
-                .expect("PossibleAction serializes")
-                .as_array()
-                .cloned()
-                .unwrap_or_default();
-
-            // NewGame is always listed but must not be chosen during an active session.
-            let non_new_game: Vec<Value> = all_possible
+            let non_new_game: Vec<PossibleAction> = state
+                .possible_actions()
                 .into_iter()
-                .filter(|a| a["action_type"] != "NewGame")
+                .filter(|a| !matches!(a, PossibleAction::NewGame))
                 .collect();
 
             if non_new_game.is_empty() {
@@ -109,53 +104,70 @@ impl GameDriver {
                 break;
             }
 
-            let state_value = if strategy.needs_state() {
-                serde_json::to_value(state.view()).expect("GameStateView serializes")
+            let state_view = if strategy.needs_state() {
+                Some(state.view())
             } else {
-                Value::Null
+                None
             };
             let snapshot = GameSnapshot {
-                state: state_value,
+                state: state_view,
                 possible_actions: non_new_game.clone(),
             };
 
-            let action = strategy.choose_action(&non_new_game, &snapshot);
+            let player_action = strategy.choose_action(&non_new_game, &snapshot);
             result.total_actions += 1;
 
-            let player_action: PlayerAction =
-                serde_json::from_value(action).expect("strategy returned valid PlayerAction JSON");
-            let response = serde_json::to_value(state.dispatch(player_action))
-                .expect("ActionResult serializes");
+            let response = state.dispatch(player_action);
 
-            if response["outcome"] == "Success" {
-                let resolution = &response["detail"]["contract_resolution"];
-                match resolution["resolution_type"].as_str() {
-                    Some("Completed") => {
-                        let tier = resolution["contract"]["tier"].as_u64().unwrap_or(0) as u32;
-                        result.contracts_completed += 1;
-                        result.max_tier_reached =
-                            Some(result.max_tier_reached.map_or(tier, |t: u32| t.max(tier)));
+            if let ActionResult::Success(ref success) = response {
+                let resolution_opt: Option<&ContractResolution> = match success {
+                    ActionSuccess::CardPlayed {
+                        contract_resolution: Some(res),
+                    } => Some(res),
+                    ActionSuccess::CardDiscarded {
+                        contract_resolution: Some(res),
+                    } => Some(res),
+                    ActionSuccess::ContractAbandoned {
+                        contract_resolution,
+                    } => Some(contract_resolution),
+                    _ => None,
+                };
 
-                        if milestone_set.contains(&tier) && !reached_milestones.contains(&tier) {
-                            reached_milestones.insert(tier);
-                            result.milestones.push(MilestoneResult {
-                                tier,
-                                actions_to_reach: result.total_actions,
-                            });
+                if let Some(resolution) = resolution_opt {
+                    match resolution {
+                        ContractResolution::Completed { contract } => {
+                            let tier = contract.tier.0;
+                            result.contracts_completed += 1;
+                            result.max_tier_reached =
+                                Some(result.max_tier_reached.map_or(tier, |t: u32| t.max(tier)));
+
+                            if milestone_set.contains(&tier) && !reached_milestones.contains(&tier)
+                            {
+                                reached_milestones.insert(tier);
+                                result.milestones.push(MilestoneResult {
+                                    tier,
+                                    actions_to_reach: result.total_actions,
+                                });
+                            }
                         }
-                    }
-                    Some("Failed") => {
-                        result.contracts_failed += 1;
-                        let failure_type = resolution["reason"]["failure_type"]
-                            .as_str()
-                            .unwrap_or("Unknown")
+                        ContractResolution::Failed { reason, .. } => {
+                            result.contracts_failed += 1;
+                            let failure_type = match reason {
+                                ContractFailureReason::HarmfulTokenLimitExceeded { .. } => {
+                                    "HarmfulTokenLimitExceeded"
+                                }
+                                ContractFailureReason::TurnWindowExceeded { .. } => {
+                                    "TurnWindowExceeded"
+                                }
+                                ContractFailureReason::Abandoned { .. } => {
+                                    result.contracts_abandoned += 1;
+                                    "Abandoned"
+                                }
+                            }
                             .to_string();
-                        if failure_type == "Abandoned" {
-                            result.contracts_abandoned += 1;
+                            *result.failure_reasons.entry(failure_type).or_insert(0) += 1;
                         }
-                        *result.failure_reasons.entry(failure_type).or_insert(0) += 1;
                     }
-                    _ => {}
                 }
             }
 

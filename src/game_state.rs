@@ -203,11 +203,7 @@ pub enum PossibleAction {
     AcceptContract {
         valid_tiers: Vec<TierContractRange>,
     },
-    ReplaceCard {
-        valid_target_card_indices: Vec<usize>,
-        valid_replacement_card_indices: Vec<usize>,
-        valid_sacrifice_card_indices: Vec<usize>,
-    },
+    ReplaceCard,
     /// Available when an active contract has been running for at least
     /// `min_turns_before_abandon` turns. Abandoning counts as a failure.
     AbandonContract,
@@ -493,52 +489,19 @@ impl GameState {
         actions
     }
 
-    /// Adds a single ReplaceCard action descriptor with valid index sets.
+    /// Adds ReplaceCard action if it's possible.
     fn add_replace_card_action(&self, actions: &mut Vec<PossibleAction>) {
-        // Collect shelved card indices (cards with copies on the shelf)
-        let shelved_indices: Vec<usize> = self
+        // ReplaceCard is possible if there are cards with shelved copies (for replacement and sacrifice)
+        // and cards with copies in deck or discard (for target).
+        let has_shelved = self.cards.iter().any(|e| e.counts.has_shelved());
+        let has_target = self
             .cards
             .iter()
-            .enumerate()
-            .filter(|(_, e)| e.counts.has_shelved())
-            .map(|(i, _)| i)
-            .collect();
+            .any(|e| e.counts.deck > 0 || e.counts.discard > 0);
 
-        if shelved_indices.is_empty() {
-            return;
+        if has_shelved && has_target {
+            actions.push(PossibleAction::ReplaceCard);
         }
-
-        // Target cards: any card with copies in deck or discard
-        let target_indices: Vec<usize> = self
-            .cards
-            .iter()
-            .enumerate()
-            .filter(|(_, e)| e.counts.deck > 0 || e.counts.discard > 0)
-            .map(|(i, _)| i)
-            .collect();
-
-        if target_indices.is_empty() {
-            return;
-        }
-
-        // Sacrifice candidates: any card with copies on the shelf
-        let sacrifice_indices: Vec<usize> = self
-            .cards
-            .iter()
-            .enumerate()
-            .filter(|(_, e)| e.counts.has_shelved())
-            .map(|(i, _)| i)
-            .collect();
-
-        if sacrifice_indices.is_empty() {
-            return;
-        }
-
-        actions.push(PossibleAction::ReplaceCard {
-            valid_target_card_indices: target_indices,
-            valid_replacement_card_indices: shelved_indices,
-            valid_sacrifice_card_indices: sacrifice_indices,
-        });
     }
 
     /// Returns the set of card indices (into the cards Vec) that may currently be played.

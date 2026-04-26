@@ -739,24 +739,32 @@ impl SmartStrategy {
 
     // Action builders
 
-    fn choose_deckbuild_action(
-        &self,
-        target_indices_raw: &[usize],
-        replacement_indices_raw: &[usize],
-        sacrifice_indices_raw: &[usize],
-        state: &GameStateView,
-    ) -> Option<PlayerAction> {
+    fn choose_deckbuild_action(&self, state: &GameStateView) -> Option<PlayerAction> {
         let cards = &state.cards;
-        let hash_to_index = self.process_new_arrivals(cards, replacement_indices_raw);
 
-        let target_indices = target_indices_raw.to_vec();
+        // Collect valid indices based on card availability
+        let replacement_indices_all: Vec<usize> = cards
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| e.counts.has_shelved())
+            .map(|(i, _)| i)
+            .collect();
+        let hash_to_index = self.process_new_arrivals(cards, &replacement_indices_all);
+
+        let target_indices: Vec<usize> = cards
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| e.counts.deck > 0 || e.counts.discard > 0)
+            .map(|(i, _)| i)
+            .collect();
+
         // Pass 1 uses a capped list; token production has no direct tag correlation
-        let replacement_indices: Vec<usize> = replacement_indices_raw
+        let replacement_indices: Vec<usize> = replacement_indices_all
             .iter()
             .copied()
             .take(PASS1_CANDIDATES)
             .collect();
-        let sacrifice_indices = sacrifice_indices_raw.to_vec();
+        let sacrifice_indices = replacement_indices_all.clone();
 
         if replacement_indices.is_empty() || target_indices.is_empty() {
             return None;
@@ -780,7 +788,7 @@ impl SmartStrategy {
                     &sacrifice_indices,
                     replacement,
                     &hash_to_index,
-                    replacement_indices_raw,
+                    &replacement_indices_all,
                 )?;
                 return Some(PlayerAction::ReplaceCard {
                     target_card_index: worst_target,
@@ -831,7 +839,7 @@ impl SmartStrategy {
             &sacrifice_indices,
             best_replacement,
             &hash_to_index,
-            replacement_indices_raw,
+            &replacement_indices_all,
         )?;
         Some(PlayerAction::ReplaceCard {
             target_card_index: worst_target,
@@ -1031,20 +1039,11 @@ impl Strategy for SmartStrategy {
         }
 
         // 1. Deckbuild when available and beneficial.
-        if let Some(PossibleAction::ReplaceCard {
-            valid_target_card_indices,
-            valid_replacement_card_indices,
-            valid_sacrifice_card_indices,
-        }) = possible_actions
+        if possible_actions
             .iter()
-            .find(|a| matches!(a, PossibleAction::ReplaceCard { .. }))
+            .any(|a| matches!(a, PossibleAction::ReplaceCard))
         {
-            if let Some(action) = self.choose_deckbuild_action(
-                valid_target_card_indices,
-                valid_replacement_card_indices,
-                valid_sacrifice_card_indices,
-                state,
-            ) {
+            if let Some(action) = self.choose_deckbuild_action(state) {
                 return action;
             }
         }

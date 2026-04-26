@@ -706,7 +706,8 @@ impl SmartStrategy {
         let base_quality = Self::card_general_quality(&contract.reward_card);
         let tag_bonus = Self::tag_diversity_bonus(&contract.reward_card, cards);
         let token_bonus = Self::token_diversity_bonus(&contract.reward_card, cards);
-        let reward_value = base_quality * BASE_REWARD_WEIGHT + (tag_bonus + token_bonus) * DIVERSITY_WEIGHT;
+        let reward_value =
+            base_quality * BASE_REWARD_WEIGHT + (tag_bonus + token_bonus) * DIVERSITY_WEIGHT;
 
         tier * TIER_WEIGHT - infeasibility_cost + advancement_bonus + reward_value
     }

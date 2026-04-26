@@ -787,8 +787,12 @@ impl SmartStrategy {
                             if current + amount > max_f {
                                 return f64::NEG_INFINITY;
                             }
-                            if amount > (max_f - current) * 0.75 {
-                                score -= 50.0;
+                            if current + amount > max_f * 0.85 {
+                                return f64::NEG_INFINITY;
+                            }
+                            let remaining = max_f - current;
+                            if amount > remaining * 0.70 {
+                                score -= 200.0 * (amount / remaining.max(1.0));
                             }
                         }
                         if let Some(min_val) = min {

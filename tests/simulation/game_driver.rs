@@ -11,7 +11,6 @@
 
 use std::collections::{HashMap, HashSet};
 
-use my_little_factory_manager::action_log::PlayerAction;
 use my_little_factory_manager::game_state::{
     ActionResult, ActionSuccess, GameState, GameStateView, PossibleAction,
 };

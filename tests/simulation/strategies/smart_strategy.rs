@@ -184,6 +184,19 @@ impl SmartStrategy {
         cards.iter().map(|e| e.counts.non_shelved() as f64).sum()
     }
 
+    fn shelved_by_tag(
+        cards: &[CardEntry],
+        shelved_indices: &[usize],
+    ) -> HashMap<CardTag, Vec<usize>> {
+        let mut map: HashMap<CardTag, Vec<usize>> = HashMap::new();
+        for &idx in shelved_indices {
+            for tag in &cards[idx].card.tags {
+                map.entry(tag.clone()).or_default().push(idx);
+            }
+        }
+        map
+    }
+
     // Risk helpers
 
     fn tokens_at_risk_for_sacrifice(cards: &[CardEntry]) -> Vec<TokenType> {
@@ -560,11 +573,10 @@ impl SmartStrategy {
         sacrifice_indices_raw: &[usize],
         state: &GameStateView,
     ) -> Option<PlayerAction> {
-        const MAX_SHELVED_ENTRIES: usize = 30;
+        const MAX_SHELVED_ENTRIES_PER_TAG: usize = 30;
         const MAX_CANDIDATES: usize = 200;
 
         let cards = &state.cards;
-        let shelved_count = replacement_indices_raw.len();
         let target_indices = target_indices_raw.to_vec();
         let replacement_indices: Vec<usize> = replacement_indices_raw
             .iter()
@@ -604,23 +616,36 @@ impl SmartStrategy {
             }
         }
 
-        // Pass 3: flood control
-        if shelved_count > MAX_SHELVED_ENTRIES && sacrifice_indices.len() >= 2 {
-            let best_replacement = replacement_indices
-                .iter()
-                .copied()
-                .max_by(|&a, &b| Self::by_quality(cards, a, b))?;
-            let worst_sacrifice =
-                Self::safe_sacrifice_index(cards, &sacrifice_indices, best_replacement)?;
-            let worst_target = target_indices
-                .iter()
-                .copied()
-                .min_by(|&a, &b| Self::by_quality(cards, a, b))?;
-            return Some(PlayerAction::ReplaceCard {
-                target_card_index: worst_target,
-                replacement_card_index: best_replacement,
-                sacrifice_card_index: worst_sacrifice,
-            });
+        // Pass 3: per-tag flood control
+        let by_tag = Self::shelved_by_tag(cards, replacement_indices_raw);
+        if let Some((_, tag_indices)) = by_tag
+            .iter()
+            .filter(|(_, indices)| indices.len() > MAX_SHELVED_ENTRIES_PER_TAG)
+            .max_by_key(|(_, indices)| indices.len())
+        {
+            if sacrifice_indices.len() >= 2 {
+                let best_replacement = replacement_indices
+                    .iter()
+                    .copied()
+                    .max_by(|&a, &b| Self::by_quality(cards, a, b))?;
+                let worst_sacrifice = tag_indices
+                    .iter()
+                    .copied()
+                    .filter(|&i| i != best_replacement && sacrifice_indices.contains(&i))
+                    .min_by(|&a, &b| Self::by_quality(cards, a, b))
+                    .or_else(|| {
+                        Self::safe_sacrifice_index(cards, &sacrifice_indices, best_replacement)
+                    })?;
+                let worst_target = target_indices
+                    .iter()
+                    .copied()
+                    .min_by(|&a, &b| Self::by_quality(cards, a, b))?;
+                return Some(PlayerAction::ReplaceCard {
+                    target_card_index: worst_target,
+                    replacement_card_index: best_replacement,
+                    sacrifice_card_index: worst_sacrifice,
+                });
+            }
         }
 
         // Pass 2: quality upgrade

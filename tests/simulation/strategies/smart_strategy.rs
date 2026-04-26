@@ -457,6 +457,53 @@ impl SmartStrategy {
             }
         }
 
+        // Harmful-overflow trajectory check: if the deck's mean production rate for a
+        // token with a max constraint will hit that ceiling before the deck can meet any
+        // unmet min requirement, the contract is unwinnable.
+        for harmful_req in &contract.requirements {
+            if let ContractRequirementKind::TokenRequirement {
+                token_type: harmful_token,
+                max: Some(max_val),
+                ..
+            } = harmful_req
+            {
+                let current_harmful = *token_balances.get(harmful_token).unwrap_or(&0) as f64;
+                let headroom = *max_val as f64 - current_harmful;
+                if headroom <= 0.0 {
+                    return true;
+                }
+                let mean_harmful_prod = Self::deck_effective_production(cards, harmful_token);
+                if mean_harmful_prod <= 0.0 {
+                    continue;
+                }
+                let turns_to_overflow = headroom / mean_harmful_prod;
+                for min_req in &contract.requirements {
+                    if let ContractRequirementKind::TokenRequirement {
+                        token_type: beneficial_token,
+                        min: Some(min_val),
+                        ..
+                    } = min_req
+                    {
+                        let current_beneficial =
+                            *token_balances.get(beneficial_token).unwrap_or(&0) as f64;
+                        let remaining = *min_val as f64 - current_beneficial;
+                        if remaining <= 0.0 {
+                            continue;
+                        }
+                        let mean_beneficial_prod =
+                            Self::deck_effective_production(cards, beneficial_token);
+                        if mean_beneficial_prod <= 0.0 {
+                            continue;
+                        }
+                        let turns_to_complete = remaining / mean_beneficial_prod;
+                        if turns_to_overflow < turns_to_complete * 0.5 {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+
         let cycle_size = Self::deck_cycle_size(cards);
         if cycle_size > 0.0 {
             for req in &contract.requirements {

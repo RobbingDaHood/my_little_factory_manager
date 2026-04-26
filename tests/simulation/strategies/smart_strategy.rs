@@ -1,5 +1,7 @@
-use std::cell::Cell;
-use std::collections::HashMap;
+use std::cell::{Cell, RefCell};
+use std::collections::hash_map::DefaultHasher;
+use std::collections::{HashMap, HashSet};
+use std::hash::{Hash, Hasher};
 
 use my_little_factory_manager::action_log::PlayerAction;
 use my_little_factory_manager::game_state::{GameStateView, PossibleAction};
@@ -12,6 +14,9 @@ use crate::game_driver::GameSnapshot;
 use crate::strategies::Strategy;
 
 const DISCARD_STUCK_THRESHOLD: u32 = 50;
+const TOP_N: usize = 30;
+const BOTTOM_N: usize = 30;
+const PASS1_CANDIDATES: usize = 200;
 
 /// Contract-aware strategy with active deckbuilding.
 ///
@@ -26,12 +31,21 @@ const DISCARD_STUCK_THRESHOLD: u32 = 50;
 ///   → DiscardCard (worst score) → AbandonContract (last resort, or after stuck detection)
 pub struct SmartStrategy {
     consecutive_discards: Cell<u32>,
+    // top-30 per tag sorted desc by quality; updated incrementally on new shelf arrivals
+    best_per_tag: RefCell<HashMap<CardTag, Vec<(u64, f64)>>>,
+    // bottom-30 per tag sorted asc by quality; filled lazily when a tag's list runs dry
+    worst_per_tag: RefCell<HashMap<CardTag, Vec<(u64, f64)>>>,
+    // content hashes of known shelved cards; used to detect new arrivals each deckbuild call
+    known_shelved: RefCell<HashSet<u64>>,
 }
 
 impl SmartStrategy {
     pub fn new() -> Self {
         Self {
             consecutive_discards: Cell::new(0),
+            best_per_tag: RefCell::new(HashMap::new()),
+            worst_per_tag: RefCell::new(HashMap::new()),
+            known_shelved: RefCell::new(HashSet::new()),
         }
     }
 
@@ -184,17 +198,128 @@ impl SmartStrategy {
         cards.iter().map(|e| e.counts.non_shelved() as f64).sum()
     }
 
-    fn shelved_by_tag(
-        cards: &[CardEntry],
-        shelved_indices: &[usize],
-    ) -> HashMap<CardTag, Vec<usize>> {
-        let mut map: HashMap<CardTag, Vec<usize>> = HashMap::new();
-        for &idx in shelved_indices {
-            for tag in &cards[idx].card.tags {
-                map.entry(tag.clone()).or_default().push(idx);
+    fn card_hash(card: &PlayerActionCard) -> u64 {
+        let mut h = DefaultHasher::new();
+        card.tags.len().hash(&mut h);
+        for tag in &card.tags {
+            tag.hash(&mut h);
+        }
+        card.effects.len().hash(&mut h);
+        for effect in &card.effects {
+            effect.inputs.len().hash(&mut h);
+            for inp in &effect.inputs {
+                inp.token_type.hash(&mut h);
+                inp.amount.hash(&mut h);
+            }
+            effect.outputs.len().hash(&mut h);
+            for out in &effect.outputs {
+                out.token_type.hash(&mut h);
+                out.amount.hash(&mut h);
             }
         }
-        map
+        h.finish()
+    }
+
+    fn process_new_arrivals(
+        &self,
+        cards: &[CardEntry],
+        replacement_indices_raw: &[usize],
+    ) -> HashMap<u64, usize> {
+        let current: HashMap<u64, usize> = replacement_indices_raw
+            .iter()
+            .map(|&i| (Self::card_hash(&cards[i].card), i))
+            .collect();
+
+        let mut known = self.known_shelved.borrow_mut();
+        let mut best = self.best_per_tag.borrow_mut();
+
+        for (&hash, &idx) in &current {
+            if !known.contains(&hash) {
+                known.insert(hash);
+                let quality = Self::card_general_quality(&cards[idx].card);
+                for tag in &cards[idx].card.tags {
+                    let entries = best.entry(tag.clone()).or_default();
+                    let worst_q = entries.last().map(|(_, q)| *q).unwrap_or(f64::NEG_INFINITY);
+                    if entries.len() < TOP_N || quality > worst_q {
+                        let pos = entries.partition_point(|(_, q)| *q >= quality);
+                        entries.insert(pos, (hash, quality));
+                        if entries.len() > TOP_N {
+                            entries.pop();
+                        }
+                    }
+                }
+            }
+        }
+
+        known.retain(|name| current.contains_key(name));
+        current
+    }
+
+    fn refill_worst_for_tag(
+        &self,
+        tag: &CardTag,
+        cards: &[CardEntry],
+        replacement_indices_raw: &[usize],
+    ) {
+        let mut candidates: Vec<(u64, f64)> = replacement_indices_raw
+            .iter()
+            .copied()
+            .filter(|&i| cards[i].card.tags.contains(tag))
+            .map(|i| {
+                (
+                    Self::card_hash(&cards[i].card),
+                    Self::card_general_quality(&cards[i].card),
+                )
+            })
+            .collect();
+        candidates.sort_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        candidates.truncate(BOTTOM_N);
+        self.worst_per_tag
+            .borrow_mut()
+            .insert(tag.clone(), candidates);
+    }
+
+    fn worst_sacrifice_for_tag(
+        &self,
+        tag: &CardTag,
+        cards: &[CardEntry],
+        replacement_indices_raw: &[usize],
+        hash_to_index: &HashMap<u64, usize>,
+        exclude: usize,
+        sacrifice_indices: &[usize],
+    ) -> Option<usize> {
+        let mut refilled = false;
+        loop {
+            let need_refill = {
+                let mut worst = self.worst_per_tag.borrow_mut();
+                let entries = worst.entry(tag.clone()).or_default();
+                while entries
+                    .first()
+                    .map(|(h, _)| !hash_to_index.contains_key(h))
+                    .unwrap_or(false)
+                {
+                    entries.remove(0);
+                }
+                if entries.is_empty() {
+                    true
+                } else {
+                    let found = entries.iter().find_map(|(hash, _)| {
+                        hash_to_index
+                            .get(hash)
+                            .copied()
+                            .filter(|&i| i != exclude && sacrifice_indices.contains(&i))
+                    });
+                    return found;
+                }
+            };
+            if need_refill {
+                if refilled {
+                    return None;
+                }
+                self.refill_worst_for_tag(tag, cards, replacement_indices_raw);
+                refilled = true;
+            }
+        }
     }
 
     // Risk helpers
@@ -218,11 +343,58 @@ impl SmartStrategy {
     }
 
     fn safe_sacrifice_index(
+        &self,
         cards: &[CardEntry],
         sacrifice_indices: &[usize],
         exclude: usize,
+        hash_to_index: &HashMap<u64, usize>,
+        replacement_indices_raw: &[usize],
     ) -> Option<usize> {
         let at_risk = Self::tokens_at_risk_for_sacrifice(cards);
+        let known_tags: Vec<CardTag> = self.best_per_tag.borrow().keys().cloned().collect();
+
+        // Phase 1: per-tag worst index — avoids scanning all sacrifice_indices
+        let via_tags = known_tags
+            .iter()
+            .filter_map(|tag| {
+                self.worst_sacrifice_for_tag(
+                    tag,
+                    cards,
+                    replacement_indices_raw,
+                    hash_to_index,
+                    exclude,
+                    sacrifice_indices,
+                )
+            })
+            .filter(|&i| {
+                at_risk
+                    .iter()
+                    .all(|t| Self::card_net_production(&cards[i].card, t) <= 0.0)
+            })
+            .min_by(|&a, &b| Self::by_quality(cards, a, b));
+        if via_tags.is_some() {
+            return via_tags;
+        }
+
+        // Phase 2: relax at_risk filter via tag index
+        let via_tags_any = known_tags
+            .iter()
+            .filter_map(|tag| {
+                self.worst_sacrifice_for_tag(
+                    tag,
+                    cards,
+                    replacement_indices_raw,
+                    hash_to_index,
+                    exclude,
+                    sacrifice_indices,
+                )
+            })
+            .min_by(|&a, &b| Self::by_quality(cards, a, b));
+        if via_tags_any.is_some() {
+            return via_tags_any;
+        }
+
+        // Phase 3: full fallback scan (tagless cards or empty index)
         sacrifice_indices
             .iter()
             .copied()
@@ -568,26 +740,23 @@ impl SmartStrategy {
     // Action builders
 
     fn choose_deckbuild_action(
+        &self,
         target_indices_raw: &[usize],
         replacement_indices_raw: &[usize],
         sacrifice_indices_raw: &[usize],
         state: &GameStateView,
     ) -> Option<PlayerAction> {
-        const MAX_SHELVED_ENTRIES_PER_TAG: usize = 30;
-        const MAX_CANDIDATES: usize = 200;
-
         let cards = &state.cards;
+        let hash_to_index = self.process_new_arrivals(cards, replacement_indices_raw);
+
         let target_indices = target_indices_raw.to_vec();
+        // Pass 1 uses a capped list; token production has no direct tag correlation
         let replacement_indices: Vec<usize> = replacement_indices_raw
             .iter()
             .copied()
-            .take(MAX_CANDIDATES)
+            .take(PASS1_CANDIDATES)
             .collect();
-        let sacrifice_indices: Vec<usize> = sacrifice_indices_raw
-            .iter()
-            .copied()
-            .take(MAX_CANDIDATES)
-            .collect();
+        let sacrifice_indices = sacrifice_indices_raw.to_vec();
 
         if replacement_indices.is_empty() || target_indices.is_empty() {
             return None;
@@ -606,8 +775,13 @@ impl SmartStrategy {
                     .iter()
                     .copied()
                     .min_by(|&a, &b| Self::by_quality(cards, a, b))?;
-                let worst_sacrifice =
-                    Self::safe_sacrifice_index(cards, &sacrifice_indices, replacement)?;
+                let worst_sacrifice = self.safe_sacrifice_index(
+                    cards,
+                    &sacrifice_indices,
+                    replacement,
+                    &hash_to_index,
+                    replacement_indices_raw,
+                )?;
                 return Some(PlayerAction::ReplaceCard {
                     target_card_index: worst_target,
                     replacement_card_index: replacement,
@@ -616,45 +790,26 @@ impl SmartStrategy {
             }
         }
 
-        // Pass 3: per-tag flood control
-        let by_tag = Self::shelved_by_tag(cards, replacement_indices_raw);
-        if let Some((_, tag_indices)) = by_tag
-            .iter()
-            .filter(|(_, indices)| indices.len() > MAX_SHELVED_ENTRIES_PER_TAG)
-            .max_by_key(|(_, indices)| indices.len())
-        {
-            if sacrifice_indices.len() >= 2 {
-                let best_replacement = replacement_indices
-                    .iter()
-                    .copied()
-                    .max_by(|&a, &b| Self::by_quality(cards, a, b))?;
-                let worst_sacrifice = tag_indices
-                    .iter()
-                    .copied()
-                    .filter(|&i| i != best_replacement && sacrifice_indices.contains(&i))
-                    .min_by(|&a, &b| Self::by_quality(cards, a, b))
-                    .or_else(|| {
-                        Self::safe_sacrifice_index(cards, &sacrifice_indices, best_replacement)
-                    })?;
-                let worst_target = target_indices
-                    .iter()
-                    .copied()
-                    .min_by(|&a, &b| Self::by_quality(cards, a, b))?;
-                return Some(PlayerAction::ReplaceCard {
-                    target_card_index: worst_target,
-                    replacement_card_index: best_replacement,
-                    sacrifice_card_index: worst_sacrifice,
-                });
-            }
-        }
-
-        // Pass 2: quality upgrade
+        // Pass 2: quality upgrade — O(tag count) lookup across ALL shelved cards
         let advancement_tokens =
             Self::tokens_needed_for_advancement(cards, &state.offered_contracts);
-        let best_replacement = replacement_indices
-            .iter()
-            .copied()
-            .max_by(|&a, &b| Self::by_quality(cards, a, b))?;
+        let best_replacement = {
+            let best = self.best_per_tag.borrow();
+            best.values()
+                .filter_map(|entries| {
+                    entries
+                        .iter()
+                        .find_map(|(hash, _)| hash_to_index.get(hash).copied())
+                })
+                .max_by(|&a, &b| Self::by_quality(cards, a, b))
+        }
+        .or_else(|| {
+            replacement_indices
+                .iter()
+                .copied()
+                .max_by(|&a, &b| Self::by_quality(cards, a, b))
+        })?;
+
         let worst_target = target_indices
             .iter()
             .copied()
@@ -671,8 +826,13 @@ impl SmartStrategy {
             return None;
         }
 
-        let worst_sacrifice =
-            Self::safe_sacrifice_index(cards, &sacrifice_indices, best_replacement)?;
+        let worst_sacrifice = self.safe_sacrifice_index(
+            cards,
+            &sacrifice_indices,
+            best_replacement,
+            &hash_to_index,
+            replacement_indices_raw,
+        )?;
         Some(PlayerAction::ReplaceCard {
             target_card_index: worst_target,
             replacement_card_index: best_replacement,
@@ -707,37 +867,53 @@ impl SmartStrategy {
     }
 
     fn choose_discard_card(
+        &self,
         valid_indices: &[usize],
         state: &GameStateView,
         token_balances: &HashMap<TokenType, i64>,
         tags_played: &HashMap<CardTag, u32>,
     ) -> Option<PlayerAction> {
+        let score = |idx: usize| -> f64 {
+            if let Some(contract) = &state.active_contract {
+                Self::card_contract_score(
+                    &state.cards[idx].card,
+                    contract,
+                    token_balances,
+                    tags_played,
+                )
+            } else {
+                Self::card_general_quality(&state.cards[idx].card)
+            }
+        };
+
+        // Phase 1: prefer discarding cards whose tags have a shelf backup
+        let backed_tags: HashSet<CardTag> = self.best_per_tag.borrow().keys().cloned().collect();
+        let phase1 = valid_indices
+            .iter()
+            .copied()
+            .filter(|&i| {
+                state.cards[i]
+                    .card
+                    .tags
+                    .iter()
+                    .any(|t| backed_tags.contains(t))
+            })
+            .min_by(|&a, &b| {
+                score(a)
+                    .partial_cmp(&score(b))
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+        if let Some(idx) = phase1 {
+            return Some(PlayerAction::DiscardCard { card_index: idx });
+        }
+
+        // Phase 2: fallback — score-based minimum across all candidates
         valid_indices
             .iter()
             .copied()
             .min_by(|&a, &b| {
-                let score_a = if let Some(contract) = &state.active_contract {
-                    Self::card_contract_score(
-                        &state.cards[a].card,
-                        contract,
-                        token_balances,
-                        tags_played,
-                    )
-                } else {
-                    Self::card_general_quality(&state.cards[a].card)
-                };
-                let score_b = if let Some(contract) = &state.active_contract {
-                    Self::card_contract_score(
-                        &state.cards[b].card,
-                        contract,
-                        token_balances,
-                        tags_played,
-                    )
-                } else {
-                    Self::card_general_quality(&state.cards[b].card)
-                };
-                score_a
-                    .partial_cmp(&score_b)
+                score(a)
+                    .partial_cmp(&score(b))
                     .unwrap_or(std::cmp::Ordering::Equal)
             })
             .map(|idx| PlayerAction::DiscardCard { card_index: idx })
@@ -841,7 +1017,7 @@ impl Strategy for SmartStrategy {
                 .iter()
                 .find(|a| matches!(a, PossibleAction::DiscardCard { .. }))
             {
-                if let Some(action) = Self::choose_discard_card(
+                if let Some(action) = self.choose_discard_card(
                     valid_card_indices,
                     state,
                     &token_balances,
@@ -863,7 +1039,7 @@ impl Strategy for SmartStrategy {
             .iter()
             .find(|a| matches!(a, PossibleAction::ReplaceCard { .. }))
         {
-            if let Some(action) = Self::choose_deckbuild_action(
+            if let Some(action) = self.choose_deckbuild_action(
                 valid_target_card_indices,
                 valid_replacement_card_indices,
                 valid_sacrifice_card_indices,
@@ -904,7 +1080,7 @@ impl Strategy for SmartStrategy {
                 .iter()
                 .find(|a| matches!(a, PossibleAction::DiscardCard { .. }))
             {
-                if let Some(action) = Self::choose_discard_card(
+                if let Some(action) = self.choose_discard_card(
                     valid_card_indices,
                     state,
                     &token_balances,

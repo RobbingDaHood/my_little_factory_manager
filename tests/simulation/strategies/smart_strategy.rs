@@ -123,12 +123,20 @@ impl SmartStrategy {
         let mut productions: Vec<f64> = Vec::new();
         for entry in cards {
             let in_cycle = entry.counts.non_shelved() as f64;
-            if in_cycle <= 0.0 { continue; }
+            if in_cycle <= 0.0 {
+                continue;
+            }
             let prod = Self::card_net_production(&entry.card, token_type);
-            if prod <= 0.0 { continue; }
-            for _ in 0..(in_cycle as usize) { productions.push(prod); }
+            if prod <= 0.0 {
+                continue;
+            }
+            for _ in 0..(in_cycle as usize) {
+                productions.push(prod);
+            }
         }
-        if productions.is_empty() { return 0.0; }
+        if productions.is_empty() {
+            return 0.0;
+        }
         productions.sort_by(|a, b| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
         let take = productions.len().div_ceil(2);
         productions.iter().take(take).sum::<f64>() / take as f64
@@ -141,23 +149,36 @@ impl SmartStrategy {
     }
 
     fn deck_producing_card_count(cards: &[CardEntry], token_type: &TokenType) -> usize {
-        cards.iter().filter(|e| {
-            e.counts.has_non_shelved() && Self::card_net_production(&e.card, token_type) > 0.0
-        }).count()
+        cards
+            .iter()
+            .filter(|e| {
+                e.counts.has_non_shelved() && Self::card_net_production(&e.card, token_type) > 0.0
+            })
+            .count()
     }
 
     fn deck_producing_copy_count(cards: &[CardEntry], token_type: &TokenType) -> f64 {
-        cards.iter()
+        cards
+            .iter()
             .filter(|e| Self::card_net_production(&e.card, token_type) > 0.0)
             .map(|e| e.counts.non_shelved() as f64)
             .sum()
     }
 
     fn shelved_producing_card_count(cards: &[CardEntry], token_type: &TokenType) -> usize {
-        cards.iter().filter(|e| e.counts.has_shelved() && Self::card_net_production(&e.card, token_type) > 0.0).count()
+        cards
+            .iter()
+            .filter(|e| {
+                e.counts.has_shelved() && Self::card_net_production(&e.card, token_type) > 0.0
+            })
+            .count()
     }
     fn deck_tag_count(cards: &[CardEntry], tag: &CardTag) -> f64 {
-        cards.iter().filter(|e| e.counts.has_non_shelved() && e.card.tags.contains(tag)).map(|e| e.counts.non_shelved() as f64).sum()
+        cards
+            .iter()
+            .filter(|e| e.counts.has_non_shelved() && e.card.tags.contains(tag))
+            .map(|e| e.counts.non_shelved() as f64)
+            .sum()
     }
     fn deck_cycle_size(cards: &[CardEntry]) -> f64 {
         cards.iter().map(|e| e.counts.non_shelved() as f64).sum()
@@ -217,7 +238,11 @@ impl SmartStrategy {
         contract_turns_played: u32,
     ) -> bool {
         let turn_window_max: Option<u32> = contract.requirements.iter().find_map(|req| {
-            if let ContractRequirementKind::TurnWindow { max_turn, .. } = req { *max_turn } else { None }
+            if let ContractRequirementKind::TurnWindow { max_turn, .. } = req {
+                *max_turn
+            } else {
+                None
+            }
         });
 
         for req in &contract.requirements {
@@ -268,12 +293,26 @@ impl SmartStrategy {
         false
     }
 
-    fn tokens_needed_for_advancement(cards: &[CardEntry], offered: &[TierContracts]) -> Vec<TokenType> {
+    fn tokens_needed_for_advancement(
+        cards: &[CardEntry],
+        offered: &[TierContracts],
+    ) -> Vec<TokenType> {
         const MIN_COPIES: f64 = 8.0;
         let mut needed = Vec::new();
-        for req in offered.iter().flat_map(|tg| tg.contracts.iter()).flat_map(|c| c.requirements.iter()) {
-            if let ContractRequirementKind::TokenRequirement { token_type, min: Some(_), .. } = req {
-                if !needed.contains(token_type) && Self::deck_producing_copy_count(cards, token_type) < MIN_COPIES {
+        for req in offered
+            .iter()
+            .flat_map(|tg| tg.contracts.iter())
+            .flat_map(|c| c.requirements.iter())
+        {
+            if let ContractRequirementKind::TokenRequirement {
+                token_type,
+                min: Some(_),
+                ..
+            } = req
+            {
+                if !needed.contains(token_type)
+                    && Self::deck_producing_copy_count(cards, token_type) < MIN_COPIES
+                {
                     needed.push(token_type.clone());
                 }
             }
@@ -284,8 +323,17 @@ impl SmartStrategy {
     fn tokens_needing_diversity(cards: &[CardEntry], offered: &[TierContracts]) -> Vec<TokenType> {
         const MIN: f64 = 10.0;
         let mut needed = Vec::new();
-        for req in offered.iter().flat_map(|tg| tg.contracts.iter()).flat_map(|c| c.requirements.iter()) {
-            if let ContractRequirementKind::TokenRequirement { token_type, min: Some(_), .. } = req {
+        for req in offered
+            .iter()
+            .flat_map(|tg| tg.contracts.iter())
+            .flat_map(|c| c.requirements.iter())
+        {
+            if let ContractRequirementKind::TokenRequirement {
+                token_type,
+                min: Some(_),
+                ..
+            } = req
+            {
                 if !needed.contains(token_type)
                     && Self::shelved_producing_card_count(cards, token_type) > 0
                     && Self::deck_producing_copy_count(cards, token_type) < MIN
@@ -315,9 +363,17 @@ impl SmartStrategy {
             return tier * TIER_WEIGHT;
         }
 
-        let max_turns = contract.requirements.iter().find_map(|req| {
-            if let ContractRequirementKind::TurnWindow { max_turn, .. } = req { max_turn.map(|m| m as f64) } else { None }
-        }).unwrap_or(50.0);
+        let max_turns = contract
+            .requirements
+            .iter()
+            .find_map(|req| {
+                if let ContractRequirementKind::TurnWindow { max_turn, .. } = req {
+                    max_turn.map(|m| m as f64)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(50.0);
 
         let mut feasibility = 1.0f64;
         let cycle_size = Self::deck_cycle_size(cards);
@@ -364,15 +420,13 @@ impl SmartStrategy {
                         let min_f = *min_val as f64;
                         let deck_count = Self::deck_tag_count(cards, tag);
                         if deck_count < min_f {
-                            feasibility =
-                                feasibility.min((deck_count / min_f).clamp(0.0, 1.0));
+                            feasibility = feasibility.min((deck_count / min_f).clamp(0.0, 1.0));
                         }
                     }
                     if let Some(max_val) = max {
                         if cycle_size > 0.0 {
                             let tagged = Self::deck_tag_count(cards, tag);
-                            let banned_fraction =
-                                (tagged - *max_val as f64).max(0.0) / cycle_size;
+                            let banned_fraction = (tagged - *max_val as f64).max(0.0) / cycle_size;
                             if banned_fraction > 0.5 {
                                 feasibility = 0.0;
                             } else if banned_fraction > 0.1 {
@@ -392,10 +446,19 @@ impl SmartStrategy {
         };
 
         let advancement_bonus: f64 = if feasibility > 0.0 {
-            needed_tokens.iter()
-                .map(|t| if Self::card_net_production(&contract.reward_card, t) > 0.0 { ADVANCEMENT_BONUS } else { 0.0 })
+            needed_tokens
+                .iter()
+                .map(|t| {
+                    if Self::card_net_production(&contract.reward_card, t) > 0.0 {
+                        ADVANCEMENT_BONUS
+                    } else {
+                        0.0
+                    }
+                })
                 .fold(0.0_f64, f64::max)
-        } else { 0.0 };
+        } else {
+            0.0
+        };
 
         tier * TIER_WEIGHT - infeasibility_cost
             + advancement_bonus
@@ -503,10 +566,16 @@ impl SmartStrategy {
         let cards = &state.cards;
         let shelved_count = replacement_indices_raw.len();
         let target_indices = target_indices_raw.to_vec();
-        let replacement_indices: Vec<usize> =
-            replacement_indices_raw.iter().copied().take(MAX_CANDIDATES).collect();
-        let sacrifice_indices: Vec<usize> =
-            sacrifice_indices_raw.iter().copied().take(MAX_CANDIDATES).collect();
+        let replacement_indices: Vec<usize> = replacement_indices_raw
+            .iter()
+            .copied()
+            .take(MAX_CANDIDATES)
+            .collect();
+        let sacrifice_indices: Vec<usize> = sacrifice_indices_raw
+            .iter()
+            .copied()
+            .take(MAX_CANDIDATES)
+            .collect();
 
         if replacement_indices.is_empty() || target_indices.is_empty() {
             return None;
@@ -642,7 +711,9 @@ impl SmartStrategy {
                 } else {
                     Self::card_general_quality(&state.cards[b].card)
                 };
-                score_a.partial_cmp(&score_b).unwrap_or(std::cmp::Ordering::Equal)
+                score_a
+                    .partial_cmp(&score_b)
+                    .unwrap_or(std::cmp::Ordering::Equal)
             })
             .map(|idx| PlayerAction::DiscardCard { card_index: idx })
     }
@@ -653,8 +724,7 @@ impl SmartStrategy {
         token_balances: &HashMap<TokenType, i64>,
     ) -> Option<PlayerAction> {
         let offered = &state.offered_contracts;
-        let needed_tokens =
-            Self::tokens_needed_for_advancement(&state.cards, offered);
+        let needed_tokens = Self::tokens_needed_for_advancement(&state.cards, offered);
 
         for feasible_only in [true, false] {
             let mut best: Option<(usize, usize, f64)> = None;
@@ -681,7 +751,7 @@ impl SmartStrategy {
                                 token_balances,
                                 &needed_tokens,
                             );
-                            if best.map_or(true, |(_, _, prev)| s > prev) {
+                            if best.is_none_or(|(_, _, prev)| s > prev) {
                                 best = Some((tier_idx, c_idx, s));
                             }
                         }
@@ -718,24 +788,42 @@ impl Strategy for SmartStrategy {
         possible_actions: &[PossibleAction],
         snapshot: &GameSnapshot,
     ) -> PlayerAction {
-        let state = snapshot.state.as_ref().expect("SmartStrategy requires state");
+        let state = snapshot
+            .state
+            .as_ref()
+            .expect("SmartStrategy requires state");
         let token_balances = Self::token_balances(state);
         let tags_played = Self::tags_played(state);
 
         // 0. Detect impossible active contract; abandon or discard to accumulate turns.
         let impossible = state.active_contract.as_ref().is_some_and(|c| {
-            Self::is_contract_impossible(c, &state.cards, &token_balances, state.contract_turns_played)
+            Self::is_contract_impossible(
+                c,
+                &state.cards,
+                &token_balances,
+                state.contract_turns_played,
+            )
         });
         if impossible {
-            if possible_actions.iter().any(|a| matches!(a, PossibleAction::AbandonContract)) {
+            if possible_actions
+                .iter()
+                .any(|a| matches!(a, PossibleAction::AbandonContract))
+            {
                 self.consecutive_discards.set(0);
                 return PlayerAction::AbandonContract;
             }
-            if let Some(PossibleAction::DiscardCard { valid_card_indices }) =
-                possible_actions.iter().find(|a| matches!(a, PossibleAction::DiscardCard { .. }))
+            if let Some(PossibleAction::DiscardCard { valid_card_indices }) = possible_actions
+                .iter()
+                .find(|a| matches!(a, PossibleAction::DiscardCard { .. }))
             {
-                if let Some(action) = Self::choose_discard_card(valid_card_indices, state, &token_balances, &tags_played) {
-                    self.consecutive_discards.set(self.consecutive_discards.get() + 1);
+                if let Some(action) = Self::choose_discard_card(
+                    valid_card_indices,
+                    state,
+                    &token_balances,
+                    &tags_played,
+                ) {
+                    self.consecutive_discards
+                        .set(self.consecutive_discards.get() + 1);
                     return action;
                 }
             }
@@ -774,10 +862,12 @@ impl Strategy for SmartStrategy {
         }
 
         // 3. Accept the highest-scoring contract.
-        if let Some(PossibleAction::AcceptContract { valid_tiers }) =
-            possible_actions.iter().find(|a| matches!(a, PossibleAction::AcceptContract { .. }))
+        if let Some(PossibleAction::AcceptContract { valid_tiers }) = possible_actions
+            .iter()
+            .find(|a| matches!(a, PossibleAction::AcceptContract { .. }))
         {
-            if let Some(action) = Self::choose_accept_contract(valid_tiers, state, &token_balances) {
+            if let Some(action) = Self::choose_accept_contract(valid_tiers, state, &token_balances)
+            {
                 self.consecutive_discards.set(0);
                 return action;
             }
@@ -785,18 +875,28 @@ impl Strategy for SmartStrategy {
 
         // 4. Discard the least useful card, but abandon after DISCARD_STUCK_THRESHOLD.
         if self.consecutive_discards.get() < DISCARD_STUCK_THRESHOLD {
-            if let Some(PossibleAction::DiscardCard { valid_card_indices }) =
-                possible_actions.iter().find(|a| matches!(a, PossibleAction::DiscardCard { .. }))
+            if let Some(PossibleAction::DiscardCard { valid_card_indices }) = possible_actions
+                .iter()
+                .find(|a| matches!(a, PossibleAction::DiscardCard { .. }))
             {
-                if let Some(action) = Self::choose_discard_card(valid_card_indices, state, &token_balances, &tags_played) {
-                    self.consecutive_discards.set(self.consecutive_discards.get() + 1);
+                if let Some(action) = Self::choose_discard_card(
+                    valid_card_indices,
+                    state,
+                    &token_balances,
+                    &tags_played,
+                ) {
+                    self.consecutive_discards
+                        .set(self.consecutive_discards.get() + 1);
                     return action;
                 }
             }
         }
 
         // 5. Abandon as last resort.
-        if possible_actions.iter().any(|a| matches!(a, PossibleAction::AbandonContract)) {
+        if possible_actions
+            .iter()
+            .any(|a| matches!(a, PossibleAction::AbandonContract))
+        {
             self.consecutive_discards.set(0);
             return PlayerAction::AbandonContract;
         }

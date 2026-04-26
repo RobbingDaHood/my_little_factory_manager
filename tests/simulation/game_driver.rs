@@ -127,9 +127,9 @@ impl GameDriver {
                     ActionSuccess::CardDiscarded {
                         contract_resolution: Some(res),
                     } => Some(res),
-                    ActionSuccess::ContractAbandoned { contract_resolution } => {
-                        Some(contract_resolution)
-                    }
+                    ActionSuccess::ContractAbandoned {
+                        contract_resolution,
+                    } => Some(contract_resolution),
                     _ => None,
                 };
 
@@ -138,12 +138,10 @@ impl GameDriver {
                         ContractResolution::Completed { contract } => {
                             let tier = contract.tier.0;
                             result.contracts_completed += 1;
-                            result.max_tier_reached = Some(
-                                result.max_tier_reached.map_or(tier, |t: u32| t.max(tier)),
-                            );
+                            result.max_tier_reached =
+                                Some(result.max_tier_reached.map_or(tier, |t: u32| t.max(tier)));
 
-                            if milestone_set.contains(&tier)
-                                && !reached_milestones.contains(&tier)
+                            if milestone_set.contains(&tier) && !reached_milestones.contains(&tier)
                             {
                                 reached_milestones.insert(tier);
                                 result.milestones.push(MilestoneResult {

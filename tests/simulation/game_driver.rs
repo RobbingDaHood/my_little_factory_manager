@@ -46,6 +46,9 @@ pub struct GameResult {
     pub contracts_abandoned: u32,
     /// Count of each contract failure reason observed.
     pub failure_reasons: HashMap<String, u32>,
+    pub completed_per_tier: HashMap<u32, u32>,
+    pub failed_per_tier: HashMap<u32, u32>,
+    pub abandoned_per_tier: HashMap<u32, u32>,
     /// True when max_actions was exhausted before all milestones were reached.
     pub hit_action_limit: bool,
     /// True when no non-NewGame actions were available (invariant broken).
@@ -63,6 +66,9 @@ impl GameResult {
             contracts_failed: 0,
             contracts_abandoned: 0,
             failure_reasons: HashMap::new(),
+            completed_per_tier: HashMap::new(),
+            failed_per_tier: HashMap::new(),
+            abandoned_per_tier: HashMap::new(),
             hit_action_limit: false,
             stuck: false,
         }
@@ -138,6 +144,7 @@ impl GameDriver {
                         ContractResolution::Completed { contract } => {
                             let tier = contract.tier.0;
                             result.contracts_completed += 1;
+                            *result.completed_per_tier.entry(tier).or_insert(0) += 1;
                             result.max_tier_reached =
                                 Some(result.max_tier_reached.map_or(tier, |t: u32| t.max(tier)));
 
@@ -150,8 +157,10 @@ impl GameDriver {
                                 });
                             }
                         }
-                        ContractResolution::Failed { reason, .. } => {
+                        ContractResolution::Failed { contract, reason } => {
+                            let tier = contract.tier.0;
                             result.contracts_failed += 1;
+                            *result.failed_per_tier.entry(tier).or_insert(0) += 1;
                             let failure_type = match reason {
                                 ContractFailureReason::HarmfulTokenLimitExceeded { .. } => {
                                     "HarmfulTokenLimitExceeded"
@@ -161,6 +170,7 @@ impl GameDriver {
                                 }
                                 ContractFailureReason::Abandoned { .. } => {
                                     result.contracts_abandoned += 1;
+                                    *result.abandoned_per_tier.entry(tier).or_insert(0) += 1;
                                     "Abandoned"
                                 }
                             }

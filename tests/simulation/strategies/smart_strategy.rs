@@ -726,7 +726,38 @@ impl SmartStrategy {
                         }
                     }
                 }
-                ContractRequirementKind::TurnWindow { .. } => {}
+                ContractRequirementKind::TurnWindow { max_turn, .. } => {
+                    if let Some(max_turn_val) = max_turn {
+                        let max_turn_f = *max_turn_val as f64;
+                        let mut tightest_ratio = 0.0f64;
+
+                        for req in &contract.requirements {
+                            if let ContractRequirementKind::TokenRequirement {
+                                token_type,
+                                min: Some(min_val),
+                                ..
+                            } = req
+                            {
+                                let current = *token_balances.get(token_type).unwrap_or(&0) as f64;
+                                let needed = (*min_val as f64 - current).max(0.0);
+                                if needed > 0.0 {
+                                    let mean_prod =
+                                        Self::deck_effective_production(cards, token_type);
+                                    if mean_prod > 0.0 {
+                                        let turns_needed = needed / mean_prod;
+                                        let ratio = turns_needed / max_turn_f;
+                                        tightest_ratio = tightest_ratio.max(ratio);
+                                    }
+                                }
+                            }
+                        }
+
+                        if tightest_ratio > 0.7 {
+                            let excess = (tightest_ratio - 0.7).min(1.0);
+                            feasibility = feasibility.min(1.0 - excess);
+                        }
+                    }
+                }
             }
         }
 

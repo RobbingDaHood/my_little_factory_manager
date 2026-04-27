@@ -49,6 +49,9 @@ pub struct StrategyReport {
     pub total_contracts_abandoned: u64,
     /// Top contract failure reasons sorted by frequency (descending).
     pub top_failure_reasons: Vec<(String, u64)>,
+    pub completed_per_tier: HashMap<u32, u64>,
+    pub failed_per_tier: HashMap<u32, u64>,
+    pub abandoned_per_tier: HashMap<u32, u64>,
     pub stuck_games: u32,
     pub action_limit_games: u32,
 }
@@ -153,6 +156,21 @@ impl SimulationRunner {
         let mut top_failure_reasons: Vec<(String, u64)> = failure_totals.into_iter().collect();
         top_failure_reasons.sort_by_key(|a| Reverse(a.1));
 
+        let mut completed_per_tier: HashMap<u32, u64> = HashMap::new();
+        let mut failed_per_tier: HashMap<u32, u64> = HashMap::new();
+        let mut abandoned_per_tier: HashMap<u32, u64> = HashMap::new();
+        for result in &results {
+            for (&tier, &count) in &result.completed_per_tier {
+                *completed_per_tier.entry(tier).or_insert(0) += u64::from(count);
+            }
+            for (&tier, &count) in &result.failed_per_tier {
+                *failed_per_tier.entry(tier).or_insert(0) += u64::from(count);
+            }
+            for (&tier, &count) in &result.abandoned_per_tier {
+                *abandoned_per_tier.entry(tier).or_insert(0) += u64::from(count);
+            }
+        }
+
         let stuck_games = results.iter().filter(|r| r.stuck).count() as u32;
         let action_limit_games = results.iter().filter(|r| r.hit_action_limit).count() as u32;
 
@@ -165,6 +183,9 @@ impl SimulationRunner {
             total_contracts_failed,
             total_contracts_abandoned,
             top_failure_reasons,
+            completed_per_tier,
+            failed_per_tier,
+            abandoned_per_tier,
             stuck_games,
             action_limit_games,
         }

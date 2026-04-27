@@ -30,6 +30,20 @@ const SAFETY_MARGIN: f64 = 0.7;
 /// Action priority:
 ///   ReplaceCard (beneficial swap) → PlayCard (best score) → AcceptContract (best score)
 ///   → DiscardCard (worst score) → AbandonContract (last resort, or after stuck detection)
+///
+/// ## Adaptive adjustments
+///
+/// `Contract::requirements[].min/max` are **post-adjustment** values — the adaptive balance
+/// overlay mutates them in place before the contract is stored. This means all feasibility
+/// checks in `is_contract_impossible` and `score_contract` already operate on the real
+/// (tighter) bounds without any extra work.
+///
+/// Additionally, `score_contract` reads `Contract::adaptive_adjustments` to apply a
+/// tightening penalty: each adjusted requirement contributes a penalty proportional to
+/// `abs(adjustment_percent)`, scaled by `TIGHTENING_PENALTY_PER_PCT`. This steers the
+/// strategy away from contracts whose requirements were heavily tightened by the adaptive
+/// system (indicating those token dimensions are under pressure), and toward contracts
+/// in areas the player has under-used — naturally relaxing adaptive pressure over time.
 pub struct SmartStrategy {
     consecutive_discards: Cell<u32>,
     // top-30 per tag sorted desc by quality; updated incrementally on new shelf arrivals
@@ -648,6 +662,9 @@ impl SmartStrategy {
         const ADVANCEMENT_BONUS: f64 = 2_000.0;
         const BASE_REWARD_WEIGHT: f64 = 0.3;
         const DIVERSITY_WEIGHT: f64 = 0.5;
+        // Each 1% of adaptive tightening costs this many score points.
+        // At max 30% tightening on a single requirement that's -1500; multiple adjustments compound.
+        const TIGHTENING_PENALTY_PER_PCT: f64 = 50.0;
 
         let tier = contract.tier.0 as f64;
         if contract.requirements.is_empty() {
@@ -788,7 +805,16 @@ impl SmartStrategy {
         let reward_value =
             base_quality * BASE_REWARD_WEIGHT + (tag_bonus + token_bonus) * DIVERSITY_WEIGHT;
 
+        // Penalize contracts whose requirements were tightened by the adaptive balance system.
+        // Both negative pct (max lowered) and positive pct (min raised) make the contract harder.
+        let adaptive_penalty: f64 = contract
+            .adaptive_adjustments
+            .iter()
+            .map(|adj| adj.adjustment_percent.unsigned_abs() as f64 * TIGHTENING_PENALTY_PER_PCT)
+            .sum::<f64>();
+
         tier * TIER_WEIGHT - infeasibility_cost + advancement_bonus + reward_value
+            - adaptive_penalty
     }
 
     // Card play/discard scoring

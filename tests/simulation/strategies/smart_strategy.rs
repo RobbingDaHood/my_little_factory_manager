@@ -766,7 +766,24 @@ impl SmartStrategy {
         contract: &Contract,
         token_balances: &HashMap<TokenType, i64>,
         tags_played: &HashMap<CardTag, u32>,
+        contract_turns_played: u32,
     ) -> f64 {
+        let urgency = contract
+            .requirements
+            .iter()
+            .find_map(|r| {
+                if let ContractRequirementKind::TurnWindow {
+                    max_turn: Some(m), ..
+                } = r
+                {
+                    let left = (*m as i64 - contract_turns_played as i64).max(1) as f64;
+                    Some((1.0 + (8.0 / left)).min(4.0))
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(1.0);
+
         let mut score = 0.0;
         for effect in &card.effects {
             for output in &effect.outputs {
@@ -798,7 +815,7 @@ impl SmartStrategy {
                         if let Some(min_val) = min {
                             let needed = (*min_val as f64 - current).max(0.0);
                             if needed > 0.0 {
-                                score += amount.min(needed) * 5.0;
+                                score += amount.min(needed) * 5.0 * urgency;
                             }
                         }
                     }
@@ -976,7 +993,13 @@ impl SmartStrategy {
                     return (i, f64::NEG_INFINITY);
                 }
                 let score = if let Some(contract) = &state.active_contract {
-                    Self::card_contract_score(card, contract, token_balances, tags_played)
+                    Self::card_contract_score(
+                        card,
+                        contract,
+                        token_balances,
+                        tags_played,
+                        state.contract_turns_played,
+                    )
                 } else {
                     Self::card_general_quality(card)
                 };
@@ -1001,6 +1024,7 @@ impl SmartStrategy {
                     contract,
                     token_balances,
                     tags_played,
+                    state.contract_turns_played,
                 )
             } else {
                 Self::card_general_quality(&state.cards[idx].card)

@@ -1007,6 +1007,63 @@ impl SmartStrategy {
             }
         };
 
+        // Phase 0: discard the card most likely to push a near-limit harmful token over its max
+        if let Some(contract) = &state.active_contract {
+            let near_limit: Vec<(TokenType, i64)> = contract
+                .requirements
+                .iter()
+                .filter_map(|req| {
+                    if let ContractRequirementKind::TokenRequirement {
+                        token_type,
+                        max: Some(max),
+                        ..
+                    } = req
+                    {
+                        let current = token_balances.get(token_type).copied().unwrap_or(0);
+                        let headroom = *max as i64 - current;
+                        if headroom <= 5 {
+                            Some((token_type.clone(), headroom))
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            if !near_limit.is_empty() {
+                let max_output_for_card = |idx: usize| -> f64 {
+                    let card = &state.cards[idx].card;
+                    card.effects
+                        .iter()
+                        .flat_map(|e| e.outputs.iter())
+                        .filter_map(|ta| {
+                            near_limit
+                                .iter()
+                                .find(|(tt, _)| *tt == ta.token_type)
+                                .map(|(_, headroom)| (ta.amount as f64, *headroom))
+                        })
+                        .filter(|(amount, headroom)| *amount > *headroom as f64 * 0.5)
+                        .map(|(amount, _)| amount)
+                        .fold(f64::NEG_INFINITY, f64::max)
+                };
+
+                if let Some(idx) = valid_indices
+                    .iter()
+                    .copied()
+                    .filter(|&i| max_output_for_card(i).is_finite())
+                    .max_by(|&a, &b| {
+                        max_output_for_card(a)
+                            .partial_cmp(&max_output_for_card(b))
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                    })
+                {
+                    return Some(PlayerAction::DiscardCard { card_index: idx });
+                }
+            }
+        }
+
         // Phase 1: prefer discarding cards whose tags have a shelf backup
         let backed_tags: HashSet<CardTag> = self.best_per_tag.borrow().keys().cloned().collect();
         let phase1 = valid_indices

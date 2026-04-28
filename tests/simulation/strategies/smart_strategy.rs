@@ -829,9 +829,12 @@ impl SmartStrategy {
                                         Self::deck_effective_production(cards, token_type);
                                     if mean_prod > 0.0 {
                                         // Account for time needed to draw producer cards into hand
-                                        let draw_turns = Self::expected_turns_to_draw_producer(cards, token_type);
+                                        let draw_turns = Self::expected_turns_to_draw_producer(
+                                            cards, token_type,
+                                        );
                                         // Combined estimate: account for both production rate and draw time
-                                        let effective_turns = draw_turns + (needed / mean_prod).max(0.0);
+                                        let effective_turns =
+                                            draw_turns + (needed / mean_prod).max(0.0);
                                         let ratio = effective_turns / max_turn_f;
                                         tightest_ratio = tightest_ratio.max(ratio);
                                     }

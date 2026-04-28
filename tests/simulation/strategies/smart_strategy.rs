@@ -707,15 +707,15 @@ impl SmartStrategy {
         token_balances: &HashMap<TokenType, i64>,
         needed_tokens: &[TokenType],
     ) -> f64 {
-        const TIER_WEIGHT: f64 = 25_000.0;
+        const TIER_WEIGHT: f64 = 5_000.0;
         const ZERO_PRODUCER_PENALTY: f64 = 30_000.0;
         const SOFT_INFEASIBILITY_PENALTY: f64 = 3_000.0;
-        const ADVANCEMENT_BONUS: f64 = 2_000.0;
+        const ADVANCEMENT_BONUS: f64 = 8_000.0;
         const BASE_REWARD_WEIGHT: f64 = 0.3;
         const DIVERSITY_WEIGHT: f64 = 0.5;
         // Each 1% of adaptive tightening costs this many score points.
-        // At max 30% tightening on a single requirement that's -1500; multiple adjustments compound.
-        const TIGHTENING_PENALTY_PER_PCT: f64 = 50.0;
+        // At max 30% tightening on a single requirement that's -6000; multiple adjustments compound.
+        const TIGHTENING_PENALTY_PER_PCT: f64 = 200.0;
         // Penalty per tier the contract is above (comfort_tier + 1).
         // Stacks linearly so a 4-tier overreach is essentially game-ending in scoring terms.
         const OVERREACH_PENALTY_PER_TIER: f64 = 8_000.0;
@@ -835,7 +835,7 @@ impl SmartStrategy {
         let infeasibility_cost = if feasibility <= 0.0 {
             ZERO_PRODUCER_PENALTY
         } else {
-            (1.0 - feasibility) * SOFT_INFEASIBILITY_PENALTY
+            (1.0 - feasibility).powi(2) * SOFT_INFEASIBILITY_PENALTY * 4.0
         };
 
         let advancement_bonus: f64 = if feasibility > 0.0 {

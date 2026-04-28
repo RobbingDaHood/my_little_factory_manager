@@ -1196,6 +1196,48 @@ impl SmartStrategy {
             .map(|idx| PlayerAction::DiscardCard { card_index: idx })
     }
 
+    fn target_progression_contract<'a>(
+        offered: &'a [TierContracts],
+        cards: &[CardEntry],
+        token_balances: &HashMap<TokenType, i64>,
+    ) -> Option<&'a Contract> {
+        /// Tier weight when picking the stockpile target.
+        /// Lower than score_contract::TIER_WEIGHT — we deliberately want
+        /// reward quality to compete with raw tier preference.
+        const TARGET_TIER_WEIGHT: f64 = 1_500.0;
+
+        offered
+            .iter()
+            .flat_map(|tg| tg.contracts.iter())
+            .filter(|c| !Self::is_contract_impossible(c, cards, token_balances, 0))
+            .filter(|c| {
+                c.requirements.iter().any(|req| {
+                    if let ContractRequirementKind::TokenRequirement {
+                        token_type,
+                        min: Some(m),
+                        ..
+                    } = req
+                    {
+                        let cur = *token_balances.get(token_type).unwrap_or(&0) as f64;
+                        *m as f64 > cur
+                    } else {
+                        false
+                    }
+                })
+            })
+            .max_by(|a, b| {
+                let score = |c: &Contract| -> f64 {
+                    let base = Self::card_general_quality(&c.reward_card);
+                    let tag = Self::tag_diversity_bonus(&c.reward_card, cards);
+                    let tok = Self::token_diversity_bonus(&c.reward_card, cards);
+                    c.tier.0 as f64 * TARGET_TIER_WEIGHT + base + tag + tok
+                };
+                score(a)
+                    .partial_cmp(&score(b))
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+    }
+
     fn choose_accept_contract(
         valid_tiers: &[my_little_factory_manager::game_state::TierContractRange],
         state: &GameStateView,

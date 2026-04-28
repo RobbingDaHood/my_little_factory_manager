@@ -540,6 +540,40 @@ impl SmartStrategy {
         false
     }
 
+    /// Estimate the highest tier where the current deck can win contracts comfortably.
+    ///
+    /// A tier is "comfortable" if the deck holds at least `MIN_PRODUCERS` distinct
+    /// producer cards for every beneficial token introduced at or before that tier,
+    /// AND has at least `MIN_COPIES` total copies of cards producing each such token.
+    ///
+    /// Beneficial token introduction tiers (per `src/types.rs::TokenType` doc):
+    ///   ProductionUnit:0, Energy:4, QualityPoint:16, Innovation:36
+    fn comfort_tier(cards: &[CardEntry]) -> u32 {
+        const MIN_PRODUCERS: usize = 2;
+        const MIN_COPIES: f64 = 4.0;
+
+        let beneficial_tiers: [(TokenType, u32); 4] = [
+            (TokenType::ProductionUnit, 0),
+            (TokenType::Energy, 4),
+            (TokenType::QualityPoint, 16),
+            (TokenType::Innovation, 36),
+        ];
+
+        // Find the highest unlock tier whose tokens are all sufficiently covered.
+        let mut comfort = 0u32;
+        for (token, unlock_tier) in &beneficial_tiers {
+            let producers = Self::deck_producing_card_count(cards, token);
+            let copies = Self::deck_producing_copy_count(cards, token);
+            if producers >= MIN_PRODUCERS && copies >= MIN_COPIES {
+                comfort = comfort.max(*unlock_tier + 4);
+            } else {
+                // Stop: a missing producer for token at unlock_tier blocks every higher tier.
+                break;
+            }
+        }
+        comfort
+    }
+
     fn tokens_needed_for_advancement(
         cards: &[CardEntry],
         offered: &[TierContracts],
@@ -665,6 +699,9 @@ impl SmartStrategy {
         // Each 1% of adaptive tightening costs this many score points.
         // At max 30% tightening on a single requirement that's -1500; multiple adjustments compound.
         const TIGHTENING_PENALTY_PER_PCT: f64 = 50.0;
+        // Penalty per tier the contract is above (comfort_tier + 1).
+        // Stacks linearly so a 4-tier overreach is essentially game-ending in scoring terms.
+        const OVERREACH_PENALTY_PER_TIER: f64 = 8_000.0;
 
         let tier = contract.tier.0 as f64;
         if contract.requirements.is_empty() {
@@ -813,8 +850,17 @@ impl SmartStrategy {
             .map(|adj| adj.adjustment_percent.unsigned_abs() as f64 * TIGHTENING_PENALTY_PER_PCT)
             .sum::<f64>();
 
+        let comfort = Self::comfort_tier(cards);
+        let allowed_tier = comfort + 1;
+        let overreach = (contract.tier.0 as i64 - allowed_tier as i64).max(0) as f64;
+        // Scale the penalty by (1 - feasibility) so very-feasible contracts get a discount.
+        // A perfectly feasible contract still pays half the overreach penalty; a barely
+        // feasible one pays the full amount.
+        let overreach_penalty = overreach * OVERREACH_PENALTY_PER_TIER * (1.0 - 0.5 * feasibility);
+
         tier * TIER_WEIGHT - infeasibility_cost + advancement_bonus + reward_value
             - adaptive_penalty
+            - overreach_penalty
     }
 
     // Card play/discard scoring

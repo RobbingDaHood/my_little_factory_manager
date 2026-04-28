@@ -889,6 +889,10 @@ impl SmartStrategy {
         tags_played: &HashMap<CardTag, u32>,
         contract_turns_played: u32,
     ) -> f64 {
+        const TAG_MIN_BASE: f64 = 60.0;
+        const TAG_MAX_OVERFLOW: f64 = -1e9;
+        const TAG_MAX_NEAR_LIMIT: f64 = -150.0;
+
         let urgency = contract
             .requirements
             .iter()
@@ -975,12 +979,32 @@ impl SmartStrategy {
             for req in &contract.requirements {
                 if let ContractRequirementKind::CardTagConstraint {
                     tag: req_tag,
-                    min: Some(min_val),
-                    ..
+                    min,
+                    max,
                 } = req
                 {
-                    if req_tag == tag && played < *min_val as f64 {
-                        score += 5.0;
+                    if req_tag != tag {
+                        continue;
+                    }
+
+                    if let Some(min_val) = min {
+                        let needed = (*min_val as f64 - played).max(0.0);
+                        if needed > 0.0 {
+                            score +=
+                                TAG_MIN_BASE * urgency * (1.0 / needed.max(1.0)).clamp(0.05, 1.0)
+                                    + TAG_MIN_BASE * 0.25 * urgency;
+                        }
+                    }
+
+                    if let Some(max_val) = max {
+                        let after = played + 1.0;
+                        if after > *max_val as f64 {
+                            return TAG_MAX_OVERFLOW;
+                        }
+                        let max_f = *max_val as f64;
+                        if after >= max_f - 1.0 && max_f > 0.0 {
+                            score += TAG_MAX_NEAR_LIMIT;
+                        }
                     }
                 }
             }

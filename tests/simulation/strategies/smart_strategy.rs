@@ -14,6 +14,7 @@ use crate::game_driver::GameSnapshot;
 use crate::strategies::Strategy;
 
 const DISCARD_STUCK_THRESHOLD: u32 = 50;
+const NO_RESOLUTION_STUCK_THRESHOLD: u32 = 1_500;
 const TOP_N: usize = 30;
 const BOTTOM_N: usize = 30;
 const PASS1_CANDIDATES: usize = 200;
@@ -52,6 +53,10 @@ pub struct SmartStrategy {
     worst_per_tag: RefCell<HashMap<CardTag, Vec<(u64, f64)>>>,
     // content hashes of known shelved cards; used to detect new arrivals each deckbuild call
     known_shelved: RefCell<HashSet<u64>>,
+    // tracks actions taken since the last contract resolution; used to detect livelock
+    actions_since_last_resolution: Cell<u32>,
+    // hash signature of the current active contract; used to detect contract changes
+    last_active_contract_signature: RefCell<Option<u64>>,
 }
 
 impl SmartStrategy {
@@ -61,6 +66,8 @@ impl SmartStrategy {
             best_per_tag: RefCell::new(HashMap::new()),
             worst_per_tag: RefCell::new(HashMap::new()),
             known_shelved: RefCell::new(HashSet::new()),
+            actions_since_last_resolution: Cell::new(0),
+            last_active_contract_signature: RefCell::new(None),
         }
     }
 
@@ -231,6 +238,16 @@ impl SmartStrategy {
                 out.token_type.hash(&mut h);
                 out.amount.hash(&mut h);
             }
+        }
+        h.finish()
+    }
+
+    fn contract_signature(contract: &Contract) -> u64 {
+        let mut h = DefaultHasher::new();
+        contract.tier.0.hash(&mut h);
+        contract.requirements.len().hash(&mut h);
+        for req in &contract.requirements {
+            format!("{:?}", req).hash(&mut h);
         }
         h.finish()
     }
@@ -1255,6 +1272,48 @@ impl Strategy for SmartStrategy {
             .expect("SmartStrategy requires state");
         let token_balances = Self::token_balances(state);
         let tags_played = Self::tags_played(state);
+
+        // Track actions and detect livelock (no contract resolution).
+        self.actions_since_last_resolution
+            .set(self.actions_since_last_resolution.get() + 1);
+
+        // Detect if the active contract has changed and reset the counter.
+        let current_signature = state.active_contract.as_ref().map(Self::contract_signature);
+        let mut last_sig = self.last_active_contract_signature.borrow_mut();
+        if *last_sig != current_signature {
+            *last_sig = current_signature;
+            self.actions_since_last_resolution.set(0);
+        }
+        drop(last_sig);
+
+        // If livelock detected (too many actions with no contract resolution),
+        // force-abandon to break the cycle.
+        if self.actions_since_last_resolution.get() > NO_RESOLUTION_STUCK_THRESHOLD {
+            if possible_actions
+                .iter()
+                .any(|a| matches!(a, PossibleAction::AbandonContract))
+            {
+                self.consecutive_discards.set(0);
+                self.actions_since_last_resolution.set(0);
+                return PlayerAction::AbandonContract;
+            }
+            // If abandon is not yet legal, discard to burn turns until it becomes legal.
+            if let Some(PossibleAction::DiscardCard { valid_card_indices }) = possible_actions
+                .iter()
+                .find(|a| matches!(a, PossibleAction::DiscardCard { .. }))
+            {
+                if let Some(action) = self.choose_discard_card(
+                    valid_card_indices,
+                    state,
+                    &token_balances,
+                    &tags_played,
+                ) {
+                    self.consecutive_discards
+                        .set(self.consecutive_discards.get() + 1);
+                    return action;
+                }
+            }
+        }
 
         // 0. Detect impossible active contract; abandon or discard to accumulate turns.
         let impossible = state.active_contract.as_ref().is_some_and(|c| {

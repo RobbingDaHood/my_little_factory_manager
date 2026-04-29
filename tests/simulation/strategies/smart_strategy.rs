@@ -630,6 +630,24 @@ impl SmartStrategy {
         comfort
     }
 
+    fn highest_offered_tier(offered: &[TierContracts]) -> u32 {
+        offered.iter().map(|tg| tg.tier.0).max().unwrap_or(0)
+    }
+
+    fn beneficial_tokens_unlocked_by(target_tier: u32) -> Vec<TokenType> {
+        let mut tokens = vec![TokenType::ProductionUnit];
+        if target_tier >= 4 {
+            tokens.push(TokenType::Energy);
+        }
+        if target_tier >= 16 {
+            tokens.push(TokenType::QualityPoint);
+        }
+        if target_tier >= 36 {
+            tokens.push(TokenType::Innovation);
+        }
+        tokens
+    }
+
     fn tokens_needed_for_advancement(
         cards: &[CardEntry],
         offered: &[TierContracts],
@@ -654,6 +672,18 @@ impl SmartStrategy {
                 }
             }
         }
+
+        // Look-ahead for tokens unlocking at tier+2
+        let highest_tier = Self::highest_offered_tier(offered);
+        let lookahead_tokens = Self::beneficial_tokens_unlocked_by(highest_tier + 2);
+        for token_type in lookahead_tokens {
+            if !needed.contains(&token_type)
+                && Self::deck_producing_copy_count(cards, &token_type) < MIN_COPIES
+            {
+                needed.push(token_type);
+            }
+        }
+
         needed
     }
 
@@ -679,6 +709,19 @@ impl SmartStrategy {
                 }
             }
         }
+
+        // Look-ahead for tokens unlocking at tier+2
+        let highest_tier = Self::highest_offered_tier(offered);
+        let lookahead_tokens = Self::beneficial_tokens_unlocked_by(highest_tier + 2);
+        for token_type in lookahead_tokens {
+            if !needed.contains(&token_type)
+                && Self::shelved_producing_card_count(cards, &token_type) > 0
+                && Self::deck_producing_copy_count(cards, &token_type) < MIN
+            {
+                needed.push(token_type);
+            }
+        }
+
         needed
     }
 

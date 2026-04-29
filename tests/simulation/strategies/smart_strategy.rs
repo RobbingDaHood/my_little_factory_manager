@@ -226,6 +226,18 @@ impl SmartStrategy {
         cards.iter().map(|e| e.counts.non_shelved() as f64).sum()
     }
 
+    fn expected_turns_to_draw_producer(cards: &[CardEntry], token_type: &TokenType) -> f64 {
+        let cycle_size = Self::deck_cycle_size(cards);
+        if cycle_size <= 0.0 {
+            return f64::INFINITY;
+        }
+        let producer_copies = Self::deck_producing_copy_count(cards, token_type);
+        if producer_copies <= 0.0 {
+            return f64::INFINITY;
+        }
+        cycle_size / producer_copies
+    }
+
     fn card_hash(card: &PlayerActionCard) -> u64 {
         let mut h = DefaultHasher::new();
         card.tags.len().hash(&mut h);
@@ -789,15 +801,15 @@ impl SmartStrategy {
         token_balances: &HashMap<TokenType, i64>,
         needed_tokens: &[TokenType],
     ) -> f64 {
-        const TIER_WEIGHT: f64 = 25_000.0;
+        const TIER_WEIGHT: f64 = 5_000.0;
         const ZERO_PRODUCER_PENALTY: f64 = 30_000.0;
         const SOFT_INFEASIBILITY_PENALTY: f64 = 3_000.0;
-        const ADVANCEMENT_BONUS: f64 = 2_000.0;
+        const ADVANCEMENT_BONUS: f64 = 8_000.0;
         const BASE_REWARD_WEIGHT: f64 = 0.3;
         const DIVERSITY_WEIGHT: f64 = 0.5;
         // Each 1% of adaptive tightening costs this many score points.
-        // At max 30% tightening on a single requirement that's -1500; multiple adjustments compound.
-        const TIGHTENING_PENALTY_PER_PCT: f64 = 50.0;
+        // At max 30% tightening on a single requirement that's -6000; multiple adjustments compound.
+        const TIGHTENING_PENALTY_PER_PCT: f64 = 200.0;
         // Penalty per tier the contract is above (comfort_tier + 1).
         // Stacks linearly so a 4-tier overreach is essentially game-ending in scoring terms.
         const OVERREACH_PENALTY_PER_TIER: f64 = 8_000.0;
@@ -894,20 +906,27 @@ impl SmartStrategy {
                                 let current = *token_balances.get(token_type).unwrap_or(&0) as f64;
                                 let needed = (*min_val as f64 - current).max(0.0);
                                 if needed > 0.0 {
+                                    // Optimistic estimate: use deck effective production
                                     let mean_prod =
                                         Self::deck_effective_production(cards, token_type);
                                     if mean_prod > 0.0 {
-                                        let turns_needed = needed / mean_prod;
-                                        let ratio = turns_needed / max_turn_f;
+                                        // Account for time needed to draw producer cards into hand
+                                        let draw_turns = Self::expected_turns_to_draw_producer(
+                                            cards, token_type,
+                                        );
+                                        // Combined estimate: account for both production rate and draw time
+                                        let effective_turns =
+                                            draw_turns + (needed / mean_prod).max(0.0);
+                                        let ratio = effective_turns / max_turn_f;
                                         tightest_ratio = tightest_ratio.max(ratio);
                                     }
                                 }
                             }
                         }
 
-                        if tightest_ratio > 0.7 {
-                            let excess = (tightest_ratio - 0.7).min(1.0);
-                            feasibility = feasibility.min(1.0 - excess);
+                        if tightest_ratio > 0.5 {
+                            let excess = (tightest_ratio - 0.5).min(1.5);
+                            feasibility = feasibility.min((1.0 - excess * 0.7).max(0.0));
                         }
                     }
                 }
@@ -917,7 +936,7 @@ impl SmartStrategy {
         let infeasibility_cost = if feasibility <= 0.0 {
             ZERO_PRODUCER_PENALTY
         } else {
-            (1.0 - feasibility) * SOFT_INFEASIBILITY_PENALTY
+            (1.0 - feasibility).powi(2) * SOFT_INFEASIBILITY_PENALTY * 4.0
         };
 
         let advancement_bonus: f64 = if feasibility > 0.0 {

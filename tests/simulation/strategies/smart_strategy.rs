@@ -20,6 +20,12 @@ const BOTTOM_N: usize = 30;
 const PASS1_CANDIDATES: usize = 200;
 const SAFETY_MARGIN: f64 = 0.7;
 
+/// Mid-contract abandonment threshold in turns.
+/// Contracts running longer than this without sufficient progress are voluntarily abandoned.
+const SLOW_PROGRESS_TURN_LIMIT: u32 = 40;
+/// Minimum fractional progress required by SLOW_PROGRESS_TURN_LIMIT to keep going.
+const SLOW_PROGRESS_MIN_FRACTION: f64 = 0.5;
+
 /// Contract-aware strategy with active deckbuilding.
 ///
 /// Uses game state alongside possible actions to:
@@ -555,6 +561,39 @@ impl SmartStrategy {
         }
 
         false
+    }
+
+    fn is_progress_too_slow(
+        contract: &Contract,
+        _cards: &[CardEntry],
+        token_balances: &HashMap<TokenType, i64>,
+        contract_turns_played: u32,
+    ) -> bool {
+        if contract_turns_played < SLOW_PROGRESS_TURN_LIMIT {
+            return false;
+        }
+        // Compute the worst-progressed beneficial min requirement.
+        let mut worst: Option<f64> = None;
+        for req in &contract.requirements {
+            if let ContractRequirementKind::TokenRequirement {
+                token_type,
+                min: Some(min_val),
+                ..
+            } = req
+            {
+                let current = *token_balances.get(token_type).unwrap_or(&0) as f64;
+                let target = *min_val as f64;
+                if target <= 0.0 {
+                    continue;
+                }
+                let frac = (current / target).min(1.0);
+                worst = Some(match worst {
+                    Some(w) => w.min(frac),
+                    None => frac,
+                });
+            }
+        }
+        matches!(worst, Some(f) if f < SLOW_PROGRESS_MIN_FRACTION)
     }
 
     /// Estimate the highest tier where the current deck can win contracts comfortably.
@@ -1459,6 +1498,24 @@ impl Strategy for SmartStrategy {
                     return action;
                 }
             }
+        }
+
+        // 0.5. Detect slow progress on active contract; abandon early.
+        let too_slow = state.active_contract.as_ref().is_some_and(|c| {
+            Self::is_progress_too_slow(
+                c,
+                &state.cards,
+                &token_balances,
+                state.contract_turns_played,
+            )
+        });
+        if too_slow
+            && possible_actions
+                .iter()
+                .any(|a| matches!(a, PossibleAction::AbandonContract))
+        {
+            self.consecutive_discards.set(0);
+            return PlayerAction::AbandonContract;
         }
 
         // 1. Deckbuild when available and beneficial.

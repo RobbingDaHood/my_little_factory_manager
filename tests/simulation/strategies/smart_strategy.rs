@@ -800,6 +800,7 @@ impl SmartStrategy {
         cards: &[CardEntry],
         token_balances: &HashMap<TokenType, i64>,
         needed_tokens: &[TokenType],
+        target_deficit: &HashMap<TokenType, u32>,
     ) -> f64 {
         const TIER_WEIGHT: f64 = 5_000.0;
         const ZERO_PRODUCER_PENALTY: f64 = 30_000.0;
@@ -813,6 +814,9 @@ impl SmartStrategy {
         // Penalty per tier the contract is above (comfort_tier + 1).
         // Stacks linearly so a 4-tier overreach is essentially game-ending in scoring terms.
         const OVERREACH_PENALTY_PER_TIER: f64 = 8_000.0;
+        // Per-token bonus for a contract that produces a token currently needed
+        // by the higher-tier "target" contract on the menu.
+        const STOCKPILE_BONUS_PER_TOKEN: f64 = 6_000.0;
 
         let tier = contract.tier.0 as f64;
         if contract.requirements.is_empty() {
@@ -976,9 +980,51 @@ impl SmartStrategy {
         // feasible one pays the full amount.
         let overreach_penalty = overreach * OVERREACH_PENALTY_PER_TIER * (1.0 - 0.5 * feasibility);
 
+        // Stockpile bonus: this contract is being scored as a candidate to accept.
+        // If its requirements include any token in the target's deficit map, reward it for
+        // being a useful stepping stone. The bonus is gated on:
+        //   - this contract has a min requirement for the deficit token
+        //   - this contract has NO max constraint that the producer card we'd use would breach
+        let stockpile_bonus: f64 = if !target_deficit.is_empty() {
+            let mut bonus = 0.0;
+            for req in &contract.requirements {
+                if let ContractRequirementKind::TokenRequirement {
+                    token_type,
+                    min: Some(_),
+                    ..
+                } = req
+                {
+                    if let Some(&needed) = target_deficit.get(token_type) {
+                        // Risk guard: skip if this same contract has a tight max
+                        // on a token our deck produces a lot of (heuristic: any harmful max).
+                        let has_tight_harmful_max = contract.requirements.iter().any(|r| {
+                            matches!(
+                                r,
+                                ContractRequirementKind::TokenRequirement {
+                                    max: Some(m),
+                                    token_type: tt,
+                                    ..
+                                } if tt.is_harmful() && (*m as i64) < 20
+                            )
+                        });
+                        if !has_tight_harmful_max {
+                            // Cap the bonus at the deficit (no benefit from stockpiling more
+                            // than the target needs).
+                            let amount_useful = (needed as f64).min(20.0);
+                            bonus += STOCKPILE_BONUS_PER_TOKEN * (amount_useful / 20.0);
+                        }
+                    }
+                }
+            }
+            bonus
+        } else {
+            0.0
+        };
+
         tier * TIER_WEIGHT - infeasibility_cost + advancement_bonus + reward_value
             - adaptive_penalty
             - overreach_penalty
+            + stockpile_bonus
     }
 
     // Card play/discard scoring
@@ -1409,6 +1455,28 @@ impl SmartStrategy {
             })
     }
 
+    fn target_token_deficit(
+        target: &Contract,
+        token_balances: &HashMap<TokenType, i64>,
+    ) -> HashMap<TokenType, u32> {
+        let mut deficit = HashMap::new();
+        for req in &target.requirements {
+            if let ContractRequirementKind::TokenRequirement {
+                token_type,
+                min: Some(m),
+                ..
+            } = req
+            {
+                let cur = *token_balances.get(token_type).unwrap_or(&0);
+                let still_needed = (*m as i64 - cur).max(0) as u32;
+                if still_needed > 0 {
+                    deficit.insert(token_type.clone(), still_needed);
+                }
+            }
+        }
+        deficit
+    }
+
     fn choose_accept_contract(
         valid_tiers: &[my_little_factory_manager::game_state::TierContractRange],
         state: &GameStateView,
@@ -1416,6 +1484,13 @@ impl SmartStrategy {
     ) -> Option<PlayerAction> {
         let offered = &state.offered_contracts;
         let needed_tokens = Self::tokens_needed_for_advancement(&state.cards, offered);
+
+        // Compute the target contract and its token deficit once per call.
+        let target = Self::target_progression_contract(offered, &state.cards, token_balances);
+        let target_deficit = match target {
+            Some(t) => Self::target_token_deficit(t, token_balances),
+            None => HashMap::new(),
+        };
 
         for feasible_only in [true, false] {
             let mut best: Option<(usize, usize, f64)> = None;
@@ -1441,6 +1516,7 @@ impl SmartStrategy {
                                 &state.cards,
                                 token_balances,
                                 &needed_tokens,
+                                &target_deficit,
                             );
                             if best.is_none_or(|(_, _, prev)| s > prev) {
                                 best = Some((tier_idx, c_idx, s));

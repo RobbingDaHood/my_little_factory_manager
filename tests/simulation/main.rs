@@ -16,8 +16,9 @@ mod strategies;
 use runner::{SimulationConfig, SimulationRunner};
 use strategies::smart_strategy::SmartStrategy;
 
-/// Fast diagnostic run: 100k actions with finer-grained milestones.
-/// Use this for tuning iterations without waiting for the full 500k-action budget.
+/// Fast diagnostic run with finer-grained milestones — used for tuning iterations.
+/// Action budget is intentionally small so iteration is quick; raise it locally
+/// if you need to confirm a tuning change reaches a higher tier in absolute terms.
 #[ignore = "diagnostic-only fast simulation; run with --include-ignored or by name"]
 #[test]
 fn smart_strategy_diagnostic() {

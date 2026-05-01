@@ -16,7 +16,7 @@ mod strategies;
 use runner::{SimulationConfig, SimulationRunner};
 use strategies::smart_strategy::SmartStrategy;
 
-/// Fast diagnostic run: 200k actions, prints the report whether tier 50 is reached or not.
+/// Fast diagnostic run: 100k actions with finer-grained milestones.
 /// Use this for tuning iterations without waiting for the full 500k-action budget.
 #[ignore = "diagnostic-only fast simulation; run with --include-ignored or by name"]
 #[test]
@@ -25,7 +25,7 @@ fn smart_strategy_diagnostic() {
     let config = SimulationConfig {
         games_per_strategy: 1,
         base_seed: 42,
-        max_actions_per_game: 200_000,
+        max_actions_per_game: 100_000,
         milestone_tiers: vec![10, 15, 20, 25, 30, 35, 40, 45, 50],
     };
 

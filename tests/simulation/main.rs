@@ -187,9 +187,15 @@ fn smart_strategy_test_parallel_seeds() {
 
             let handle = thread::spawn(move || {
                 let seed_idx = batch_start + offset;
-                let seed = base_seed + u64::try_from(seed_idx).unwrap();
-                eprintln!("[{}] seed {} ({}/{})", strategy.name(), seed, seed_idx + 1, num_seeds);
-                let result = driver.play_game(seed, &strategy);
+                // Generate a unique seed for each run by hashing (base_seed + index)
+                // This ensures each run gets a completely unique seed
+                let mut hasher = DefaultHasher::new();
+                base_seed.hash(&mut hasher);
+                u64::try_from(seed_idx).unwrap().hash(&mut hasher);
+                let unique_seed = hasher.finish();
+
+                eprintln!("[{}] run {} ({}/{}): seed={}", strategy.name(), seed_idx + 1, seed_idx + 1, num_seeds, unique_seed);
+                let result = driver.play_game(unique_seed, &strategy);
                 eprintln!(
                     "  max_tier={:?} completed={} actions={}",
                     result.max_tier_reached, result.contracts_completed, result.total_actions,

@@ -16,6 +16,46 @@ mod strategies;
 use runner::{SimulationConfig, SimulationRunner};
 use strategies::smart_strategy::SmartStrategy;
 
+/// Fast diagnostic run with finer-grained milestones — used for tuning iterations.
+/// Action budget is intentionally small so iteration is quick; raise it locally
+/// if you need to confirm a tuning change reaches a higher tier in absolute terms.
+#[ignore = "diagnostic-only fast simulation; run with --include-ignored or by name"]
+#[test]
+fn smart_strategy_diagnostic() {
+    let strategy = SmartStrategy::new();
+    let config = SimulationConfig {
+        games_per_strategy: 1,
+        base_seed: 42,
+        max_actions_per_game: 100_000,
+        milestone_tiers: vec![10, 15, 20, 25, 30, 35, 40, 45, 50],
+    };
+
+    let runner = SimulationRunner::new(config);
+    let report = runner.run_strategy(&strategy);
+
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&report).expect("report serialisable")
+    );
+    eprintln!("=== Milestones ===");
+    for milestone in &report.milestones {
+        eprintln!(
+            "Tier {:2}: reach {:.0}% (mean actions: {:?})",
+            milestone.tier,
+            milestone.reach_rate * 100.0,
+            milestone.mean_actions,
+        );
+    }
+    eprintln!(
+        "Max tier: {:?}, completed: {}, failed: {}, abandoned: {}",
+        report.overall_max_tier,
+        report.total_contracts_completed,
+        report.total_contracts_failed,
+        report.total_contracts_abandoned,
+    );
+    eprintln!("Top failures: {:?}", report.top_failure_reasons);
+}
+
 /// Runs SmartStrategy across multiple seeds and asserts that tier 50 is reached.
 ///
 /// SmartStrategy uses full game state to make informed decisions:

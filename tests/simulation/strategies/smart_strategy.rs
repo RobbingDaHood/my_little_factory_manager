@@ -17,7 +17,7 @@ const DISCARD_STUCK_THRESHOLD: u32 = 50;
 const NO_RESOLUTION_STUCK_THRESHOLD: u32 = 1_500;
 const TOP_N: usize = 30;
 const BOTTOM_N: usize = 30;
-const PASS1_CANDIDATES: usize = 200;
+const PASS1_CANDIDATES: usize = 180;
 const SAFETY_MARGIN: f64 = 0.7;
 
 /// Mid-contract abandonment threshold in turns.

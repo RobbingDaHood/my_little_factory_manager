@@ -15,8 +15,9 @@ use crate::strategies::Strategy;
 
 const DISCARD_STUCK_THRESHOLD: u32 = 50;
 const NO_RESOLUTION_STUCK_THRESHOLD: u32 = 1_500;
-const TOP_N: usize = 20;
-const PASS1_CANDIDATES: usize = 150;
+const TOP_N: usize = 30;
+const BOTTOM_N: usize = 30;
+const PASS1_CANDIDATES: usize = 200;
 const SAFETY_MARGIN: f64 = 0.7;
 
 /// Mid-contract abandonment threshold in turns.
@@ -57,6 +58,8 @@ pub struct SmartStrategy {
     consecutive_discards: Cell<u32>,
     // top-30 per tag sorted desc by quality; updated incrementally on new shelf arrivals
     best_per_tag: RefCell<HashMap<CardTag, Vec<(u64, f64)>>>,
+    // bottom-30 per tag sorted asc by quality; filled lazily when a tag's list runs dry
+    worst_per_tag: RefCell<HashMap<CardTag, Vec<(u64, f64)>>>,
     // content hashes of known shelved cards; used to detect new arrivals each deckbuild call
     known_shelved: RefCell<HashSet<u64>>,
     // tracks actions taken since the last contract resolution; used to detect livelock
@@ -70,6 +73,7 @@ impl SmartStrategy {
         Self {
             consecutive_discards: Cell::new(0),
             best_per_tag: RefCell::new(HashMap::new()),
+            worst_per_tag: RefCell::new(HashMap::new()),
             known_shelved: RefCell::new(HashSet::new()),
             actions_since_last_resolution: Cell::new(0),
             last_active_contract_signature: RefCell::new(None),
@@ -304,6 +308,72 @@ impl SmartStrategy {
         current
     }
 
+    fn refill_worst_for_tag(
+        &self,
+        tag: &CardTag,
+        cards: &[CardEntry],
+        replacement_indices_raw: &[usize],
+    ) {
+        let mut candidates: Vec<(u64, f64)> = replacement_indices_raw
+            .iter()
+            .copied()
+            .filter(|&i| cards[i].card.tags.contains(tag))
+            .map(|i| {
+                (
+                    Self::card_hash(&cards[i].card),
+                    Self::card_general_quality(&cards[i].card),
+                )
+            })
+            .collect();
+        candidates.sort_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        candidates.truncate(BOTTOM_N);
+        self.worst_per_tag
+            .borrow_mut()
+            .insert(tag.clone(), candidates);
+    }
+
+    fn worst_sacrifice_for_tag(
+        &self,
+        tag: &CardTag,
+        cards: &[CardEntry],
+        replacement_indices_raw: &[usize],
+        hash_to_index: &HashMap<u64, usize>,
+        exclude: usize,
+        sacrifice_indices: &[usize],
+    ) -> Option<usize> {
+        let mut refilled = false;
+        loop {
+            let need_refill = {
+                let mut worst = self.worst_per_tag.borrow_mut();
+                let entries = worst.entry(tag.clone()).or_default();
+                while entries
+                    .first()
+                    .map(|(h, _)| !hash_to_index.contains_key(h))
+                    .unwrap_or(false)
+                {
+                    entries.remove(0);
+                }
+                if entries.is_empty() {
+                    true
+                } else {
+                    let found = entries.iter().find_map(|(hash, _)| {
+                        hash_to_index
+                            .get(hash)
+                            .copied()
+                            .filter(|&i| i != exclude && sacrifice_indices.contains(&i))
+                    });
+                    return found;
+                }
+            };
+            if need_refill {
+                if refilled {
+                    return None;
+                }
+                self.refill_worst_for_tag(tag, cards, replacement_indices_raw);
+                refilled = true;
+            }
+        }
+    }
 
     // Risk helpers
 
@@ -330,12 +400,54 @@ impl SmartStrategy {
         cards: &[CardEntry],
         sacrifice_indices: &[usize],
         exclude: usize,
-        _hash_to_index: &HashMap<u64, usize>,
-        _replacement_indices_raw: &[usize],
+        hash_to_index: &HashMap<u64, usize>,
+        replacement_indices_raw: &[usize],
     ) -> Option<usize> {
         let at_risk = Self::tokens_at_risk_for_sacrifice(cards);
+        let known_tags: Vec<CardTag> = self.best_per_tag.borrow().keys().cloned().collect();
 
-        // Simple approach: prefer cards that don't produce at-risk tokens
+        // Phase 1: per-tag worst index — avoids scanning all sacrifice_indices
+        let via_tags = known_tags
+            .iter()
+            .filter_map(|tag| {
+                self.worst_sacrifice_for_tag(
+                    tag,
+                    cards,
+                    replacement_indices_raw,
+                    hash_to_index,
+                    exclude,
+                    sacrifice_indices,
+                )
+            })
+            .filter(|&i| {
+                at_risk
+                    .iter()
+                    .all(|t| Self::card_net_production(&cards[i].card, t) <= 0.0)
+            })
+            .min_by(|&a, &b| Self::by_quality(cards, a, b));
+        if via_tags.is_some() {
+            return via_tags;
+        }
+
+        // Phase 2: relax at_risk filter via tag index
+        let via_tags_any = known_tags
+            .iter()
+            .filter_map(|tag| {
+                self.worst_sacrifice_for_tag(
+                    tag,
+                    cards,
+                    replacement_indices_raw,
+                    hash_to_index,
+                    exclude,
+                    sacrifice_indices,
+                )
+            })
+            .min_by(|&a, &b| Self::by_quality(cards, a, b));
+        if via_tags_any.is_some() {
+            return via_tags_any;
+        }
+
+        // Phase 3: full fallback scan (tagless cards or empty index)
         sacrifice_indices
             .iter()
             .copied()

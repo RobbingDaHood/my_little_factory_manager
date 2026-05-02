@@ -130,6 +130,9 @@ fn smart_strategy_test_parallel_seeds() {
     use std::thread;
     use crate::game_driver::GameDriver;
 
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
     // Configuration from environment or defaults
     let num_cpus = std::thread::available_parallelism()
         .map(|n| n.get())
@@ -138,16 +141,29 @@ fn smart_strategy_test_parallel_seeds() {
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(3 * num_cpus);
-    let base_seed = std::env::var("SMART_STRATEGY_BASE_SEED")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(1000u64);
+
+    // Get base seed from UUID or numeric seed
+    let base_seed = if let Ok(uuid_str) = std::env::var("SMART_STRATEGY_UUID") {
+        // Hash the UUID to get a stable u64 seed
+        let mut hasher = DefaultHasher::new();
+        uuid_str.hash(&mut hasher);
+        hasher.finish()
+    } else {
+        std::env::var("SMART_STRATEGY_BASE_SEED")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(1000u64)
+    };
+
     let output_path = std::env::var("SMART_STRATEGY_OUTPUT")
         .unwrap_or_else(|_| "/tmp/smart_strategy_seeds_results.jsonl".to_string());
 
     eprintln!("SmartStrategy parallel test:");
     eprintln!("  CPUs: {}", num_cpus);
     eprintln!("  Seeds to run: {}", num_seeds);
+    if std::env::var("SMART_STRATEGY_UUID").is_ok() {
+        eprintln!("  UUID: {}", std::env::var("SMART_STRATEGY_UUID").unwrap());
+    }
     eprintln!("  Base seed: {}", base_seed);
     eprintln!("  Output: {}", output_path);
     eprintln!();

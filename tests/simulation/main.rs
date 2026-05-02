@@ -15,6 +15,7 @@ mod strategies;
 
 use runner::{SimulationConfig, SimulationRunner};
 use strategies::smart_strategy::SmartStrategy;
+use strategies::Strategy;
 
 /// Fast diagnostic run with finer-grained milestones — used for tuning iterations.
 /// Action budget is intentionally small so iteration is quick; raise it locally
@@ -108,4 +109,117 @@ fn smart_strategy_reaches_tier_50() {
         report.top_failure_reasons,
         report.milestones,
     );
+}
+
+/// Runs SmartStrategy across N parallel seeds (where N = 3 * num_cpus).
+/// Each agent runs this independently with a different BASE_SEED to test different seed batches.
+///
+/// Environment variables:
+///   - SMART_STRATEGY_BASE_SEED: Starting seed (default 1000)
+///   - SMART_STRATEGY_NUM_SEEDS: Number of seeds to test (default 3*nproc)
+///   - SMART_STRATEGY_OUTPUT: Output JSON file path (default /tmp/smart_strategy_seeds_results.jsonl)
+///   - SMART_STRATEGY_UUID: UUID for unique seed derivation and output file naming
+///
+/// Outputs JSONL with one GameResult per line for easy streaming/processing.
+#[ignore = "expensive parallel seed simulation; run with --include-ignored or by name"]
+#[test]
+fn smart_strategy_test_parallel_seeds() {
+    use std::collections::hash_map::DefaultHasher;
+    use std::fs::File;
+    use std::hash::{Hash, Hasher};
+    use std::io::Write;
+    use std::sync::{Arc, Mutex};
+    use std::thread;
+
+    use crate::game_driver::GameDriver;
+
+    let num_cpus = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4);
+    let num_seeds = std::env::var("SMART_STRATEGY_NUM_SEEDS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(3 * num_cpus);
+
+    let base_seed = if let Ok(uuid_str) = std::env::var("SMART_STRATEGY_UUID") {
+        let mut hasher = DefaultHasher::new();
+        uuid_str.hash(&mut hasher);
+        hasher.finish()
+    } else {
+        std::env::var("SMART_STRATEGY_BASE_SEED")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(1000u64)
+    };
+
+    let output_path = std::env::var("SMART_STRATEGY_OUTPUT")
+        .unwrap_or_else(|_| "/tmp/smart_strategy_seeds_results.jsonl".to_string());
+
+    eprintln!("SmartStrategy parallel test:");
+    eprintln!("  CPUs: {}", num_cpus);
+    eprintln!("  Seeds to run: {}", num_seeds);
+    if let Ok(uuid) = std::env::var("SMART_STRATEGY_UUID") {
+        eprintln!("  UUID: {}", uuid);
+    }
+    eprintln!("  Base seed: {}", base_seed);
+    eprintln!("  Output: {}", output_path);
+    eprintln!();
+
+    let driver = Arc::new(GameDriver::new(500_000, vec![10, 20, 30, 40, 50]));
+    let results = Arc::new(Mutex::new(Vec::new()));
+
+    for batch in 0..(num_seeds + num_cpus - 1) / num_cpus {
+        let batch_start = batch * num_cpus;
+        let batch_end = (batch_start + num_cpus).min(num_seeds);
+        let mut handles = vec![];
+
+        eprintln!("Batch {}: seeds {}-{}", batch + 1, batch_start + 1, batch_end);
+
+        for offset in 0..(batch_end - batch_start) {
+            let driver = Arc::clone(&driver);
+            let results = Arc::clone(&results);
+            let strategy = SmartStrategy::new();
+
+            let handle = thread::spawn(move || {
+                let seed_idx = batch_start + offset;
+                let mut hasher = DefaultHasher::new();
+                base_seed.hash(&mut hasher);
+                u64::try_from(seed_idx).unwrap().hash(&mut hasher);
+                let unique_seed = hasher.finish();
+
+                eprintln!(
+                    "[{}] run {} ({}/{}): seed={}",
+                    strategy.name(),
+                    seed_idx + 1,
+                    seed_idx + 1,
+                    num_seeds,
+                    unique_seed
+                );
+                let result = driver.play_game(unique_seed, &strategy);
+                eprintln!(
+                    "  max_tier={:?} completed={} actions={}",
+                    result.max_tier_reached, result.contracts_completed, result.total_actions,
+                );
+                results.lock().unwrap().push(result);
+            });
+
+            handles.push(handle);
+        }
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+    }
+
+    let individual_results = Arc::try_unwrap(results).unwrap().into_inner().unwrap();
+
+    let mut file = File::create(&output_path).expect("create output file");
+    for result in &individual_results {
+        let json_str = serde_json::to_string(result).expect("serialize result");
+        writeln!(file, "{}", json_str).expect("write result");
+    }
+
+    eprintln!();
+    eprintln!("✓ Results written to: {}", output_path);
+    eprintln!("  Total seeds: {}", individual_results.len());
 }

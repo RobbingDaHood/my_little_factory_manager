@@ -9,12 +9,17 @@
 #![cfg(feature = "simulation")]
 #![allow(dead_code)]
 
+mod batch_runner;
+mod batch_runner_fast;
 mod game_driver;
 mod runner;
 mod strategies;
 
+use batch_runner::run_batch;
+use batch_runner_fast::run_batch_fast;
 use runner::{SimulationConfig, SimulationRunner};
 use strategies::smart_strategy::SmartStrategy;
+use std::env;
 
 /// Fast diagnostic run with finer-grained milestones — used for tuning iterations.
 /// Action budget is intentionally small so iteration is quick; raise it locally
@@ -108,4 +113,72 @@ fn smart_strategy_reaches_tier_50() {
         report.top_failure_reasons,
         report.milestones,
     );
+}
+
+/// Distributed batch test: runs multiple games with seeds and saves JSON results.
+///
+/// Controlled by environment variables:
+/// - BATCH_SEEDS: comma-separated seed values (defaults to 12 random-ish seeds)
+/// - BATCH_OUTPUT_DIR: directory to save JSON results (defaults to ./batch_results)
+/// - BATCH_MAX_ACTIONS: max actions per game (defaults to 500000)
+#[ignore = "batch runner for distributed testing; run with --include-ignored or by name"]
+#[test]
+fn smart_strategy_batch_runner() {
+    let seeds_env = env::var("BATCH_SEEDS").unwrap_or_else(|_| {
+        // Default 12 seeds
+        "12345678,23456789,34567890,45678901,56789012,67890123,78901234,89012345,90123456,1234567,2345678,3456789".to_string()
+    });
+
+    let seeds: Vec<u64> = seeds_env
+        .split(',')
+        .filter_map(|s| s.trim().parse::<u64>().ok())
+        .collect();
+
+    let output_dir = env::var("BATCH_OUTPUT_DIR").unwrap_or_else(|_| "./batch_results".to_string());
+    let max_actions: u64 = env::var("BATCH_MAX_ACTIONS")
+        .unwrap_or_else(|_| "500000".to_string())
+        .parse()
+        .unwrap_or(500000);
+
+    eprintln!("=== Batch Runner ===");
+    eprintln!("Seeds: {:?}", seeds);
+    eprintln!("Output directory: {}", output_dir);
+    eprintln!("Max actions per game: {}", max_actions);
+
+    match run_batch(&seeds, &output_dir, max_actions) {
+        Ok(_) => eprintln!("Batch completed successfully"),
+        Err(e) => panic!("Batch runner failed: {}", e),
+    }
+}
+
+/// Fast distributed batch test: runs multiple games with reduced action limits.
+/// Useful for quick demonstrations and testing the distributed framework.
+///
+/// Controlled by environment variables:
+/// - BATCH_SEEDS_FAST: comma-separated seed values (defaults to 3 seeds for quick demo)
+/// - BATCH_OUTPUT_DIR_FAST: directory to save JSON results (defaults to ./batch_results_fast)
+#[ignore = "fast batch runner for quick demonstrations; run with --include-ignored or by name"]
+#[test]
+fn smart_strategy_batch_runner_fast() {
+    let seeds_env = env::var("BATCH_SEEDS_FAST").unwrap_or_else(|_| {
+        // Default 3 seeds for quick demo
+        "12345678,23456789,34567890".to_string()
+    });
+
+    let seeds: Vec<u64> = seeds_env
+        .split(',')
+        .filter_map(|s| s.trim().parse::<u64>().ok())
+        .collect();
+
+    let output_dir = env::var("BATCH_OUTPUT_DIR_FAST").unwrap_or_else(|_| "./batch_results_fast".to_string());
+
+    eprintln!("=== Fast Batch Runner ===");
+    eprintln!("Seeds: {:?}", seeds);
+    eprintln!("Output directory: {}", output_dir);
+    eprintln!("Note: Using reduced action limits for faster testing");
+
+    match run_batch_fast(&seeds, &output_dir) {
+        Ok(_) => eprintln!("Fast batch completed successfully"),
+        Err(e) => panic!("Fast batch runner failed: {}", e),
+    }
 }

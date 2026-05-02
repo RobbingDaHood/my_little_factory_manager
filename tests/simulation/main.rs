@@ -109,3 +109,86 @@ fn smart_strategy_reaches_tier_50() {
         report.milestones,
     );
 }
+
+/// Runs SmartStrategy across 100 different seeds and reports detailed results.
+///
+/// Outputs a JSON file at /tmp/smart_strategy_100_seeds_results.json with:
+///   - Individual GameResult for each seed
+///   - Aggregated StrategyReport with statistics
+///
+/// This is used to generate GitHub issues with sub-issues for each seed run.
+#[ignore = "expensive 100-seed simulation; run with --include-ignored or by name"]
+#[test]
+fn smart_strategy_test_100_seeds() {
+    use std::fs;
+    use crate::game_driver::GameDriver;
+
+    let strategy = SmartStrategy::new();
+    let config = SimulationConfig {
+        games_per_strategy: 100,
+        base_seed: 1000,
+        max_actions_per_game: 500_000,
+        milestone_tiers: vec![10, 20, 30, 40, 50],
+    };
+
+    // Collect individual game results
+    let driver = GameDriver::new(
+        config.max_actions_per_game,
+        config.milestone_tiers.clone(),
+    );
+
+    let mut individual_results = Vec::new();
+    for i in 0..config.games_per_strategy {
+        let seed = config.base_seed + u64::from(i);
+        eprintln!("[{}] seed {} ({}/{})", strategy.name(), seed, i + 1, config.games_per_strategy);
+        let result = driver.play_game(seed, strategy);
+        eprintln!(
+            "  max_tier={:?} completed={} failed={} abandoned={} actions={}{}",
+            result.max_tier_reached,
+            result.contracts_completed,
+            result.contracts_failed,
+            result.contracts_abandoned,
+            result.total_actions,
+            if result.hit_action_limit { " [LIMIT]" } else { "" },
+        );
+        individual_results.push(result);
+    }
+
+    // Compute summary statistics
+    let max_tier = individual_results.iter().filter_map(|r| r.max_tier_reached).max();
+    let total_completed: u32 = individual_results.iter().map(|r| r.contracts_completed).sum();
+    let total_failed: u32 = individual_results.iter().map(|r| r.contracts_failed).sum();
+    let total_abandoned: u32 = individual_results.iter().map(|r| r.contracts_abandoned).sum();
+    let stuck_count = individual_results.iter().filter(|r| r.stuck).count() as u32;
+    let limit_count = individual_results.iter().filter(|r| r.hit_action_limit).count() as u32;
+
+    let output = serde_json::json!({
+        "summary": {
+            "strategy": strategy.name(),
+            "num_seeds": config.games_per_strategy,
+            "base_seed": config.base_seed,
+            "max_tier_reached": max_tier,
+            "total_completed": total_completed,
+            "total_failed": total_failed,
+            "total_abandoned": total_abandoned,
+            "stuck_games": stuck_count,
+            "limit_games": limit_count,
+        },
+        "individual_results": individual_results,
+        "timestamp": chrono::Local::now().to_rfc3339(),
+    });
+
+    let json_str = serde_json::to_string_pretty(&output).expect("serialisable");
+    println!("{}", json_str);
+
+    let output_path = "/tmp/smart_strategy_100_seeds_results.json";
+    fs::write(output_path, json_str).expect("write results to file");
+    eprintln!("Results written to: {}", output_path);
+    eprintln!("Summary:");
+    eprintln!("  Max tier: {:?}", max_tier);
+    eprintln!("  Completed: {}", total_completed);
+    eprintln!("  Failed: {}", total_failed);
+    eprintln!("  Abandoned: {}", total_abandoned);
+    eprintln!("  Stuck games: {}", stuck_count);
+    eprintln!("  Hit action limit: {}", limit_count);
+}

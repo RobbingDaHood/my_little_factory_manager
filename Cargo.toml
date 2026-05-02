@@ -25,6 +25,10 @@ serde = { version = "1.0", features = ["derive"] }
 [features]
 simulation = []
 
+[profile.test]
+opt-level = 3
+lto = true
+
 [[test]]
 name = "simulation"
 path = "tests/simulation/main.rs"

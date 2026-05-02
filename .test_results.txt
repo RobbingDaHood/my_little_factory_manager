@@ -1,0 +1,35 @@
+SmartStrategy Optimized Test Results
+====================================
+
+╔═══════════════════════════════════════════════════════════════════════╗
+║         SmartStrategy Optimized Parallel Seed Testing                 ║
+║                                                                       ║
+║  • Release build (opt-level=3) for 30-50x speedup vs debug          ║
+║  • 100K action limit per seed (measured progress not exhaustion)     ║
+║  • True parallel execution (seeds run simultaneously)                 ║
+║  • Configurable number of parallel runs                              ║
+╚═══════════════════════════════════════════════════════════════════════╝
+
+Configuration:
+  Parallel seeds:         4
+  Max actions per seed:   100000
+  Build mode:             --release (optimized)
+  Test started at:        Sat May  2 14:33:48 UTC 2026
+
+Expected execution time:
+  • ~2-5 minutes per seed (vs ~3 hours in debug mode)
+  • ~2-5 minutes total (all 4 seeds in parallel)
+
+Starting 4 parallel seed runs...
+
+[Seed 1/4] Starting test with seed=42
+[Seed 2/4] Starting test with seed=43
+[Seed 3/4] Starting test with seed=44
+[Seed 4/4] Starting test with seed=45
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+All seeds launched. Waiting for completion...
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Individual Seed Results:
+

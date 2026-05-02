@@ -175,7 +175,6 @@ fn smart_strategy_test_100_seeds() {
             "limit_games": limit_count,
         },
         "individual_results": individual_results,
-        "timestamp": chrono::Local::now().to_rfc3339(),
     });
 
     let json_str = serde_json::to_string_pretty(&output).expect("serialisable");

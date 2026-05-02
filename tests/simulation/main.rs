@@ -111,84 +111,98 @@ fn smart_strategy_reaches_tier_50() {
     );
 }
 
-/// Runs SmartStrategy across 100 different seeds and reports detailed results.
+/// Runs SmartStrategy across N parallel seeds (where N = 3 * num_cpus).
+/// Each agent runs this independently with a different BASE_SEED to test different seed batches.
 ///
-/// Outputs a JSON file at /tmp/smart_strategy_100_seeds_results.json with:
-///   - Individual GameResult for each seed
-///   - Aggregated StrategyReport with statistics
+/// Environment variables:
+///   - SMART_STRATEGY_BASE_SEED: Starting seed (default 1000)
+///   - SMART_STRATEGY_NUM_SEEDS: Number of seeds to test (default 3*nproc)
+///   - SMART_STRATEGY_OUTPUT: Output JSON file path (default /tmp/smart_strategy_seeds_results.json)
+///   - GITHUB_ISSUE_ID: GitHub main issue ID to link sub-issues to
 ///
-/// This is used to generate GitHub issues with sub-issues for each seed run.
-#[ignore = "expensive 100-seed simulation; run with --include-ignored or by name"]
+/// Outputs JSON with individual GameResult for each seed, one per line (JSONL format for easy processing).
+#[ignore = "expensive parallel seed simulation; run with --include-ignored or by name"]
 #[test]
-fn smart_strategy_test_100_seeds() {
-    use std::fs;
+fn smart_strategy_test_parallel_seeds() {
+    use std::fs::File;
+    use std::io::Write;
+    use std::sync::{Arc, Mutex};
+    use std::thread;
     use crate::game_driver::GameDriver;
 
+    // Configuration from environment or defaults
+    let num_cpus = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4);
+    let num_seeds = std::env::var("SMART_STRATEGY_NUM_SEEDS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(3 * num_cpus);
+    let base_seed = std::env::var("SMART_STRATEGY_BASE_SEED")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(1000u64);
+    let output_path = std::env::var("SMART_STRATEGY_OUTPUT")
+        .unwrap_or_else(|_| "/tmp/smart_strategy_seeds_results.jsonl".to_string());
+
+    eprintln!("SmartStrategy parallel test:");
+    eprintln!("  CPUs: {}", num_cpus);
+    eprintln!("  Seeds to run: {}", num_seeds);
+    eprintln!("  Base seed: {}", base_seed);
+    eprintln!("  Output: {}", output_path);
+    eprintln!();
+
     let strategy = SmartStrategy::new();
-    let config = SimulationConfig {
-        games_per_strategy: 100,
-        base_seed: 1000,
-        max_actions_per_game: 500_000,
-        milestone_tiers: vec![10, 20, 30, 40, 50],
-    };
+    let driver = Arc::new(GameDriver::new(500_000, vec![10, 20, 30, 40, 50]));
+    let results = Arc::new(Mutex::new(Vec::new()));
 
-    // Collect individual game results
-    let driver = GameDriver::new(
-        config.max_actions_per_game,
-        config.milestone_tiers.clone(),
-    );
+    // Process seeds in batches of num_cpus (4), running each batch in parallel
+    for batch in 0..(num_seeds + num_cpus - 1) / num_cpus {
+        let batch_start = batch * num_cpus;
+        let batch_end = (batch_start + num_cpus).min(num_seeds);
+        let mut handles = vec![];
 
-    let mut individual_results = Vec::new();
-    for i in 0..config.games_per_strategy {
-        let seed = config.base_seed + u64::from(i);
-        eprintln!("[{}] seed {} ({}/{})", strategy.name(), seed, i + 1, config.games_per_strategy);
-        let result = driver.play_game(seed, &strategy);
-        eprintln!(
-            "  max_tier={:?} completed={} failed={} abandoned={} actions={}{}",
-            result.max_tier_reached,
-            result.contracts_completed,
-            result.contracts_failed,
-            result.contracts_abandoned,
-            result.total_actions,
-            if result.hit_action_limit { " [LIMIT]" } else { "" },
-        );
-        individual_results.push(result);
+        eprintln!("Batch {}: seeds {}-{}", batch + 1, batch_start + 1, batch_end);
+
+        for offset in 0..(batch_end - batch_start) {
+            let driver = Arc::clone(&driver);
+            let results = Arc::clone(&results);
+            let strategy = SmartStrategy::new();
+
+            let handle = thread::spawn(move || {
+                let seed_idx = batch_start + offset;
+                let seed = base_seed + u64::try_from(seed_idx).unwrap();
+                eprintln!("[{}] seed {} ({}/{})", strategy.name(), seed, seed_idx + 1, num_seeds);
+                let result = driver.play_game(seed, &strategy);
+                eprintln!(
+                    "  max_tier={:?} completed={} actions={}",
+                    result.max_tier_reached, result.contracts_completed, result.total_actions,
+                );
+                results.lock().unwrap().push(result);
+            });
+
+            handles.push(handle);
+        }
+
+        // Wait for this batch to complete before starting the next one
+        for handle in handles {
+            handle.join().unwrap();
+        }
     }
 
-    // Compute summary statistics
-    let max_tier = individual_results.iter().filter_map(|r| r.max_tier_reached).max();
-    let total_completed: u32 = individual_results.iter().map(|r| r.contracts_completed).sum();
-    let total_failed: u32 = individual_results.iter().map(|r| r.contracts_failed).sum();
-    let total_abandoned: u32 = individual_results.iter().map(|r| r.contracts_abandoned).sum();
-    let stuck_count = individual_results.iter().filter(|r| r.stuck).count() as u32;
-    let limit_count = individual_results.iter().filter(|r| r.hit_action_limit).count() as u32;
+    let individual_results = Arc::try_unwrap(results)
+        .unwrap()
+        .into_inner()
+        .unwrap();
 
-    let output = serde_json::json!({
-        "summary": {
-            "strategy": strategy.name(),
-            "num_seeds": config.games_per_strategy,
-            "base_seed": config.base_seed,
-            "max_tier_reached": max_tier,
-            "total_completed": total_completed,
-            "total_failed": total_failed,
-            "total_abandoned": total_abandoned,
-            "stuck_games": stuck_count,
-            "limit_games": limit_count,
-        },
-        "individual_results": individual_results,
-    });
+    // Write results as JSONL (one JSON object per line for easy streaming)
+    let mut file = File::create(&output_path).expect("create output file");
+    for result in &individual_results {
+        let json_str = serde_json::to_string(result).expect("serialize result");
+        writeln!(file, "{}", json_str).expect("write result");
+    }
 
-    let json_str = serde_json::to_string_pretty(&output).expect("serialisable");
-    println!("{}", json_str);
-
-    let output_path = "/tmp/smart_strategy_100_seeds_results.json";
-    fs::write(output_path, json_str).expect("write results to file");
-    eprintln!("Results written to: {}", output_path);
-    eprintln!("Summary:");
-    eprintln!("  Max tier: {:?}", max_tier);
-    eprintln!("  Completed: {}", total_completed);
-    eprintln!("  Failed: {}", total_failed);
-    eprintln!("  Abandoned: {}", total_abandoned);
-    eprintln!("  Stuck games: {}", stuck_count);
-    eprintln!("  Hit action limit: {}", limit_count);
+    eprintln!();
+    eprintln!("✓ Results written to: {}", output_path);
+    eprintln!("  Total seeds: {}", individual_results.len());
 }

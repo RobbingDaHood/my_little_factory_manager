@@ -14,3 +14,9 @@ target/
 # OS
 .DS_Store
 Thumbs.db
+
+# Test artifacts and batch results
+batch_results_*/
+batch_results_fast_*/
+agent_run.log
+create_issues.sh

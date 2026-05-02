@@ -15,6 +15,7 @@ mod strategies;
 
 use runner::{SimulationConfig, SimulationRunner};
 use strategies::smart_strategy::SmartStrategy;
+use strategies::Strategy;
 
 /// Fast diagnostic run with finer-grained milestones — used for tuning iterations.
 /// Action budget is intentionally small so iteration is quick; raise it locally
@@ -141,7 +142,7 @@ fn smart_strategy_test_100_seeds() {
     for i in 0..config.games_per_strategy {
         let seed = config.base_seed + u64::from(i);
         eprintln!("[{}] seed {} ({}/{})", strategy.name(), seed, i + 1, config.games_per_strategy);
-        let result = driver.play_game(seed, strategy);
+        let result = driver.play_game(seed, &strategy);
         eprintln!(
             "  max_tier={:?} completed={} failed={} abandoned={} actions={}{}",
             result.max_tier_reached,

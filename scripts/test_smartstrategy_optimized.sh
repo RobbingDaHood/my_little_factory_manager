@@ -10,15 +10,16 @@
 # • True parallel execution of multiple seeds
 #
 # Usage:
-#   ./scripts/test_smartstrategy_optimized.sh              # Default: 2 seeds
-#   ./scripts/test_smartstrategy_optimized.sh 4            # Run 4 seeds
-#   NUM_SEEDS=8 ./scripts/test_smartstrategy_optimized.sh  # Use env var
+#   ./scripts/test_smartstrategy_optimized.sh              # Default: 4 seeds in parallel
+#   ./scripts/test_smartstrategy_optimized.sh 2            # Run 2 seeds
+#   ./scripts/test_smartstrategy_optimized.sh 8            # Run 8 seeds
+#   NUM_SEEDS=12 ./scripts/test_smartstrategy_optimized.sh # Use env var
 #
 # Results are automatically posted to GitHub issue #115
 
 set -euo pipefail
 
-NUM_SEEDS="${1:-${NUM_SEEDS:-2}}"
+NUM_SEEDS="${1:-${NUM_SEEDS:-4}}"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GITHUB_ISSUE=115
 GITHUB_REPO="RobbingDaHood/my_little_factory_manager"

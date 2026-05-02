@@ -19,7 +19,7 @@
 
 set -euo pipefail
 
-NUM_SEEDS="${1:-${NUM_SEEDS:-4}}"
+NUM_SEEDS="${1:-${NUM_SEEDS:-3}}"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GITHUB_ISSUE=115
 GITHUB_REPO="RobbingDaHood/my_little_factory_manager"

@@ -1,6 +1,6 @@
 use std::cell::{Cell, RefCell};
 use std::collections::hash_map::DefaultHasher;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::{Hash, Hasher};
 
 use my_little_factory_manager::action_log::PlayerAction;
@@ -19,6 +19,15 @@ const TOP_N: usize = 30;
 const BOTTOM_N: usize = 30;
 const PASS1_CANDIDATES: usize = 200;
 const SAFETY_MARGIN: f64 = 0.7;
+
+/// Rolling window of recent contract outcomes used to bias tier selection.
+/// A loss/abandon pushes the strategy toward lower tiers; wins slowly restore it.
+const OUTCOME_WINDOW_SIZE: usize = 5;
+/// Maximum number of tiers the strategy will step down due to consecutive failures.
+const MAX_TIER_REDUCTION: u32 = 3;
+/// Score penalty applied per tier of overreach above the adaptive (reduced) tier cap.
+/// Slightly stronger than TIER_WEIGHT so one step down is genuinely preferred.
+const ADAPTIVE_OVERREACH_PENALTY: f64 = 6_000.0;
 
 /// Mid-contract abandonment threshold in turns.
 /// Contracts running longer than this without sufficient progress are voluntarily abandoned.
@@ -66,6 +75,10 @@ pub struct SmartStrategy {
     actions_since_last_resolution: Cell<u32>,
     // hash signature of the current active contract; used to detect contract changes
     last_active_contract_signature: RefCell<Option<u64>>,
+    // rolling window of recent outcomes: true = completed, false = failed/abandoned
+    outcome_window: RefCell<VecDeque<bool>>,
+    // true when the last action taken was AbandonContract; used to classify the outcome
+    last_action_was_abandon: Cell<bool>,
 }
 
 impl SmartStrategy {
@@ -77,7 +90,25 @@ impl SmartStrategy {
             known_shelved: RefCell::new(HashSet::new()),
             actions_since_last_resolution: Cell::new(0),
             last_active_contract_signature: RefCell::new(None),
+            outcome_window: RefCell::new(VecDeque::new()),
+            last_action_was_abandon: Cell::new(false),
         }
+    }
+
+    fn record_outcome(&self, won: bool) {
+        let mut window = self.outcome_window.borrow_mut();
+        if window.len() >= OUTCOME_WINDOW_SIZE {
+            window.pop_front();
+        }
+        window.push_back(won);
+    }
+
+    /// Number of tiers to step down based on recent failures.
+    /// Increases with each loss in the window; shrinks as wins replace losses.
+    fn tier_reduction(&self) -> u32 {
+        let window = self.outcome_window.borrow();
+        let losses = window.iter().filter(|&&w| !w).count() as u32;
+        losses.min(MAX_TIER_REDUCTION)
     }
 
     // State helpers
@@ -818,6 +849,7 @@ impl SmartStrategy {
         token_balances: &HashMap<TokenType, i64>,
         needed_tokens: &[TokenType],
         target_deficit: &HashMap<TokenType, u32>,
+        tier_reduction: u32,
     ) -> f64 {
         const TIER_WEIGHT: f64 = 5_000.0;
         const ZERO_PRODUCER_PENALTY: f64 = 30_000.0;
@@ -999,6 +1031,13 @@ impl SmartStrategy {
         // feasible one pays the full amount.
         let overreach_penalty = overreach * OVERREACH_PENALTY_PER_TIER * (1.0 - 0.5 * feasibility);
 
+        // Adaptive tier penalty: after a streak of failures the strategy lowers its sights.
+        // `tier_reduction` shrinks the effective allowed tier, making contracts above it less
+        // attractive. Wins gradually push losses out of the window, recovering the full tier range.
+        let adaptive_tier_cap = (allowed_tier as i64 - tier_reduction as i64).max(0);
+        let adaptive_overreach = (contract.tier.0 as i64 - adaptive_tier_cap).max(0) as f64;
+        let adaptive_tier_penalty = adaptive_overreach * ADAPTIVE_OVERREACH_PENALTY;
+
         // Stockpile bonus: this contract is being scored as a candidate to accept.
         // If its requirements include any token in the target's deficit map, reward it for
         // being a useful stepping stone. The bonus is gated on:
@@ -1043,6 +1082,7 @@ impl SmartStrategy {
         tier * TIER_WEIGHT - infeasibility_cost + advancement_bonus + reward_value
             - adaptive_penalty
             - overreach_penalty
+            - adaptive_tier_penalty
             + stockpile_bonus
     }
 
@@ -1500,6 +1540,7 @@ impl SmartStrategy {
         valid_tiers: &[my_little_factory_manager::game_state::TierContractRange],
         state: &GameStateView,
         token_balances: &HashMap<TokenType, i64>,
+        tier_reduction: u32,
     ) -> Option<PlayerAction> {
         let offered = &state.offered_contracts;
         let needed_tokens = Self::tokens_needed_for_advancement(&state.cards, offered);
@@ -1536,6 +1577,7 @@ impl SmartStrategy {
                                 token_balances,
                                 &needed_tokens,
                                 &target_deficit,
+                                tier_reduction,
                             );
                             if best.is_none_or(|(_, _, prev)| s > prev) {
                                 best = Some((tier_idx, c_idx, s));
@@ -1586,13 +1628,22 @@ impl Strategy for SmartStrategy {
             .set(self.actions_since_last_resolution.get() + 1);
 
         // Detect if the active contract has changed and reset the counter.
+        // When a contract ends (Some → None), record its outcome for the adaptive tier window.
         let current_signature = state.active_contract.as_ref().map(Self::contract_signature);
         let mut last_sig = self.last_active_contract_signature.borrow_mut();
         if *last_sig != current_signature {
+            if last_sig.is_some() && current_signature.is_none() {
+                // A contract just resolved. If we abandoned it the flag is set; otherwise treat as win.
+                let won = !self.last_action_was_abandon.get();
+                self.record_outcome(won);
+            }
+            self.last_action_was_abandon.set(false);
             *last_sig = current_signature;
             self.actions_since_last_resolution.set(0);
         }
         drop(last_sig);
+
+        let tier_reduction = self.tier_reduction();
 
         // If livelock detected (too many actions with no contract resolution),
         // force-abandon to break the cycle.
@@ -1603,6 +1654,7 @@ impl Strategy for SmartStrategy {
             {
                 self.consecutive_discards.set(0);
                 self.actions_since_last_resolution.set(0);
+                self.last_action_was_abandon.set(true);
                 return PlayerAction::AbandonContract;
             }
             // If abandon is not yet legal, discard to burn turns until it becomes legal.
@@ -1638,6 +1690,7 @@ impl Strategy for SmartStrategy {
                 .any(|a| matches!(a, PossibleAction::AbandonContract))
             {
                 self.consecutive_discards.set(0);
+                self.last_action_was_abandon.set(true);
                 return PlayerAction::AbandonContract;
             }
             if let Some(PossibleAction::DiscardCard { valid_card_indices }) = possible_actions
@@ -1672,6 +1725,7 @@ impl Strategy for SmartStrategy {
                 .any(|a| matches!(a, PossibleAction::AbandonContract))
         {
             self.consecutive_discards.set(0);
+            self.last_action_was_abandon.set(true);
             return PlayerAction::AbandonContract;
         }
 
@@ -1703,7 +1757,8 @@ impl Strategy for SmartStrategy {
             .iter()
             .find(|a| matches!(a, PossibleAction::AcceptContract { .. }))
         {
-            if let Some(action) = Self::choose_accept_contract(valid_tiers, state, &token_balances)
+            if let Some(action) =
+                Self::choose_accept_contract(valid_tiers, state, &token_balances, tier_reduction)
             {
                 self.consecutive_discards.set(0);
                 return action;
@@ -1735,6 +1790,7 @@ impl Strategy for SmartStrategy {
             .any(|a| matches!(a, PossibleAction::AbandonContract))
         {
             self.consecutive_discards.set(0);
+            self.last_action_was_abandon.set(true);
             return PlayerAction::AbandonContract;
         }
 

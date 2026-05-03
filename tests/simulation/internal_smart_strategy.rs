@@ -52,10 +52,7 @@ impl InternalSmartStrategy {
     // -------------------------------------------------------------------
 
     /// Returns true if the player currently has enough tokens to pay all input costs for a card.
-    fn can_afford_card(
-        card: &PlayerActionCard,
-        token_balances: &HashMap<TokenType, i64>,
-    ) -> bool {
+    fn can_afford_card(card: &PlayerActionCard, token_balances: &HashMap<TokenType, i64>) -> bool {
         let mut required: HashMap<TokenType, i64> = HashMap::new();
         for effect in &card.effects {
             for input in &effect.inputs {
@@ -104,9 +101,8 @@ impl InternalSmartStrategy {
     fn deck_effective_production(cards: &[CardEntry], token_type: &TokenType) -> f64 {
         let mut productions: Vec<f64> = Vec::new();
         for entry in cards {
-            let in_cycle = entry.counts.deck as f64
-                + entry.counts.hand as f64
-                + entry.counts.discard as f64;
+            let in_cycle =
+                entry.counts.deck as f64 + entry.counts.hand as f64 + entry.counts.discard as f64;
             if in_cycle <= 0.0 {
                 continue;
             }
@@ -233,32 +229,30 @@ impl InternalSmartStrategy {
         }
 
         for req in &contract.requirements {
-            match req {
-                ContractRequirementKind::TokenRequirement {
-                    token_type,
-                    min,
-                    max,
-                } => {
-                    let current = *token_balances.get(token_type).unwrap_or(&0);
-                    if let Some(max_val) = max {
-                        if current >= *max_val as i64 {
-                            // Already at or past the limit
-                            let production = Self::deck_effective_production(cards, token_type);
-                            if production > 0.0 {
-                                return true;
-                            }
-                        }
-                    }
-                    if let Some(min_val) = min {
-                        if current < *min_val as i64 {
-                            let production = Self::deck_effective_production(cards, token_type);
-                            if production <= 0.0 && current < *min_val as i64 {
-                                return true;
-                            }
+            if let ContractRequirementKind::TokenRequirement {
+                token_type,
+                min,
+                max,
+            } = req
+            {
+                let current = *token_balances.get(token_type).unwrap_or(&0);
+                if let Some(max_val) = max {
+                    if current >= *max_val as i64 {
+                        // Already at or past the limit
+                        let production = Self::deck_effective_production(cards, token_type);
+                        if production > 0.0 {
+                            return true;
                         }
                     }
                 }
-                _ => {}
+                if let Some(min_val) = min {
+                    if current < *min_val as i64 {
+                        let production = Self::deck_effective_production(cards, token_type);
+                        if production <= 0.0 && current < *min_val as i64 {
+                            return true;
+                        }
+                    }
+                }
             }
         }
         false
@@ -285,12 +279,8 @@ impl InternalSmartStrategy {
             if !Self::can_afford_card(&entry.card, token_balances) {
                 continue;
             }
-            let score = Self::card_contract_score(
-                &entry.card,
-                contract,
-                token_balances,
-                tags_played,
-            );
+            let score =
+                Self::card_contract_score(&entry.card, contract, token_balances, tags_played);
             if score > best_score {
                 best_score = score;
                 best_idx = Some(idx);
@@ -336,21 +326,18 @@ impl InternalSmartStrategy {
                 score += Self::shelved_card_quality(&contract.reward_card);
 
                 // Feasibility check
-                let feasible = contract.requirements.iter().all(|req| {
-                    match req {
-                        ContractRequirementKind::TokenRequirement {
-                            token_type,
-                            min: Some(min),
-                            max: _,
-                        } => {
-                            let current = *token_balances.get(token_type).unwrap_or(&0);
-                            let production =
-                                Self::deck_effective_production(view.cards, token_type);
-                            current >= *min as i64
-                                || (current as f64 + production * 50.0) >= *min as f64
-                        }
-                        _ => true,
+                let feasible = contract.requirements.iter().all(|req| match req {
+                    ContractRequirementKind::TokenRequirement {
+                        token_type,
+                        min: Some(min),
+                        max: _,
+                    } => {
+                        let current = *token_balances.get(token_type).unwrap_or(&0);
+                        let production = Self::deck_effective_production(view.cards, token_type);
+                        current >= *min as i64
+                            || (current as f64 + production * 50.0) >= *min as f64
                     }
+                    _ => true,
                 });
 
                 if feasible && score > best_score {
@@ -404,12 +391,9 @@ impl InternalSmartStrategy {
         // Priority 2: Play card
         if valid_actions.contains(&"PlayCard".to_string()) {
             if let Some(contract) = view.active_contract {
-                if let Some(idx) = Self::choose_best_play_card(
-                    view.cards,
-                    contract,
-                    &token_balances,
-                    &tags_played,
-                ) {
+                if let Some(idx) =
+                    Self::choose_best_play_card(view.cards, contract, &token_balances, &tags_played)
+                {
                     self.consecutive_discards.set(0);
                     return format!("PlayCard_{}", idx);
                 }
@@ -418,7 +402,8 @@ impl InternalSmartStrategy {
 
         // Priority 3: Accept contract
         if valid_actions.contains(&"AcceptContract".to_string()) {
-            if let Some((tier_idx, contract_idx)) = Self::choose_best_contract(view, &token_balances)
+            if let Some((tier_idx, contract_idx)) =
+                Self::choose_best_contract(view, &token_balances)
             {
                 self.consecutive_discards.set(0);
                 return format!("AcceptContract_{}_{}", tier_idx, contract_idx);
@@ -426,13 +411,13 @@ impl InternalSmartStrategy {
         }
 
         // Priority 4: Discard card
-        if self.consecutive_discards.get() < DISCARD_STUCK_THRESHOLD {
-            if valid_actions.contains(&"DiscardCard".to_string()) {
-                if let Some(idx) = Self::choose_best_discard_card(view.cards) {
-                    self.consecutive_discards
-                        .set(self.consecutive_discards.get() + 1);
-                    return format!("DiscardCard_{}", idx);
-                }
+        if self.consecutive_discards.get() < DISCARD_STUCK_THRESHOLD
+            && valid_actions.contains(&"DiscardCard".to_string())
+        {
+            if let Some(idx) = Self::choose_best_discard_card(view.cards) {
+                self.consecutive_discards
+                    .set(self.consecutive_discards.get() + 1);
+                return format!("DiscardCard_{}", idx);
             }
         }
 

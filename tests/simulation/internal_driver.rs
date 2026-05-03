@@ -4,7 +4,6 @@
 //! avoiding HTTP serialization/deserialization overhead. It's suitable for
 //! strategy simulation and performance testing.
 
-use my_little_factory_manager::game_state::GameState;
 use serde::Serialize;
 
 use crate::internal_smart_strategy::InternalSmartStrategy;
@@ -44,42 +43,17 @@ impl InternalGameDriver {
     }
 
     /// Play a single game using direct GameState calls and InternalSmartStrategy.
-    pub fn play_game(&self, seed: u64, strategy: &InternalSmartStrategy) -> InternalGameResult {
-        let state = GameState::new(Some(seed));
-        let result = InternalGameResult::new(seed);
+    pub fn play_game(&self, _seed: u64, _strategy: &InternalSmartStrategy) -> InternalGameResult {
+        // TODO: Implement complete game loop with action execution
+        // This is a placeholder skeleton for the optimized game driver.
+        // Real implementation will:
+        // 1. Create GameState with seed
+        // 2. Loop until game ends
+        // 3. Get possible actions from GameState::possible_actions()
+        // 4. Use strategy.choose_action_from_view() with view_for_scoring()
+        // 5. Execute actions via GameState::dispatch()
+        // 6. Track results (tier reached, contracts completed, etc.)
 
-        loop {
-            // Get possible actions
-            let possible_actions = state.possible_actions();
-
-            // Filter out NewGame action
-            let non_new_game: Vec<_> = possible_actions
-                .iter()
-                .enumerate()
-                .filter(|(_, a)| !matches!(a, my_little_factory_manager::game_state::PossibleAction::NewGame))
-                .collect();
-
-            if non_new_game.is_empty() {
-                break;
-            }
-
-            // Get the state view for strategy evaluation
-            let view = state.view_for_scoring();
-
-            // Convert possible actions to string representations for the strategy
-            let valid_action_strings: Vec<String> = non_new_game
-                .iter()
-                .map(|(_, a)| format!("{:?}", a)) // Simple debug format for now
-                .collect();
-
-            // Choose the next action (simplified for now)
-            let _action_str = strategy.choose_action_from_view(&view, &valid_action_strings);
-
-            // For now, just break to avoid infinite loop
-            // TODO: Complete action parsing and execution
-            break;
-        }
-
-        result
+        InternalGameResult::new(_seed)
     }
 }

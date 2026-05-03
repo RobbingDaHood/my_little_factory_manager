@@ -113,7 +113,7 @@ impl SmartStrategy {
 
     // State helpers
 
-    fn token_balances(state: &StrategyView) -> HashMap<TokenType, i64> {
+    pub(super) fn token_balances(state: &StrategyView) -> HashMap<TokenType, i64> {
         state
             .tokens
             .iter()
@@ -144,7 +144,7 @@ impl SmartStrategy {
 
     // Card quality
 
-    fn card_general_quality(card: &PlayerActionCard) -> f64 {
+    pub(super) fn card_general_quality(card: &PlayerActionCard) -> f64 {
         let mut net: HashMap<&TokenType, f64> = HashMap::new();
         for effect in &card.effects {
             for o in &effect.outputs {
@@ -172,7 +172,7 @@ impl SmartStrategy {
         score
     }
 
-    fn card_net_production(card: &PlayerActionCard, token_type: &TokenType) -> f64 {
+    pub(super) fn card_net_production(card: &PlayerActionCard, token_type: &TokenType) -> f64 {
         let mut net = 0.0;
         for effect in &card.effects {
             for o in &effect.outputs {
@@ -191,7 +191,7 @@ impl SmartStrategy {
 
     // Deck analysis helpers
 
-    fn deck_effective_production(cards: &[CardEntry], token_type: &TokenType) -> f64 {
+    pub(super) fn deck_effective_production(cards: &[CardEntry], token_type: &TokenType) -> f64 {
         let mut productions: Vec<f64> = Vec::new();
         for entry in cards {
             let in_cycle = entry.counts.non_shelved() as f64;
@@ -245,14 +245,37 @@ impl SmartStrategy {
             })
             .count()
     }
-    fn deck_tag_count(cards: &[CardEntry], tag: &CardTag) -> f64 {
+    /// Sum of net production for `token_type` across all card copies currently in hand.
+    /// Used by SmartStrategyV2 to estimate "what we already have ready to play this turn"
+    /// when scoring an offered contract — captures the difference between a contract that
+    /// is already half-covered by drawn cards and one whose required producers are still
+    /// shuffled deep in the deck.
+    pub(super) fn hand_contribution(cards: &[CardEntry], token_type: &TokenType) -> f64 {
+        cards
+            .iter()
+            .map(|e| {
+                let in_hand = e.counts.hand as f64;
+                if in_hand <= 0.0 {
+                    return 0.0;
+                }
+                let prod = Self::card_net_production(&e.card, token_type);
+                if prod <= 0.0 {
+                    0.0
+                } else {
+                    prod * in_hand
+                }
+            })
+            .sum()
+    }
+
+    pub(super) fn deck_tag_count(cards: &[CardEntry], tag: &CardTag) -> f64 {
         cards
             .iter()
             .filter(|e| e.counts.has_non_shelved() && e.card.tags.contains(tag))
             .map(|e| e.counts.non_shelved() as f64)
             .sum()
     }
-    fn deck_cycle_size(cards: &[CardEntry]) -> f64 {
+    pub(super) fn deck_cycle_size(cards: &[CardEntry]) -> f64 {
         cards.iter().map(|e| e.counts.non_shelved() as f64).sum()
     }
 
@@ -783,7 +806,7 @@ impl SmartStrategy {
 
     // Contract scoring
 
-    fn tag_diversity_bonus(reward_card: &PlayerActionCard, cards: &[CardEntry]) -> f64 {
+    pub(super) fn tag_diversity_bonus(reward_card: &PlayerActionCard, cards: &[CardEntry]) -> f64 {
         let mut bonus = 0.0;
         let cycle_size = Self::deck_cycle_size(cards);
         if cycle_size <= 0.0 {
@@ -802,7 +825,10 @@ impl SmartStrategy {
         bonus
     }
 
-    fn token_diversity_bonus(reward_card: &PlayerActionCard, cards: &[CardEntry]) -> f64 {
+    pub(super) fn token_diversity_bonus(
+        reward_card: &PlayerActionCard,
+        cards: &[CardEntry],
+    ) -> f64 {
         let mut bonus = 0.0;
 
         // Find all tokens produced by the reward card

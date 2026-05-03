@@ -16,6 +16,7 @@ mod strategies;
 use game_driver::GameDriver;
 use runner::{SimulationConfig, SimulationRunner};
 use strategies::smart_strategy::SmartStrategy;
+use strategies::smart_strategy_v2::SmartStrategyV2;
 
 /// Fast diagnostic run with finer-grained milestones — used for tuning iterations.
 /// Action budget is intentionally small so iteration is quick; raise it locally
@@ -136,6 +137,39 @@ fn smart_strategy_seed() {
 
     let seed = fnv1a_hash(&seed_str);
     let strategy = SmartStrategy::new();
+    let driver = GameDriver::new(max_actions, vec![10, 20, 30, 40, 50]);
+    let result = driver.play_game(seed, &strategy);
+
+    let max_tier = result.max_tier_reached.unwrap_or(0);
+    eprintln!(
+        "max_tier={} completed={} failed={} abandoned={} actions={}{}",
+        max_tier,
+        result.contracts_completed,
+        result.contracts_failed,
+        result.contracts_abandoned,
+        result.total_actions,
+        if result.hit_action_limit {
+            " [LIMIT]"
+        } else {
+            ""
+        },
+    );
+}
+
+/// Single-seed run for SmartStrategyV2 — same harness as `smart_strategy_seed`,
+/// configured via SEED_UUID and MAX_ACTIONS env vars. Lets the optimised parallel
+/// shell script benchmark V2 alongside V1 on the same UUIDs.
+#[ignore = "expensive; configure via SEED_UUID and MAX_ACTIONS env vars"]
+#[test]
+fn smart_strategy_v2_seed() {
+    let seed_str = std::env::var("SEED_UUID").unwrap_or_else(|_| "default".to_string());
+    let max_actions: u64 = std::env::var("MAX_ACTIONS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(100_000);
+
+    let seed = fnv1a_hash(&seed_str);
+    let strategy = SmartStrategyV2::new();
     let driver = GameDriver::new(max_actions, vec![10, 20, 30, 40, 50]);
     let result = driver.play_game(seed, &strategy);
 

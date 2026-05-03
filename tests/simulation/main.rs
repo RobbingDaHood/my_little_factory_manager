@@ -13,6 +13,7 @@ mod game_driver;
 mod runner;
 mod strategies;
 
+use game_driver::GameDriver;
 use runner::{SimulationConfig, SimulationRunner};
 use strategies::smart_strategy::SmartStrategy;
 
@@ -110,4 +111,52 @@ fn smart_strategy_reaches_tier_50() {
         report.top_failure_reasons,
         report.milestones,
     );
+}
+
+/// Runs SmartStrategy for a single seed configured via environment variables.
+///
+/// Designed for use by `scripts/test_smartstrategy_optimized.sh`, which launches
+/// multiple instances of this test in parallel — each with a unique SEED_UUID —
+/// eliminating the sequential batch bottleneck.
+///
+/// Environment variables:
+///   SEED_UUID   — string identifier hashed to a u64 game seed (default: "default")
+///   MAX_ACTIONS — action budget per game (default: 100_000)
+///
+/// Output (grep-parseable by the shell script):
+///   max_tier=<N> completed=<N> failed=<N> abandoned=<N> actions=<N> [LIMIT]
+#[ignore = "expensive; configure via SEED_UUID and MAX_ACTIONS env vars"]
+#[test]
+fn smart_strategy_seed() {
+    let seed_str = std::env::var("SEED_UUID").unwrap_or_else(|_| "default".to_string());
+    let max_actions: u64 = std::env::var("MAX_ACTIONS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(100_000);
+
+    let seed = fnv1a_hash(&seed_str);
+    let strategy = SmartStrategy::new();
+    let driver = GameDriver::new(max_actions, vec![10, 20, 30, 40, 50]);
+    let result = driver.play_game(seed, &strategy);
+
+    let max_tier = result.max_tier_reached.unwrap_or(0);
+    eprintln!(
+        "max_tier={} completed={} failed={} abandoned={} actions={}{}",
+        max_tier,
+        result.contracts_completed,
+        result.contracts_failed,
+        result.contracts_abandoned,
+        result.total_actions,
+        if result.hit_action_limit {
+            " [LIMIT]"
+        } else {
+            ""
+        },
+    );
+}
+
+fn fnv1a_hash(s: &str) -> u64 {
+    s.bytes().fold(0xcbf2_9ce4_8422_2325_u64, |h, b| {
+        (h ^ u64::from(b)).wrapping_mul(0x0000_0100_0000_01b3_u64)
+    })
 }

@@ -28,6 +28,7 @@ fn smart_strategy_diagnostic() {
         base_seed: 42,
         max_actions_per_game: 100_000,
         milestone_tiers: vec![10, 15, 20, 25, 30, 35, 40, 45, 50],
+        max_contracts_without_tier_progress: 1000,
     };
 
     let runner = SimulationRunner::new(config);
@@ -79,6 +80,7 @@ fn smart_strategy_reaches_tier_50() {
         base_seed: 42,
         max_actions_per_game: 500_000,
         milestone_tiers: vec![10, 20, 30, 40, 50],
+        max_contracts_without_tier_progress: 1000,
     };
 
     let runner = SimulationRunner::new(config);

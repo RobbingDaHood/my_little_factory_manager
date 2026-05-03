@@ -13,6 +13,7 @@ pub struct SimulationConfig {
     pub base_seed: u64,
     pub max_actions_per_game: u64,
     pub milestone_tiers: Vec<u32>,
+    pub max_contracts_without_tier_progress: u64,
 }
 
 impl Default for SimulationConfig {
@@ -22,6 +23,7 @@ impl Default for SimulationConfig {
             base_seed: 42,
             max_actions_per_game: 200_000,
             milestone_tiers: vec![10, 20, 30, 40, 50],
+            max_contracts_without_tier_progress: 1000,
         }
     }
 }
@@ -54,6 +56,7 @@ pub struct StrategyReport {
     pub abandoned_per_tier: HashMap<u32, u64>,
     pub stuck_games: u32,
     pub action_limit_games: u32,
+    pub stalled_games: u32,
 }
 
 /// Runs multiple seeds for a strategy and aggregates results into a `StrategyReport`.
@@ -70,7 +73,8 @@ impl SimulationRunner {
         let driver = GameDriver::new(
             self.config.max_actions_per_game,
             self.config.milestone_tiers.clone(),
-        );
+        )
+        .with_stall_threshold(self.config.max_contracts_without_tier_progress);
 
         let mut all_results: Vec<GameResult> = Vec::new();
 
@@ -84,18 +88,19 @@ impl SimulationRunner {
                 self.config.games_per_strategy
             );
             let result = driver.play_game(seed, strategy);
+            let exit_label = match result.exit_reason {
+                crate::game_driver::ExitReason::Completed => "COMPLETED",
+                crate::game_driver::ExitReason::ActionLimitExceeded => "ACTION_LIMIT",
+                crate::game_driver::ExitReason::StallDetected => "STALLED",
+            };
             eprintln!(
-                "  max_tier={:?} completed={} failed={} abandoned={} actions={}{}",
+                "  max_tier={:?} completed={} failed={} abandoned={} actions={} [{}]",
                 result.max_tier_reached,
                 result.contracts_completed,
                 result.contracts_failed,
                 result.contracts_abandoned,
                 result.total_actions,
-                if result.hit_action_limit {
-                    " [LIMIT]"
-                } else {
-                    ""
-                },
+                exit_label,
             );
             all_results.push(result);
         }
@@ -173,6 +178,10 @@ impl SimulationRunner {
 
         let stuck_games = results.iter().filter(|r| r.stuck).count() as u32;
         let action_limit_games = results.iter().filter(|r| r.hit_action_limit).count() as u32;
+        let stalled_games = results
+            .iter()
+            .filter(|r| matches!(r.exit_reason, crate::game_driver::ExitReason::StallDetected))
+            .count() as u32;
 
         StrategyReport {
             strategy_name: name.to_string(),
@@ -188,6 +197,7 @@ impl SimulationRunner {
             abandoned_per_tier,
             stuck_games,
             action_limit_games,
+            stalled_games,
         }
     }
 }

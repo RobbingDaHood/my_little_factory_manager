@@ -34,6 +34,14 @@ pub struct MilestoneResult {
     pub actions_to_reach: u64,
 }
 
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "PascalCase")]
+pub enum ExitReason {
+    Completed,
+    ActionLimitExceeded,
+    StallDetected,
+}
+
 /// Results from one complete simulated game.
 #[derive(Debug, Clone, Serialize)]
 pub struct GameResult {
@@ -53,6 +61,7 @@ pub struct GameResult {
     pub hit_action_limit: bool,
     /// True when no non-NewGame actions were available (invariant broken).
     pub stuck: bool,
+    pub exit_reason: ExitReason,
 }
 
 impl GameResult {
@@ -71,6 +80,7 @@ impl GameResult {
             abandoned_per_tier: HashMap::new(),
             hit_action_limit: false,
             stuck: false,
+            exit_reason: ExitReason::Completed,
         }
     }
 }
@@ -80,6 +90,7 @@ impl GameResult {
 pub struct GameDriver {
     pub max_actions: u64,
     pub milestone_tiers: Vec<u32>,
+    pub max_contracts_without_tier_progress: u64,
 }
 
 impl GameDriver {
@@ -87,7 +98,13 @@ impl GameDriver {
         Self {
             max_actions,
             milestone_tiers,
+            max_contracts_without_tier_progress: 1000,
         }
+    }
+
+    pub fn with_stall_threshold(mut self, threshold: u64) -> Self {
+        self.max_contracts_without_tier_progress = threshold;
+        self
     }
 
     pub fn play_game(&self, seed: u64, strategy: &dyn Strategy) -> GameResult {
@@ -98,6 +115,9 @@ impl GameDriver {
         let milestone_set: HashSet<u32> = self.milestone_tiers.iter().cloned().collect();
         let mut reached_milestones: HashSet<u32> = HashSet::new();
 
+        let mut current_tier: u32 = 0;
+        let mut contracts_since_last_tier: u64 = 0;
+
         loop {
             let non_new_game: Vec<PossibleAction> = state
                 .possible_actions()
@@ -107,6 +127,7 @@ impl GameDriver {
 
             if non_new_game.is_empty() {
                 result.stuck = true;
+                result.exit_reason = ExitReason::Completed;
                 break;
             }
 
@@ -148,6 +169,13 @@ impl GameDriver {
                             result.max_tier_reached =
                                 Some(result.max_tier_reached.map_or(tier, |t: u32| t.max(tier)));
 
+                            if tier > current_tier {
+                                current_tier = tier;
+                                contracts_since_last_tier = 0;
+                            } else {
+                                contracts_since_last_tier += 1;
+                            }
+
                             if milestone_set.contains(&tier) && !reached_milestones.contains(&tier)
                             {
                                 reached_milestones.insert(tier);
@@ -161,6 +189,7 @@ impl GameDriver {
                             let tier = contract.tier.0;
                             result.contracts_failed += 1;
                             *result.failed_per_tier.entry(tier).or_insert(0) += 1;
+                            contracts_since_last_tier += 1;
                             let failure_type = match reason {
                                 ContractFailureReason::HarmfulTokenLimitExceeded { .. } => {
                                     "HarmfulTokenLimitExceeded"
@@ -182,10 +211,18 @@ impl GameDriver {
             }
 
             if reached_milestones.len() == self.milestone_tiers.len() {
+                result.exit_reason = ExitReason::Completed;
                 break;
             }
+
+            if contracts_since_last_tier >= self.max_contracts_without_tier_progress {
+                result.exit_reason = ExitReason::StallDetected;
+                break;
+            }
+
             if result.total_actions >= self.max_actions {
                 result.hit_action_limit = true;
+                result.exit_reason = ExitReason::ActionLimitExceeded;
                 break;
             }
         }

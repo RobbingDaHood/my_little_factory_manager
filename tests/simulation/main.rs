@@ -10,6 +10,8 @@
 #![allow(dead_code)]
 
 mod game_driver;
+mod internal_driver;
+mod internal_smart_strategy;
 mod runner;
 mod strategies;
 

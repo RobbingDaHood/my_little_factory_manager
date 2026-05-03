@@ -12,7 +12,7 @@
 use std::collections::{HashMap, HashSet};
 
 use my_little_factory_manager::game_state::{
-    ActionResult, ActionSuccess, GameState, GameStateView, PossibleAction,
+    ActionResult, ActionSuccess, GameState, PossibleAction, StrategyView,
 };
 use my_little_factory_manager::types::{ContractFailureReason, ContractResolution};
 use serde::Serialize;
@@ -20,9 +20,10 @@ use serde::Serialize;
 use crate::strategies::Strategy;
 
 /// A point-in-time snapshot passed to the strategy for decision-making.
-pub struct GameSnapshot {
-    /// Full game state from `GameState::view()`. `None` when `needs_state()` returns false.
-    pub state: Option<GameStateView>,
+pub struct GameSnapshot<'a> {
+    /// Lightweight borrowed state view from `GameState::view_for_scoring()`. `None` when `needs_state()` returns false.
+    /// Uses borrowed references to avoid cloning/allocation overhead during strategy evaluation.
+    pub state: Option<StrategyView<'a>>,
     /// Available actions with NewGame filtered out.
     pub possible_actions: Vec<PossibleAction>,
 }
@@ -132,7 +133,7 @@ impl GameDriver {
             }
 
             let state_view = if strategy.needs_state() {
-                Some(state.view())
+                Some(state.view_for_scoring())
             } else {
                 None
             };

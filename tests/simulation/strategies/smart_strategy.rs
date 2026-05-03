@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::{Hash, Hasher};
 
 use my_little_factory_manager::action_log::PlayerAction;
-use my_little_factory_manager::game_state::{GameStateView, PossibleAction};
+use my_little_factory_manager::game_state::{PossibleAction, StrategyView};
 use my_little_factory_manager::types::{
     CardEntry, CardTag, Contract, ContractRequirementKind, PlayerActionCard, TierContracts,
     TokenType,
@@ -113,20 +113,16 @@ impl SmartStrategy {
 
     // State helpers
 
-    fn token_balances(state: &GameStateView) -> HashMap<TokenType, i64> {
+    fn token_balances(state: &StrategyView) -> HashMap<TokenType, i64> {
         state
             .tokens
             .iter()
-            .map(|t| (t.token_type.clone(), t.amount as i64))
+            .map(|(token_type, &amount)| (token_type.clone(), amount as i64))
             .collect()
     }
 
-    fn tags_played(state: &GameStateView) -> HashMap<CardTag, u32> {
-        state
-            .cards_played_per_tag_contract
-            .iter()
-            .map(|e| (e.tag.clone(), e.count))
-            .collect()
+    fn tags_played(state: &StrategyView) -> HashMap<CardTag, u32> {
+        state.cards_played_per_tag_contract.clone()
     }
 
     // Affordability check
@@ -1220,8 +1216,8 @@ impl SmartStrategy {
 
     // Action builders
 
-    fn choose_deckbuild_action(&self, state: &GameStateView) -> Option<PlayerAction> {
-        let cards = &state.cards;
+    fn choose_deckbuild_action(&self, state: &StrategyView) -> Option<PlayerAction> {
+        let cards = state.cards;
 
         // Collect valid indices based on card availability
         let replacement_indices_all: Vec<usize> = cards
@@ -1252,7 +1248,7 @@ impl SmartStrategy {
         }
 
         // Pass 1: diversity forcing
-        let needed_tokens = Self::tokens_needing_diversity(cards, &state.offered_contracts);
+        let needed_tokens = Self::tokens_needing_diversity(cards, state.offered_contracts);
         for token in &needed_tokens {
             if let Some(replacement) = replacement_indices
                 .iter()
@@ -1281,7 +1277,7 @@ impl SmartStrategy {
 
         // Pass 2: quality upgrade — O(tag count) lookup across ALL shelved cards
         let advancement_tokens =
-            Self::tokens_needed_for_advancement(cards, &state.offered_contracts);
+            Self::tokens_needed_for_advancement(cards, state.offered_contracts);
         let best_replacement = {
             let best = self.best_per_tag.borrow();
             best.values()
@@ -1331,7 +1327,7 @@ impl SmartStrategy {
 
     fn choose_play_card(
         valid_indices: &[usize],
-        state: &GameStateView,
+        state: &StrategyView,
         token_balances: &HashMap<TokenType, i64>,
         tags_played: &HashMap<CardTag, u32>,
     ) -> Option<PlayerAction> {
@@ -1364,7 +1360,7 @@ impl SmartStrategy {
     fn choose_discard_card(
         &self,
         valid_indices: &[usize],
-        state: &GameStateView,
+        state: &StrategyView,
         token_balances: &HashMap<TokenType, i64>,
         tags_played: &HashMap<CardTag, u32>,
     ) -> Option<PlayerAction> {
@@ -1538,15 +1534,15 @@ impl SmartStrategy {
 
     fn choose_accept_contract(
         valid_tiers: &[my_little_factory_manager::game_state::TierContractRange],
-        state: &GameStateView,
+        state: &StrategyView,
         token_balances: &HashMap<TokenType, i64>,
         tier_reduction: u32,
     ) -> Option<PlayerAction> {
-        let offered = &state.offered_contracts;
-        let needed_tokens = Self::tokens_needed_for_advancement(&state.cards, offered);
+        let offered = state.offered_contracts;
+        let needed_tokens = Self::tokens_needed_for_advancement(state.cards, offered);
 
         // Compute the target contract and its token deficit once per call.
-        let target = Self::target_progression_contract(offered, &state.cards, token_balances);
+        let target = Self::target_progression_contract(offered, state.cards, token_balances);
         let target_deficit = match target {
             Some(t) => Self::target_token_deficit(t, token_balances),
             None => HashMap::new(),
@@ -1564,7 +1560,7 @@ impl SmartStrategy {
                             if feasible_only
                                 && Self::is_contract_impossible(
                                     contract,
-                                    &state.cards,
+                                    state.cards,
                                     token_balances,
                                     0,
                                 )
@@ -1573,7 +1569,7 @@ impl SmartStrategy {
                             }
                             let s = Self::score_contract(
                                 contract,
-                                &state.cards,
+                                state.cards,
                                 token_balances,
                                 &needed_tokens,
                                 &target_deficit,
@@ -1679,7 +1675,7 @@ impl Strategy for SmartStrategy {
         let impossible = state.active_contract.as_ref().is_some_and(|c| {
             Self::is_contract_impossible(
                 c,
-                &state.cards,
+                state.cards,
                 &token_balances,
                 state.contract_turns_played,
             )
@@ -1712,12 +1708,7 @@ impl Strategy for SmartStrategy {
 
         // 0.5. Detect slow progress on active contract; abandon early.
         let too_slow = state.active_contract.as_ref().is_some_and(|c| {
-            Self::is_progress_too_slow(
-                c,
-                &state.cards,
-                &token_balances,
-                state.contract_turns_played,
-            )
+            Self::is_progress_too_slow(c, state.cards, &token_balances, state.contract_turns_played)
         });
         if too_slow
             && possible_actions

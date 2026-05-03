@@ -148,6 +148,23 @@ pub struct GameStateView {
     pub cards_played_per_tag_contract: Vec<CardTagCount>,
 }
 
+/// Lightweight state view for strategy evaluation (no cloning or serialization).
+///
+/// Used internally by strategies that need full game state inspection without the
+/// overhead of cloning all cards/contracts and serializing to JSON. References are
+/// borrowed directly from GameState, avoiding allocation overhead during repeated
+/// state introspection (e.g., choosing actions in a 100K+ action simulation).
+#[derive(Debug)]
+pub struct StrategyView<'a> {
+    pub seed: u64,
+    pub cards: &'a [CardEntry],
+    pub tokens: &'a HashMap<TokenType, u32>,
+    pub active_contract: &'a Option<Contract>,
+    pub contract_turns_played: u32,
+    pub offered_contracts: &'a [TierContracts],
+    pub cards_played_per_tag_contract: &'a HashMap<CardTag, u32>,
+}
+
 /// Token balances grouped by tag category for the `/player/tokens` endpoint.
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 #[serde(crate = "rocket::serde")]
@@ -354,6 +371,26 @@ impl GameState {
                 v.sort_by(|a, b| format!("{:?}", a.tag).cmp(&format!("{:?}", b.tag)));
                 v
             },
+        }
+    }
+
+    /// Fast-path state view for strategy evaluation (zero allocations, borrowed references).
+    ///
+    /// Used by strategies that need to inspect game state for decision-making without
+    /// the overhead of cloning all state data and serializing to JSON. Returns borrowed
+    /// references directly from GameState's internal storage.
+    ///
+    /// This is suitable for internal strategy evaluation during simulations. For HTTP API
+    /// responses, use `view()` which returns the full JSON-serializable snapshot.
+    pub fn view_for_scoring(&self) -> StrategyView<'_> {
+        StrategyView {
+            seed: self.seed,
+            cards: &self.cards,
+            tokens: &self.tokens,
+            active_contract: &self.active_contract,
+            contract_turns_played: self.contract_turns_played,
+            offered_contracts: &self.offered_contracts,
+            cards_played_per_tag_contract: &self.cards_played_per_tag_contract,
         }
     }
 

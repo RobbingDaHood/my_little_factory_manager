@@ -1548,52 +1548,80 @@ impl SmartStrategy {
             None => HashMap::new(),
         };
 
-        for feasible_only in [true, false] {
-            let mut best: Option<(usize, usize, f64)> = None;
-            for tier_range in valid_tiers {
-                let tier_idx = tier_range.tier_index;
-                let min_c = tier_range.valid_contract_index_range.min;
-                let max_c = tier_range.valid_contract_index_range.max;
-                if let Some(tier_contracts) = offered.get(tier_idx) {
-                    for c_idx in min_c..=max_c {
-                        if let Some(contract) = tier_contracts.contracts.get(c_idx) {
-                            if feasible_only
-                                && Self::is_contract_impossible(
-                                    contract,
-                                    state.cards,
-                                    token_balances,
-                                    0,
-                                )
-                            {
-                                continue;
-                            }
-                            let s = Self::score_contract(
-                                contract,
-                                state.cards,
-                                token_balances,
-                                &needed_tokens,
-                                &target_deficit,
-                                tier_reduction,
-                            );
-                            if best.is_none_or(|(_, _, prev)| s > prev) {
-                                best = Some((tier_idx, c_idx, s));
-                            }
+        // Pass 1: among contracts that pass the feasibility filter, pick the
+        // highest-scoring one. This is the normal happy-path acceptance.
+        let mut best_feasible: Option<(usize, usize, f64)> = None;
+        for tier_range in valid_tiers {
+            let tier_idx = tier_range.tier_index;
+            let min_c = tier_range.valid_contract_index_range.min;
+            let max_c = tier_range.valid_contract_index_range.max;
+            if let Some(tier_contracts) = offered.get(tier_idx) {
+                for c_idx in min_c..=max_c {
+                    if let Some(contract) = tier_contracts.contracts.get(c_idx) {
+                        if Self::is_contract_impossible(contract, state.cards, token_balances, 0) {
+                            continue;
+                        }
+                        let s = Self::score_contract(
+                            contract,
+                            state.cards,
+                            token_balances,
+                            &needed_tokens,
+                            &target_deficit,
+                            tier_reduction,
+                        );
+                        if best_feasible.is_none_or(|(_, _, prev)| s > prev) {
+                            best_feasible = Some((tier_idx, c_idx, s));
                         }
                     }
                 }
             }
-            if let Some((t, c, _)) = best {
-                return Some(PlayerAction::AcceptContract {
-                    tier_index: t,
-                    contract_index: c,
-                });
-            }
+        }
+        if let Some((t, c, _)) = best_feasible {
+            return Some(PlayerAction::AcceptContract {
+                tier_index: t,
+                contract_index: c,
+            });
         }
 
-        let highest = valid_tiers.last()?;
+        // Pass 2: no feasible contract on the menu. Previously this re-ran scoring
+        // with `feasible_only = false`, which (because TIER_WEIGHT dominates the score)
+        // accepted the *highest-tier* infeasible contract — exactly the contract most
+        // likely to fail and burn the stall budget.
+        //
+        // Instead, accept the lowest-tier contract available. Lowest tier = highest
+        // completion probability = best chance to add reward cards to the shelf and
+        // grow the deck back into a state where pass 1 succeeds again.
+        let mut fallback: Option<(usize, usize, u32)> = None;
+        for tier_range in valid_tiers {
+            let tier_idx = tier_range.tier_index;
+            let min_c = tier_range.valid_contract_index_range.min;
+            let max_c = tier_range.valid_contract_index_range.max;
+            if let Some(tier_contracts) = offered.get(tier_idx) {
+                for c_idx in min_c..=max_c {
+                    if let Some(contract) = tier_contracts.contracts.get(c_idx) {
+                        let t = contract.tier.0;
+                        if fallback.is_none_or(|(_, _, prev_t)| t < prev_t) {
+                            fallback = Some((tier_idx, c_idx, t));
+                        }
+                    }
+                }
+            }
+        }
+        if let Some((t, c, _)) = fallback {
+            return Some(PlayerAction::AcceptContract {
+                tier_index: t,
+                contract_index: c,
+            });
+        }
+
+        // Final fallback when valid_tiers ranges produce no contracts at all
+        // (e.g., the contract market hasn't refilled). Take the lowest-tier slot
+        // in valid_tiers — replaces the previous valid_tiers.last() (highest tier),
+        // which biased the strategy toward overreach in this edge case.
+        let lowest = valid_tiers.first()?;
         Some(PlayerAction::AcceptContract {
-            tier_index: highest.tier_index,
-            contract_index: highest.valid_contract_index_range.min,
+            tier_index: lowest.tier_index,
+            contract_index: lowest.valid_contract_index_range.min,
         })
     }
 }

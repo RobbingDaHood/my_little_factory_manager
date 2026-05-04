@@ -32,19 +32,24 @@ jobs:
     steps:
       - name: Determine release tag
         id: tag
+        shell: bash
         run: |
+          set -e
           if [ "${{ github.event_name }}" = "release" ]; then
-            TAG=${{ github.event.release.tag_name }}
+            TAG="${{ github.event.release.tag_name }}"
           else
-            TAG=${{ github.event.inputs.release_tag }}
+            TAG="${{ github.event.inputs.release_tag }}"
             if [ -z "$TAG" ]; then
               echo "Fetching latest release tag..."
-              TAG=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest | grep -o '"tag_name":"[^"]*' | cut -d'"' -f4)
+              TAG=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest | jq -r '.tag_name' 2>/dev/null || echo "")
+              if [ -z "$TAG" ]; then
+                echo "::error::Could not determine release tag"
+                exit 1
+              fi
             fi
           fi
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "Building for tag: $TAG"
-        shell: bash
 
       - uses: actions/checkout@v4
         with:
@@ -56,38 +61,39 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Build
-        run: cargo build --release --target ${{ matrix.target }}
+        run: cargo build --release --target ${{ matrix.target }} -vv
 
-      - name: Prepare artifact (Unix)
-        if: runner.os != 'Windows'
+      - name: Prepare artifact
+        shell: bash
         run: |
+          set -e
           mkdir -p artifacts
-          cp target/${{ matrix.target }}/release/my-little-factory-manager artifacts/my-little-factory-manager-${{ matrix.artifact_suffix }}
 
-      - name: Prepare artifact (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          mkdir -p artifacts
-          copy target\${{ matrix.target }}\release\my-little-factory-manager.exe artifacts\my-little-factory-manager-${{ matrix.artifact_suffix }}
-        shell: cmd
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            SOURCE_FILE="target/${{ matrix.target }}/release/my-little-factory-manager.exe"
+          else
+            SOURCE_FILE="target/${{ matrix.target }}/release/my-little-factory-manager"
+          fi
+
+          if [ ! -f "$SOURCE_FILE" ]; then
+            echo "::error::Binary not found at $SOURCE_FILE"
+            ls -la target/${{ matrix.target }}/release/ || echo "Release directory not found"
+            exit 1
+          fi
+
+          cp "$SOURCE_FILE" "artifacts/my-little-factory-manager-${{ matrix.artifact_suffix }}"
+          echo "Created artifact: artifacts/my-little-factory-manager-${{ matrix.artifact_suffix }}"
+          ls -lh artifacts/
 
       - name: Upload to release
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
+          set -e
           ASSET_FILE=$(ls artifacts/my-little-factory-manager-*)
-          ASSET_NAME=$(basename $ASSET_FILE)
+          ASSET_NAME=$(basename "$ASSET_FILE")
 
-          # Check if asset already exists and delete it
-          gh release list --repo ${{ github.repository }} --limit 1000 | grep -q "$TAG" && {
-            EXISTING=$(gh release view $TAG --repo ${{ github.repository }} --json assets --jq '.assets[].name' 2>/dev/null | grep "$ASSET_NAME" || true)
-            if [ -n "$EXISTING" ]; then
-              echo "Deleting existing asset: $EXISTING"
-              gh release delete-asset $TAG "$EXISTING" --repo ${{ github.repository }} --yes
-            fi
-          }
-
-          echo "Uploading asset: $ASSET_NAME"
-          gh release upload $TAG "$ASSET_FILE" --repo ${{ github.repository }} --clobber
-        shell: bash
+          echo "Uploading $ASSET_NAME to release $TAG..."
+          gh release upload "$TAG" "$ASSET_FILE" --repo ${{ github.repository }} --clobber

@@ -130,7 +130,9 @@ pub enum VariationDirection {
 /// so two cards with different token signatures always carry different tags.
 /// Used by `CardTagConstraint` requirements to target specific effect profiles
 /// rather than broad operational categories.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+)]
 #[serde(crate = "rocket::serde")]
 pub struct CardTag {
     /// Token types consumed when this effect is played.

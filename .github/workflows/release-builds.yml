@@ -1,0 +1,93 @@
+name: Release Builds
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release tag to build for (e.g., v0.0.1). Leave empty to use latest release.'
+        required: false
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_suffix: linux-x86_64
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact_suffix: macos-x86_64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact_suffix: macos-aarch64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_suffix: windows-x86_64.exe
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Determine release tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            TAG=${{ github.event.release.tag_name }}
+          else
+            TAG=${{ github.event.inputs.release_tag }}
+            if [ -z "$TAG" ]; then
+              echo "Fetching latest release tag..."
+              TAG=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest | grep -o '"tag_name":"[^"]*' | cut -d'"' -f4)
+            fi
+          fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "Building for tag: $TAG"
+        shell: bash
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Prepare artifact (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p artifacts
+          cp target/${{ matrix.target }}/release/my-little-factory-manager artifacts/my-little-factory-manager-${{ matrix.artifact_suffix }}
+
+      - name: Prepare artifact (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          mkdir -p artifacts
+          copy target\${{ matrix.target }}\release\my-little-factory-manager.exe artifacts\my-little-factory-manager-${{ matrix.artifact_suffix }}
+        shell: cmd
+
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          ASSET_FILE=$(ls artifacts/my-little-factory-manager-*)
+          ASSET_NAME=$(basename $ASSET_FILE)
+
+          # Check if asset already exists and delete it
+          gh release list --repo ${{ github.repository }} --limit 1000 | grep -q "$TAG" && {
+            EXISTING=$(gh release view $TAG --repo ${{ github.repository }} --json assets --jq '.assets[].name' 2>/dev/null | grep "$ASSET_NAME" || true)
+            if [ -n "$EXISTING" ]; then
+              echo "Deleting existing asset: $EXISTING"
+              gh release delete-asset $TAG "$EXISTING" --repo ${{ github.repository }} --yes
+            fi
+          }
+
+          echo "Uploading asset: $ASSET_NAME"
+          gh release upload $TAG "$ASSET_FILE" --repo ${{ github.repository }} --clobber
+        shell: bash

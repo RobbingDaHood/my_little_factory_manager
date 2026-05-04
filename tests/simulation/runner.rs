@@ -13,7 +13,6 @@ pub struct SimulationConfig {
     pub base_seed: u64,
     pub max_actions_per_game: u64,
     pub milestone_tiers: Vec<u32>,
-    pub max_contracts_without_tier_progress: u64,
 }
 
 impl Default for SimulationConfig {
@@ -23,7 +22,6 @@ impl Default for SimulationConfig {
             base_seed: 42,
             max_actions_per_game: 200_000,
             milestone_tiers: vec![10, 20, 30, 40, 50],
-            max_contracts_without_tier_progress: 1000,
         }
     }
 }
@@ -37,6 +35,14 @@ pub struct MilestoneStats {
     /// Mean total actions to first completion at this tier, over games that reached it.
     /// None if no game reached this milestone.
     pub mean_actions: Option<f64>,
+    /// Average per-tier completed count at the moment this milestone was first reached.
+    /// `mean_completed_per_tier[3]` = average tier-3 contracts completed before
+    /// reaching this milestone, across games that reached it.
+    pub mean_completed_per_tier: HashMap<u32, f64>,
+    /// Average per-tier failed count at the moment this milestone was first reached.
+    pub mean_failed_per_tier: HashMap<u32, f64>,
+    /// Average per-tier abandoned count at the moment this milestone was first reached.
+    pub mean_abandoned_per_tier: HashMap<u32, f64>,
 }
 
 /// Aggregated simulation report for one strategy.
@@ -56,7 +62,6 @@ pub struct StrategyReport {
     pub abandoned_per_tier: HashMap<u32, u64>,
     pub stuck_games: u32,
     pub action_limit_games: u32,
-    pub stalled_games: u32,
 }
 
 /// Runs multiple seeds for a strategy and aggregates results into a `StrategyReport`.
@@ -73,8 +78,7 @@ impl SimulationRunner {
         let driver = GameDriver::new(
             self.config.max_actions_per_game,
             self.config.milestone_tiers.clone(),
-        )
-        .with_stall_threshold(self.config.max_contracts_without_tier_progress);
+        );
 
         let mut all_results: Vec<GameResult> = Vec::new();
 
@@ -91,7 +95,6 @@ impl SimulationRunner {
             let exit_label = match result.exit_reason {
                 crate::game_driver::ExitReason::Completed => "COMPLETED",
                 crate::game_driver::ExitReason::ActionLimitExceeded => "ACTION_LIMIT",
-                crate::game_driver::ExitReason::StallDetected => "STALLED",
             };
             eprintln!(
                 "  max_tier={:?} completed={} failed={} abandoned={} actions={} [{}]",
@@ -116,25 +119,59 @@ impl SimulationRunner {
             .milestone_tiers
             .iter()
             .map(|&tier| {
-                let reached: Vec<u64> = results
+                // Only games that reached this milestone contribute to the
+                // progression averages — averaging in unreached games would
+                // bias the per-tier counts toward zero.
+                let reached_milestones: Vec<&crate::game_driver::MilestoneResult> = results
                     .iter()
-                    .filter_map(|r| {
-                        r.milestones
-                            .iter()
-                            .find(|m| m.tier == tier)
-                            .map(|m| m.actions_to_reach)
-                    })
+                    .filter_map(|r| r.milestones.iter().find(|m| m.tier == tier))
                     .collect();
-                let reach_rate = reached.len() as f64 / games_run as f64;
-                let mean_actions = if reached.is_empty() {
+                let reach_count = reached_milestones.len();
+                let reach_rate = reach_count as f64 / games_run as f64;
+                let mean_actions = if reached_milestones.is_empty() {
                     None
                 } else {
-                    Some(reached.iter().sum::<u64>() as f64 / reached.len() as f64)
+                    Some(
+                        reached_milestones
+                            .iter()
+                            .map(|m| m.actions_to_reach)
+                            .sum::<u64>() as f64
+                            / reach_count as f64,
+                    )
                 };
+                let mut mean_completed_per_tier: HashMap<u32, f64> = HashMap::new();
+                let mut mean_failed_per_tier: HashMap<u32, f64> = HashMap::new();
+                let mut mean_abandoned_per_tier: HashMap<u32, f64> = HashMap::new();
+                if reach_count > 0 {
+                    let denom = reach_count as f64;
+                    for m in &reached_milestones {
+                        for (&t, &c) in &m.progression.completed_per_tier {
+                            *mean_completed_per_tier.entry(t).or_insert(0.0) += f64::from(c);
+                        }
+                        for (&t, &c) in &m.progression.failed_per_tier {
+                            *mean_failed_per_tier.entry(t).or_insert(0.0) += f64::from(c);
+                        }
+                        for (&t, &c) in &m.progression.abandoned_per_tier {
+                            *mean_abandoned_per_tier.entry(t).or_insert(0.0) += f64::from(c);
+                        }
+                    }
+                    for v in mean_completed_per_tier.values_mut() {
+                        *v /= denom;
+                    }
+                    for v in mean_failed_per_tier.values_mut() {
+                        *v /= denom;
+                    }
+                    for v in mean_abandoned_per_tier.values_mut() {
+                        *v /= denom;
+                    }
+                }
                 MilestoneStats {
                     tier,
                     reach_rate,
                     mean_actions,
+                    mean_completed_per_tier,
+                    mean_failed_per_tier,
+                    mean_abandoned_per_tier,
                 }
             })
             .collect();
@@ -178,10 +215,6 @@ impl SimulationRunner {
 
         let stuck_games = results.iter().filter(|r| r.stuck).count() as u32;
         let action_limit_games = results.iter().filter(|r| r.hit_action_limit).count() as u32;
-        let stalled_games = results
-            .iter()
-            .filter(|r| matches!(r.exit_reason, crate::game_driver::ExitReason::StallDetected))
-            .count() as u32;
 
         StrategyReport {
             strategy_name: name.to_string(),
@@ -197,7 +230,6 @@ impl SimulationRunner {
             abandoned_per_tier,
             stuck_games,
             action_limit_games,
-            stalled_games,
         }
     }
 }

@@ -63,7 +63,7 @@ const SLOW_PROGRESS_MIN_FRACTION: f64 = 0.3;
 /// strategy away from contracts whose requirements were heavily tightened by the adaptive
 /// system (indicating those token dimensions are under pressure), and toward contracts
 /// in areas the player has under-used — naturally relaxing adaptive pressure over time.
-pub struct SmartStrategy {
+pub struct SmartAggressive {
     consecutive_discards: Cell<u32>,
     // top-30 per tag sorted desc by quality; updated incrementally on new shelf arrivals
     best_per_tag: RefCell<HashMap<CardTag, Vec<(u64, f64)>>>,
@@ -81,7 +81,7 @@ pub struct SmartStrategy {
     last_action_was_abandon: Cell<bool>,
 }
 
-impl SmartStrategy {
+impl SmartAggressive {
     pub fn new() -> Self {
         Self {
             consecutive_discards: Cell::new(0),
@@ -246,7 +246,7 @@ impl SmartStrategy {
             .count()
     }
     /// Sum of net production for `token_type` across all card copies currently in hand.
-    /// Used by SmartStrategyV2 to estimate "what we already have ready to play this turn"
+    /// Used by SmartCareful to estimate "what we already have ready to play this turn"
     /// when scoring an offered contract — captures the difference between a contract that
     /// is already half-covered by drawn cards and one whose required producers are still
     /// shuffled deep in the deck.
@@ -1652,9 +1652,9 @@ impl SmartStrategy {
     }
 }
 
-impl Strategy for SmartStrategy {
+impl Strategy for SmartAggressive {
     fn name(&self) -> &str {
-        "smart"
+        "smart_aggressive"
     }
 
     fn needs_state(&self) -> bool {
@@ -1669,7 +1669,7 @@ impl Strategy for SmartStrategy {
         let state = snapshot
             .state
             .as_ref()
-            .expect("SmartStrategy requires state");
+            .expect("SmartAggressive requires state");
         let token_balances = Self::token_balances(state);
         let tags_played = Self::tags_played(state);
 
@@ -1840,7 +1840,7 @@ impl Strategy for SmartStrategy {
         }
 
         panic!(
-            "SmartStrategy: no actionable option found in {:?}",
+            "SmartAggressive: no actionable option found in {:?}",
             possible_actions
         );
     }

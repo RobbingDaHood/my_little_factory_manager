@@ -28,11 +28,25 @@ pub struct GameSnapshot<'a> {
     pub possible_actions: Vec<PossibleAction>,
 }
 
+/// Snapshot of cumulative contract outcomes at the moment a milestone tier
+/// was first reached. Lets the report show "to first complete tier 20, the
+/// strategy completed N tier-3 contracts, M tier-4 contracts, ..." which is
+/// the progression-speed metric we now optimise for.
+#[derive(Debug, Clone, Serialize)]
+pub struct ProgressionSnapshot {
+    pub actions: u64,
+    pub completed_per_tier: HashMap<u32, u32>,
+    pub failed_per_tier: HashMap<u32, u32>,
+    pub abandoned_per_tier: HashMap<u32, u32>,
+}
+
 /// Total actions taken when the first contract at a specific milestone tier was completed.
 #[derive(Debug, Clone, Serialize)]
 pub struct MilestoneResult {
     pub tier: u32,
     pub actions_to_reach: u64,
+    /// Cumulative contract counts (per tier) at the moment this milestone was first hit.
+    pub progression: ProgressionSnapshot,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -40,7 +54,6 @@ pub struct MilestoneResult {
 pub enum ExitReason {
     Completed,
     ActionLimitExceeded,
-    StallDetected,
 }
 
 /// Results from one complete simulated game.
@@ -88,10 +101,15 @@ impl GameResult {
 
 /// Drives one game session from `NewGame` until all milestones are reached or
 /// the action budget is exhausted.
+///
+/// There is no "stall" exit: if the strategy keeps completing same-tier
+/// contracts indefinitely, that's its choice — the only termination signals
+/// are the action budget, all milestones reached, or an empty action set.
+/// The progression-speed metrics in `MilestoneResult.progression` capture
+/// how efficiently each strategy advances tiers within the action budget.
 pub struct GameDriver {
     pub max_actions: u64,
     pub milestone_tiers: Vec<u32>,
-    pub max_contracts_without_tier_progress: u64,
 }
 
 impl GameDriver {
@@ -99,13 +117,7 @@ impl GameDriver {
         Self {
             max_actions,
             milestone_tiers,
-            max_contracts_without_tier_progress: 1000,
         }
-    }
-
-    pub fn with_stall_threshold(mut self, threshold: u64) -> Self {
-        self.max_contracts_without_tier_progress = threshold;
-        self
     }
 
     pub fn play_game(&self, seed: u64, strategy: &dyn Strategy) -> GameResult {
@@ -115,9 +127,6 @@ impl GameDriver {
         let mut result = GameResult::new(seed);
         let milestone_set: HashSet<u32> = self.milestone_tiers.iter().cloned().collect();
         let mut reached_milestones: HashSet<u32> = HashSet::new();
-
-        let mut current_tier: u32 = 0;
-        let mut contracts_since_last_tier: u64 = 0;
 
         loop {
             let non_new_game: Vec<PossibleAction> = state
@@ -170,19 +179,19 @@ impl GameDriver {
                             result.max_tier_reached =
                                 Some(result.max_tier_reached.map_or(tier, |t: u32| t.max(tier)));
 
-                            if tier > current_tier {
-                                current_tier = tier;
-                                contracts_since_last_tier = 0;
-                            } else {
-                                contracts_since_last_tier += 1;
-                            }
-
                             if milestone_set.contains(&tier) && !reached_milestones.contains(&tier)
                             {
                                 reached_milestones.insert(tier);
+                                let progression = ProgressionSnapshot {
+                                    actions: result.total_actions,
+                                    completed_per_tier: result.completed_per_tier.clone(),
+                                    failed_per_tier: result.failed_per_tier.clone(),
+                                    abandoned_per_tier: result.abandoned_per_tier.clone(),
+                                };
                                 result.milestones.push(MilestoneResult {
                                     tier,
                                     actions_to_reach: result.total_actions,
+                                    progression,
                                 });
                             }
                         }
@@ -190,7 +199,6 @@ impl GameDriver {
                             let tier = contract.tier.0;
                             result.contracts_failed += 1;
                             *result.failed_per_tier.entry(tier).or_insert(0) += 1;
-                            contracts_since_last_tier += 1;
                             let failure_type = match reason {
                                 ContractFailureReason::HarmfulTokenLimitExceeded { .. } => {
                                     "HarmfulTokenLimitExceeded"
@@ -213,11 +221,6 @@ impl GameDriver {
 
             if reached_milestones.len() == self.milestone_tiers.len() {
                 result.exit_reason = ExitReason::Completed;
-                break;
-            }
-
-            if contracts_since_last_tier >= self.max_contracts_without_tier_progress {
-                result.exit_reason = ExitReason::StallDetected;
                 break;
             }
 

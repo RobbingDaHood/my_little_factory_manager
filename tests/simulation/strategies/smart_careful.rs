@@ -1,8 +1,8 @@
-//! SmartStrategyV2 — success-probability-based contract acceptance.
+//! SmartCareful — success-probability-based contract acceptance.
 //!
-//! ## Why a V2
+//! ## Why a separate strategy
 //!
-//! The V1 SmartStrategy scores contracts by combining a tier weight, a soft
+//! `SmartAggressive` scores contracts by combining a tier weight, a soft
 //! infeasibility penalty, an advancement bonus, and a bracket-based
 //! `comfort_tier` overreach penalty. In practice the bracket-based comfort
 //! metric is too coarse: it jumps in steps of 4 unlock tiers (0 → 4 → 16 → 36)
@@ -15,7 +15,7 @@
 //!
 //! ## Approach
 //!
-//! V2 replaces the per-contract score with a multiplicative model:
+//! `SmartCareful` replaces the per-contract score with a multiplicative model:
 //!
 //!     score = success_probability × (BASE_COMPLETION_VALUE + reward_value)
 //!
@@ -23,7 +23,8 @@
 //!   - Current token balances (already accumulated progress).
 //!   - Hand contribution: sum of net production from cards currently in hand
 //!     (cards that are guaranteed playable, not just shuffled deep in the deck).
-//!   - Deck mean production rate per token (median-of-top-half, reused from V1).
+//!   - Deck mean production rate per token (median-of-top-half, reused from
+//!     `SmartAggressive`).
 //!   - Turn budget from the contract's `TurnWindow.max_turn`.
 //!   - Harmful-token overflow trajectory.
 //!
@@ -32,23 +33,26 @@
 //! multiplicatively across requirements (independence assumption — close
 //! enough for ranking).
 //!
-//! `reward_value` reuses V1's card quality and tag/token diversity bonuses, so
-//! a tier-30 contract whose reward card is a strong producer scores higher
-//! than a tier-3 contract with a weak reward — but only when the success
-//! probability is still meaningful. A tier-30 contract with success prob 0.05
-//! is dominated by a tier-3 contract with success prob 0.95.
+//! `reward_value` reuses `SmartAggressive`'s card quality and tag/token
+//! diversity bonuses, so a tier-30 contract whose reward card is a strong
+//! producer scores higher than a tier-3 contract with a weak reward — but
+//! only when the success probability is still meaningful. A tier-30 contract
+//! with success prob 0.05 is dominated by a tier-3 contract with success
+//! prob 0.95.
 //!
 //! ## Architecture
 //!
-//! V2 is a thin wrapper around V1. It owns a `SmartStrategy` and delegates all
-//! action selection to it, *intercepting only* the case where V1's chosen
-//! action is `AcceptContract` — at that point V2 substitutes its own
-//! probability-based contract choice. All other behaviour (deckbuilding, play
-//! card scoring, discard selection, abandon thresholds, livelock detection,
-//! adaptive tier reduction) is reused unchanged from V1.
+//! `SmartCareful` is a thin wrapper around `SmartAggressive`. It owns a
+//! `SmartAggressive` and delegates all action selection to it, *intercepting
+//! only* the case where the inner strategy's chosen action is `AcceptContract`
+//! — at that point `SmartCareful` substitutes its own probability-based
+//! contract choice. All other behaviour (deckbuilding, play card scoring,
+//! discard selection, abandon thresholds, livelock detection, adaptive tier
+//! reduction) is reused unchanged.
 //!
-//! This keeps the V2 diff small and ensures V1 remains usable independently —
-//! the two strategies can be benchmarked head-to-head.
+//! This keeps the `SmartCareful` diff small and ensures `SmartAggressive`
+//! remains usable independently — the two strategies can be benchmarked
+//! head-to-head on the same seeds.
 
 use std::collections::HashMap;
 
@@ -59,7 +63,7 @@ use my_little_factory_manager::types::{
 };
 
 use crate::game_driver::GameSnapshot;
-use crate::strategies::smart_strategy::SmartStrategy;
+use crate::strategies::smart_aggressive::SmartAggressive;
 use crate::strategies::Strategy;
 
 /// Default turns budget for contracts with no explicit `max_turn` deadline.
@@ -84,17 +88,15 @@ const TAG_CAP_SHARPNESS: f64 = 8.0;
 const PER_REQUIREMENT_FLOOR: f64 = 0.02;
 
 /// Constant value of completing any contract, on top of its reward value.
-/// Captures the stall-budget reset and the tier-progress ratchet that
-/// `reward_value` doesn't directly model. Tuned so a low-reward contract with
-/// high success prob still ranks above a high-reward contract whose success
-/// prob is below ~0.2 — which matches the issue #115 preference for reliable
-/// progression over volatile peaks.
+/// Tuned so a low-reward contract with high success prob still ranks above a
+/// high-reward contract whose success prob is below ~0.2 — matching the
+/// issue #115 preference for reliable progression over volatile peaks.
 const BASE_COMPLETION_VALUE: f64 = 50.0;
 
-/// Weight applied to the reward card's general quality (V1 metric).
+/// Weight applied to the reward card's general quality (SmartAggressive metric).
 const REWARD_QUALITY_WEIGHT: f64 = 1.0;
 
-/// Weight applied to the V1 tag/token diversity bonuses.
+/// Weight applied to the SmartAggressive tag/token diversity bonuses.
 const REWARD_DIVERSITY_WEIGHT: f64 = 0.5;
 
 /// Per-token "option value" bonus when the contract's reward card produces a
@@ -120,12 +122,12 @@ const BRACKET_JUMP_OPTION_VALUE: f64 = 35.0;
 const TIER_SCALE: f64 = 0.1;
 
 /// Per-tier discount applied to contracts whose tier is *below* the highest
-/// tier available in the current offer pool. The simulation runner stalls
-/// after 1000 contracts without a strictly-higher tier completion
-/// (game_driver.rs), so completing a contract below the tier-progress
-/// frontier does not advance the ratchet — it just consumes stall budget.
-/// Without this discount, V2 happily grinds tier-3 contracts forever
-/// (verified empirically: avg max_tier 3.6 even with TIER_SCALE applied).
+/// tier available in the current offer pool. Without this discount,
+/// `SmartCareful` happily grinds tier-3 contracts forever (verified
+/// empirically: avg max_tier 3.6 even with TIER_SCALE applied). Within the
+/// action budget, progress measured by milestone-tier-reach-time is the
+/// primary objective; same-tier completions don't advance that, so we want
+/// the strategy to spend its actions on the offered frontier.
 ///
 /// Geometric discount: a tier-(frontier-2) contract is discounted by 0.2^2
 /// = 0.04. Tuned aggressive because empirical tests showed 0.4 was still
@@ -145,14 +147,14 @@ const BELOW_FRONTIER_DISCOUNT: f64 = 0.2;
 /// through probability.
 const SUCCESS_PROB_EXPONENT: f64 = 1.0;
 
-pub struct SmartStrategyV2 {
-    inner: SmartStrategy,
+pub struct SmartCareful {
+    inner: SmartAggressive,
 }
 
-impl SmartStrategyV2 {
+impl SmartCareful {
     pub fn new() -> Self {
         Self {
-            inner: SmartStrategy::new(),
+            inner: SmartAggressive::new(),
         }
     }
 
@@ -169,12 +171,12 @@ impl SmartStrategyV2 {
         cards: &[CardEntry],
         turns_left: f64,
     ) -> f64 {
-        let hand_contrib = SmartStrategy::hand_contribution(cards, token_type);
+        let hand_contrib = SmartAggressive::hand_contribution(cards, token_type);
         let needed_after_hand = min_required - current_balance - hand_contrib;
         if needed_after_hand <= 0.0 {
             return 0.99;
         }
-        let deck_mean = SmartStrategy::deck_effective_production(cards, token_type);
+        let deck_mean = SmartAggressive::deck_effective_production(cards, token_type);
         if deck_mean <= 0.0 {
             return PER_REQUIREMENT_FLOOR;
         }
@@ -199,7 +201,7 @@ impl SmartStrategyV2 {
         if current_balance > max_allowed {
             return 0.0;
         }
-        let deck_mean = SmartStrategy::deck_effective_production(cards, token_type);
+        let deck_mean = SmartAggressive::deck_effective_production(cards, token_type);
         if deck_mean <= 0.0 {
             return 0.99;
         }
@@ -219,11 +221,11 @@ impl SmartStrategyV2 {
         max_allowed: u32,
         cards: &[CardEntry],
     ) -> f64 {
-        let cycle = SmartStrategy::deck_cycle_size(cards);
+        let cycle = SmartAggressive::deck_cycle_size(cards);
         if cycle <= 0.0 {
             return 0.5;
         }
-        let tagged = SmartStrategy::deck_tag_count(cards, tag);
+        let tagged = SmartAggressive::deck_tag_count(cards, tag);
         let tagged_frac = tagged / cycle;
         // Heuristic allowed_frac: assume the strategy plays ~30 cards per contract,
         // so max_allowed cards tagged corresponds to allowed_frac ≈ max_allowed / 30.
@@ -301,13 +303,13 @@ impl SmartStrategyV2 {
         prob.clamp(0.0, 1.0)
     }
 
-    /// Reward value of a contract — what we get if we complete it. Reuses V1's
+    /// Reward value of a contract — what we get if we complete it. Reuses SmartAggressive's
     /// `card_general_quality` and diversity bonuses. Multiplied by success_prob
     /// in `score_contract`, so this represents conditional-on-completion value.
     fn reward_value(reward_card: &PlayerActionCard, cards: &[CardEntry]) -> f64 {
-        let quality = SmartStrategy::card_general_quality(reward_card);
-        let tag_bonus = SmartStrategy::tag_diversity_bonus(reward_card, cards);
-        let token_bonus = SmartStrategy::token_diversity_bonus(reward_card, cards);
+        let quality = SmartAggressive::card_general_quality(reward_card);
+        let tag_bonus = SmartAggressive::tag_diversity_bonus(reward_card, cards);
+        let token_bonus = SmartAggressive::token_diversity_bonus(reward_card, cards);
         quality * REWARD_QUALITY_WEIGHT + (tag_bonus + token_bonus) * REWARD_DIVERSITY_WEIGHT
     }
 
@@ -327,11 +329,11 @@ impl SmartStrategyV2 {
         ]
         .iter()
         .map(|t| {
-            let card_makes = SmartStrategy::card_net_production(reward_card, t);
+            let card_makes = SmartAggressive::card_net_production(reward_card, t);
             if card_makes <= 0.0 {
                 return 0.0;
             }
-            let deck_makes = SmartStrategy::deck_effective_production(cards, t);
+            let deck_makes = SmartAggressive::deck_effective_production(cards, t);
             if deck_makes > 0.0 {
                 0.0
             } else {
@@ -410,15 +412,15 @@ impl SmartStrategyV2 {
     }
 }
 
-impl Default for SmartStrategyV2 {
+impl Default for SmartCareful {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Strategy for SmartStrategyV2 {
+impl Strategy for SmartCareful {
     fn name(&self) -> &str {
-        "smart_v2"
+        "smart_careful"
     }
 
     fn needs_state(&self) -> bool {
@@ -430,11 +432,11 @@ impl Strategy for SmartStrategyV2 {
         possible_actions: &[PossibleAction],
         snapshot: &GameSnapshot,
     ) -> PlayerAction {
-        // Delegate to V1 for everything (deckbuild, play, discard, abandon, livelock,
-        // adaptive bookkeeping). V1's internal state mutations (consecutive_discards,
-        // outcome window, etc.) stay consistent because we either accept V1's action
-        // verbatim or substitute a *different* `AcceptContract` for V1's chosen
-        // `AcceptContract`. V1 has already done the "we're accepting a contract"
+        // Delegate to SmartAggressive for everything (deckbuild, play, discard, abandon, livelock,
+        // adaptive bookkeeping). SmartAggressive's internal state mutations (consecutive_discards,
+        // outcome window, etc.) stay consistent because we either accept SmartAggressive's action
+        // verbatim or substitute a *different* `AcceptContract` for SmartAggressive's chosen
+        // `AcceptContract`. SmartAggressive has already done the "we're accepting a contract"
         // bookkeeping (consecutive_discards reset) by the time it returns.
         let v1_action = self.inner.choose_action(possible_actions, snapshot);
         if !matches!(v1_action, PlayerAction::AcceptContract { .. }) {
@@ -443,8 +445,8 @@ impl Strategy for SmartStrategyV2 {
         let state = snapshot
             .state
             .as_ref()
-            .expect("SmartStrategyV2 requires state");
-        let token_balances = SmartStrategy::token_balances(state);
+            .expect("SmartCareful requires state");
+        let token_balances = SmartAggressive::token_balances(state);
         let valid_tiers = match possible_actions.iter().find_map(|a| match a {
             PossibleAction::AcceptContract { valid_tiers } => Some(valid_tiers.as_slice()),
             _ => None,

@@ -46,10 +46,6 @@
 - **OpenAPI doc comments**: update `///` comments on handler functions and action enum variants when adding or changing endpoints. Explain strategic purpose, not just the signature.
 - **README.md**: add new endpoints to the API endpoint table.
 
-## GitHub operations
-
-Use `gh` and `git` for all repository and GitHub operations. `gh` authenticates via `GH_TOKEN` in `.env` (never commit `.env`). If `GH_TOKEN` is not set, source it: `export $(cat .env | xargs)`.
-
 ## Stream Timeout Prevention
 1. Do each numbered task ONE AT A TIME. Complete one task fully, confirm it worked, then move to the next.
 2. Never write a file longer than ~150 lines in a single tool call. If a file will be longer, write it in multiple append/edit passes.

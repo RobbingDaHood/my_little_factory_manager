@@ -3,7 +3,8 @@ use my_little_factory_manager::game_state::PossibleAction;
 
 use crate::game_driver::GameSnapshot;
 
-pub mod smart_strategy;
+pub mod smart_aggressive;
+pub mod smart_careful;
 
 /// A pluggable gameplay strategy for simulation.
 ///

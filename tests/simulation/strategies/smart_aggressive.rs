@@ -63,7 +63,7 @@ const SLOW_PROGRESS_MIN_FRACTION: f64 = 0.3;
 /// strategy away from contracts whose requirements were heavily tightened by the adaptive
 /// system (indicating those token dimensions are under pressure), and toward contracts
 /// in areas the player has under-used — naturally relaxing adaptive pressure over time.
-pub struct SmartStrategy {
+pub struct SmartAggressive {
     consecutive_discards: Cell<u32>,
     // top-30 per tag sorted desc by quality; updated incrementally on new shelf arrivals
     best_per_tag: RefCell<HashMap<CardTag, Vec<(u64, f64)>>>,
@@ -81,7 +81,7 @@ pub struct SmartStrategy {
     last_action_was_abandon: Cell<bool>,
 }
 
-impl SmartStrategy {
+impl SmartAggressive {
     pub fn new() -> Self {
         Self {
             consecutive_discards: Cell::new(0),
@@ -113,7 +113,7 @@ impl SmartStrategy {
 
     // State helpers
 
-    fn token_balances(state: &StrategyView) -> HashMap<TokenType, i64> {
+    pub(super) fn token_balances(state: &StrategyView) -> HashMap<TokenType, i64> {
         state
             .tokens
             .iter()
@@ -144,7 +144,7 @@ impl SmartStrategy {
 
     // Card quality
 
-    fn card_general_quality(card: &PlayerActionCard) -> f64 {
+    pub(super) fn card_general_quality(card: &PlayerActionCard) -> f64 {
         let mut net: HashMap<&TokenType, f64> = HashMap::new();
         for effect in &card.effects {
             for o in &effect.outputs {
@@ -172,7 +172,7 @@ impl SmartStrategy {
         score
     }
 
-    fn card_net_production(card: &PlayerActionCard, token_type: &TokenType) -> f64 {
+    pub(super) fn card_net_production(card: &PlayerActionCard, token_type: &TokenType) -> f64 {
         let mut net = 0.0;
         for effect in &card.effects {
             for o in &effect.outputs {
@@ -191,7 +191,7 @@ impl SmartStrategy {
 
     // Deck analysis helpers
 
-    fn deck_effective_production(cards: &[CardEntry], token_type: &TokenType) -> f64 {
+    pub(super) fn deck_effective_production(cards: &[CardEntry], token_type: &TokenType) -> f64 {
         let mut productions: Vec<f64> = Vec::new();
         for entry in cards {
             let in_cycle = entry.counts.non_shelved() as f64;
@@ -245,14 +245,37 @@ impl SmartStrategy {
             })
             .count()
     }
-    fn deck_tag_count(cards: &[CardEntry], tag: &CardTag) -> f64 {
+    /// Sum of net production for `token_type` across all card copies currently in hand.
+    /// Used by SmartCareful to estimate "what we already have ready to play this turn"
+    /// when scoring an offered contract — captures the difference between a contract that
+    /// is already half-covered by drawn cards and one whose required producers are still
+    /// shuffled deep in the deck.
+    pub(super) fn hand_contribution(cards: &[CardEntry], token_type: &TokenType) -> f64 {
+        cards
+            .iter()
+            .map(|e| {
+                let in_hand = e.counts.hand as f64;
+                if in_hand <= 0.0 {
+                    return 0.0;
+                }
+                let prod = Self::card_net_production(&e.card, token_type);
+                if prod <= 0.0 {
+                    0.0
+                } else {
+                    prod * in_hand
+                }
+            })
+            .sum()
+    }
+
+    pub(super) fn deck_tag_count(cards: &[CardEntry], tag: &CardTag) -> f64 {
         cards
             .iter()
             .filter(|e| e.counts.has_non_shelved() && e.card.tags.contains(tag))
             .map(|e| e.counts.non_shelved() as f64)
             .sum()
     }
-    fn deck_cycle_size(cards: &[CardEntry]) -> f64 {
+    pub(super) fn deck_cycle_size(cards: &[CardEntry]) -> f64 {
         cards.iter().map(|e| e.counts.non_shelved() as f64).sum()
     }
 
@@ -783,7 +806,7 @@ impl SmartStrategy {
 
     // Contract scoring
 
-    fn tag_diversity_bonus(reward_card: &PlayerActionCard, cards: &[CardEntry]) -> f64 {
+    pub(super) fn tag_diversity_bonus(reward_card: &PlayerActionCard, cards: &[CardEntry]) -> f64 {
         let mut bonus = 0.0;
         let cycle_size = Self::deck_cycle_size(cards);
         if cycle_size <= 0.0 {
@@ -802,7 +825,10 @@ impl SmartStrategy {
         bonus
     }
 
-    fn token_diversity_bonus(reward_card: &PlayerActionCard, cards: &[CardEntry]) -> f64 {
+    pub(super) fn token_diversity_bonus(
+        reward_card: &PlayerActionCard,
+        cards: &[CardEntry],
+    ) -> f64 {
         let mut bonus = 0.0;
 
         // Find all tokens produced by the reward card
@@ -1548,59 +1574,87 @@ impl SmartStrategy {
             None => HashMap::new(),
         };
 
-        for feasible_only in [true, false] {
-            let mut best: Option<(usize, usize, f64)> = None;
-            for tier_range in valid_tiers {
-                let tier_idx = tier_range.tier_index;
-                let min_c = tier_range.valid_contract_index_range.min;
-                let max_c = tier_range.valid_contract_index_range.max;
-                if let Some(tier_contracts) = offered.get(tier_idx) {
-                    for c_idx in min_c..=max_c {
-                        if let Some(contract) = tier_contracts.contracts.get(c_idx) {
-                            if feasible_only
-                                && Self::is_contract_impossible(
-                                    contract,
-                                    state.cards,
-                                    token_balances,
-                                    0,
-                                )
-                            {
-                                continue;
-                            }
-                            let s = Self::score_contract(
-                                contract,
-                                state.cards,
-                                token_balances,
-                                &needed_tokens,
-                                &target_deficit,
-                                tier_reduction,
-                            );
-                            if best.is_none_or(|(_, _, prev)| s > prev) {
-                                best = Some((tier_idx, c_idx, s));
-                            }
+        // Pass 1: among contracts that pass the feasibility filter, pick the
+        // highest-scoring one. This is the normal happy-path acceptance.
+        let mut best_feasible: Option<(usize, usize, f64)> = None;
+        for tier_range in valid_tiers {
+            let tier_idx = tier_range.tier_index;
+            let min_c = tier_range.valid_contract_index_range.min;
+            let max_c = tier_range.valid_contract_index_range.max;
+            if let Some(tier_contracts) = offered.get(tier_idx) {
+                for c_idx in min_c..=max_c {
+                    if let Some(contract) = tier_contracts.contracts.get(c_idx) {
+                        if Self::is_contract_impossible(contract, state.cards, token_balances, 0) {
+                            continue;
+                        }
+                        let s = Self::score_contract(
+                            contract,
+                            state.cards,
+                            token_balances,
+                            &needed_tokens,
+                            &target_deficit,
+                            tier_reduction,
+                        );
+                        if best_feasible.is_none_or(|(_, _, prev)| s > prev) {
+                            best_feasible = Some((tier_idx, c_idx, s));
                         }
                     }
                 }
             }
-            if let Some((t, c, _)) = best {
-                return Some(PlayerAction::AcceptContract {
-                    tier_index: t,
-                    contract_index: c,
-                });
-            }
+        }
+        if let Some((t, c, _)) = best_feasible {
+            return Some(PlayerAction::AcceptContract {
+                tier_index: t,
+                contract_index: c,
+            });
         }
 
-        let highest = valid_tiers.last()?;
+        // Pass 2: no feasible contract on the menu. Previously this re-ran scoring
+        // with `feasible_only = false`, which (because TIER_WEIGHT dominates the score)
+        // accepted the *highest-tier* infeasible contract — exactly the contract most
+        // likely to fail and burn the stall budget.
+        //
+        // Instead, accept the lowest-tier contract available. Lowest tier = highest
+        // completion probability = best chance to add reward cards to the shelf and
+        // grow the deck back into a state where pass 1 succeeds again.
+        let mut fallback: Option<(usize, usize, u32)> = None;
+        for tier_range in valid_tiers {
+            let tier_idx = tier_range.tier_index;
+            let min_c = tier_range.valid_contract_index_range.min;
+            let max_c = tier_range.valid_contract_index_range.max;
+            if let Some(tier_contracts) = offered.get(tier_idx) {
+                for c_idx in min_c..=max_c {
+                    if let Some(contract) = tier_contracts.contracts.get(c_idx) {
+                        let t = contract.tier.0;
+                        if fallback.is_none_or(|(_, _, prev_t)| t < prev_t) {
+                            fallback = Some((tier_idx, c_idx, t));
+                        }
+                    }
+                }
+            }
+        }
+        if let Some((t, c, _)) = fallback {
+            return Some(PlayerAction::AcceptContract {
+                tier_index: t,
+                contract_index: c,
+            });
+        }
+
+        // Final fallback when valid_tiers ranges produce no contracts at all
+        // (e.g., the contract market hasn't refilled). Take the lowest-tier slot
+        // in valid_tiers — replaces the previous valid_tiers.last() (highest tier),
+        // which biased the strategy toward overreach in this edge case.
+        let lowest = valid_tiers.first()?;
         Some(PlayerAction::AcceptContract {
-            tier_index: highest.tier_index,
-            contract_index: highest.valid_contract_index_range.min,
+            tier_index: lowest.tier_index,
+            contract_index: lowest.valid_contract_index_range.min,
         })
     }
 }
 
-impl Strategy for SmartStrategy {
+impl Strategy for SmartAggressive {
     fn name(&self) -> &str {
-        "smart"
+        "smart_aggressive"
     }
 
     fn needs_state(&self) -> bool {
@@ -1615,7 +1669,7 @@ impl Strategy for SmartStrategy {
         let state = snapshot
             .state
             .as_ref()
-            .expect("SmartStrategy requires state");
+            .expect("SmartAggressive requires state");
         let token_balances = Self::token_balances(state);
         let tags_played = Self::tags_played(state);
 
@@ -1786,7 +1840,7 @@ impl Strategy for SmartStrategy {
         }
 
         panic!(
-            "SmartStrategy: no actionable option found in {:?}",
+            "SmartAggressive: no actionable option found in {:?}",
             possible_actions
         );
     }

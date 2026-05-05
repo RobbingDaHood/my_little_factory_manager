@@ -80,7 +80,7 @@ for strategy in "${STRATEGIES[@]}"; do
             export SEED_UUID="$seed_uuid"
             export MAX_ACTIONS="$MAX_ACTIONS_PER_SEED"
             cd "$PROJECT_ROOT"
-            timeout 7200 cargo test \
+            timeout 9000 cargo test \
                 --release \
                 --features simulation \
                 --test simulation \

@@ -154,6 +154,10 @@ pub struct GameStateView {
 /// overhead of cloning all cards/contracts and serializing to JSON. References are
 /// borrowed directly from GameState, avoiding allocation overhead during repeated
 /// state introspection (e.g., choosing actions in a 100K+ action simulation).
+///
+/// Only available behind the `simulation` feature, since the production HTTP
+/// surface relies exclusively on `GameStateView`.
+#[cfg(feature = "simulation")]
 #[derive(Debug)]
 pub struct StrategyView<'a> {
     pub seed: u64,
@@ -382,6 +386,7 @@ impl GameState {
     ///
     /// This is suitable for internal strategy evaluation during simulations. For HTTP API
     /// responses, use `view()` which returns the full JSON-serializable snapshot.
+    #[cfg(feature = "simulation")]
     pub fn view_for_scoring(&self) -> StrategyView<'_> {
         StrategyView {
             seed: self.seed,

@@ -9,7 +9,7 @@
 //! The overlay is applied to newly generated contracts *after* base requirements
 //! are rolled, so the underlying generation logic stays untouched.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use rocket::serde::Serialize;
 use schemars::JsonSchema;
@@ -139,11 +139,6 @@ impl AdaptiveBalanceTracker {
         adjustments
     }
 
-    /// Current pressure values — exposed for transparency endpoints.
-    pub fn pressures(&self) -> &HashMap<TokenType, f64> {
-        &self.token_pressure
-    }
-
     // -----------------------------------------------------------------------
     // Internal
     // -----------------------------------------------------------------------
@@ -153,20 +148,20 @@ impl AdaptiveBalanceTracker {
         let decay = self.config.decay_rate;
 
         // Collect all token types we've ever seen pressure for OR produced this contract.
-        let mut all_tokens: Vec<TokenType> = self.token_pressure.keys().cloned().collect();
-        for t in self.contract_gross_produced.keys() {
-            if !all_tokens.contains(t) {
-                all_tokens.push(t.clone());
-            }
-        }
+        let all_tokens: HashSet<TokenType> = self
+            .token_pressure
+            .keys()
+            .chain(self.contract_gross_produced.keys())
+            .cloned()
+            .collect();
 
-        for token_type in &all_tokens {
+        for token_type in all_tokens {
             let produced = self
                 .contract_gross_produced
-                .get(token_type)
+                .get(&token_type)
                 .copied()
                 .unwrap_or(0) as f64;
-            let current = self.token_pressure.get(token_type).copied().unwrap_or(0.0);
+            let current = self.token_pressure.get(&token_type).copied().unwrap_or(0.0);
 
             let new_pressure = if produced > 0.0 {
                 alpha * produced + (1.0 - alpha) * current
@@ -174,7 +169,7 @@ impl AdaptiveBalanceTracker {
                 current * decay
             };
 
-            self.token_pressure.insert(token_type.clone(), new_pressure);
+            self.token_pressure.insert(token_type, new_pressure);
         }
     }
 }

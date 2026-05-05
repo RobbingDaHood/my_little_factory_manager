@@ -229,6 +229,15 @@ fn test_config() -> AdaptiveBalanceConfig {
     }
 }
 
+fn pressure_for(tracker: &AdaptiveBalanceTracker, token: &TokenType) -> f64 {
+    tracker
+        .pressure_snapshot()
+        .into_iter()
+        .find(|tp| tp.token_type == *token)
+        .map(|tp| tp.pressure)
+        .unwrap_or(0.0)
+}
+
 #[test]
 fn pressure_increases_with_production() {
     let mut tracker = AdaptiveBalanceTracker::new(test_config());
@@ -236,11 +245,7 @@ fn pressure_increases_with_production() {
     tracker.record_token_produced(&TokenType::Heat, 100);
     tracker.on_contract_completed();
 
-    let pressure = tracker
-        .pressures()
-        .get(&TokenType::Heat)
-        .copied()
-        .unwrap_or(0.0);
+    let pressure = pressure_for(&tracker, &TokenType::Heat);
     assert!(
         pressure > 0.0,
         "pressure should be positive after producing Heat: {pressure}"
@@ -254,20 +259,12 @@ fn pressure_decays_for_unused_tokens() {
     // First contract: produce Heat
     tracker.record_token_produced(&TokenType::Heat, 100);
     tracker.on_contract_completed();
-    let p1 = tracker
-        .pressures()
-        .get(&TokenType::Heat)
-        .copied()
-        .unwrap_or(0.0);
+    let p1 = pressure_for(&tracker, &TokenType::Heat);
 
     // Second contract: produce nothing with Heat
     tracker.record_token_produced(&TokenType::ProductionUnit, 50);
     tracker.on_contract_completed();
-    let p2 = tracker
-        .pressures()
-        .get(&TokenType::Heat)
-        .copied()
-        .unwrap_or(0.0);
+    let p2 = pressure_for(&tracker, &TokenType::Heat);
 
     assert!(
         p2 < p1,
@@ -282,19 +279,11 @@ fn failure_relaxes_all_pressures() {
     // Build up pressure
     tracker.record_token_produced(&TokenType::Heat, 100);
     tracker.on_contract_completed();
-    let before = tracker
-        .pressures()
-        .get(&TokenType::Heat)
-        .copied()
-        .unwrap_or(0.0);
+    let before = pressure_for(&tracker, &TokenType::Heat);
 
     // Fail the next contract WITHOUT producing more Heat
     tracker.on_contract_failed();
-    let after = tracker
-        .pressures()
-        .get(&TokenType::Heat)
-        .copied()
-        .unwrap_or(0.0);
+    let after = pressure_for(&tracker, &TokenType::Heat);
 
     assert!(
         after < before,

@@ -63,15 +63,10 @@ impl ActionLog {
         }
     }
 
-    /// The sequence number that the next appended entry will receive.
-    pub fn next_seq(&self) -> u64 {
-        self.entries.len() as u64
-    }
-
     /// Append an action and return the created entry.
     pub fn append(&mut self, action: PlayerAction) -> ActionEntry {
         let entry = ActionEntry {
-            seq: self.next_seq(),
+            seq: self.entries.len() as u64,
             action,
         };
         self.entries.push(entry.clone());
@@ -81,11 +76,6 @@ impl ActionLog {
     /// Return a snapshot of all entries.
     pub fn entries(&self) -> &[ActionEntry] {
         &self.entries
-    }
-
-    /// Clear the log (used on NewGame).
-    pub fn clear(&mut self) {
-        self.entries.clear();
     }
 }
 

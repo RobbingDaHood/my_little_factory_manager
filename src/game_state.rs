@@ -19,7 +19,7 @@ use crate::starter_cards::create_starter_deck;
 use crate::types::{
     add_card_to_entries, CardEffect, CardEntry, CardLocation, CardTag, Contract,
     ContractFailureReason, ContractRequirementKind, ContractResolution, ContractTier,
-    PlayerActionCard, TierContracts, TokenAmount, TokenType,
+    TierContracts, TokenAmount, TokenType,
 };
 
 use rocket::serde::Serialize;
@@ -154,6 +154,10 @@ pub struct GameStateView {
 /// overhead of cloning all cards/contracts and serializing to JSON. References are
 /// borrowed directly from GameState, avoiding allocation overhead during repeated
 /// state introspection (e.g., choosing actions in a 100K+ action simulation).
+///
+/// Only available behind the `simulation` feature, since the production HTTP
+/// surface relies exclusively on `GameStateView`.
+#[cfg(feature = "simulation")]
 #[derive(Debug)]
 pub struct StrategyView<'a> {
     pub seed: u64,
@@ -368,7 +372,7 @@ impl GameState {
                         count,
                     })
                     .collect();
-                v.sort_by(|a, b| format!("{:?}", a.tag).cmp(&format!("{:?}", b.tag)));
+                v.sort_by(|a, b| a.tag.cmp(&b.tag));
                 v
             },
         }
@@ -382,6 +386,7 @@ impl GameState {
     ///
     /// This is suitable for internal strategy evaluation during simulations. For HTTP API
     /// responses, use `view()` which returns the full JSON-serializable snapshot.
+    #[cfg(feature = "simulation")]
     pub fn view_for_scoring(&self) -> StrategyView<'_> {
         StrategyView {
             seed: self.seed,
@@ -404,10 +409,6 @@ impl GameState {
         metrics
     }
 
-    pub fn adaptive_pressure(&self) -> Vec<crate::adaptive_balance::TokenPressure> {
-        self.adaptive_tracker.pressure_snapshot()
-    }
-
     pub fn offered_contracts(&self) -> &[TierContracts] {
         &self.offered_contracts
     }
@@ -428,35 +429,29 @@ impl GameState {
     pub fn tokens_view(&self) -> PlayerTokensView {
         use crate::types::TokenTag;
 
-        let all_tokens: Vec<TokenAmount> = self
-            .tokens
-            .iter()
-            .filter(|(_, &amount)| amount > 0)
-            .map(|(token_type, &amount)| TokenAmount {
+        let mut beneficial = Vec::new();
+        let mut harmful = Vec::new();
+        let mut progression = Vec::new();
+
+        for (token_type, &amount) in &self.tokens {
+            if amount == 0 {
+                continue;
+            }
+            let entry = TokenAmount {
                 token_type: token_type.clone(),
                 amount,
-            })
-            .collect();
+            };
+            for tag in token_type.tags() {
+                match tag {
+                    TokenTag::Beneficial => beneficial.push(entry.clone()),
+                    TokenTag::Harmful => harmful.push(entry.clone()),
+                    TokenTag::Progression => progression.push(entry.clone()),
+                }
+            }
+        }
 
-        let mut beneficial: Vec<TokenAmount> = all_tokens
-            .iter()
-            .filter(|t| t.token_type.tags().contains(&TokenTag::Beneficial))
-            .cloned()
-            .collect();
         beneficial.sort_by(|a, b| a.token_type.cmp(&b.token_type));
-
-        let mut harmful: Vec<TokenAmount> = all_tokens
-            .iter()
-            .filter(|t| t.token_type.tags().contains(&TokenTag::Harmful))
-            .cloned()
-            .collect();
         harmful.sort_by(|a, b| a.token_type.cmp(&b.token_type));
-
-        let mut progression: Vec<TokenAmount> = all_tokens
-            .iter()
-            .filter(|t| t.token_type.tags().contains(&TokenTag::Progression))
-            .cloned()
-            .collect();
         progression.sort_by(|a, b| a.token_type.cmp(&b.token_type));
 
         PlayerTokensView {
@@ -1043,9 +1038,11 @@ impl GameState {
     /// Check for contract failure (first) then completion. Failure takes precedence.
     fn try_resolve_contract(&mut self) -> Option<ContractResolution> {
         let contract = self.active_contract.as_ref()?.clone();
+        let (output_thresholds, harmful_limits) =
+            Self::aggregate_requirements(&contract.requirements);
 
         // 1. Check failure conditions (failure-first ordering)
-        if let Some(reason) = self.check_contract_failure(&contract) {
+        if let Some(reason) = self.check_contract_failure(&contract, &harmful_limits) {
             self.metrics_tracker.record_contract_failed(contract.tier.0);
             self.adaptive_tracker.on_contract_failed();
             self.active_contract = None;
@@ -1056,17 +1053,23 @@ impl GameState {
         }
 
         // 2. Check completion
-        if !self.all_requirements_met(&contract) {
+        if !self.all_requirements_met(&contract, &output_thresholds, &harmful_limits) {
             return None;
         }
 
-        self.subtract_contract_tokens(&contract);
+        for (token_type, total_min) in &output_thresholds {
+            self.remove_tokens(token_type, *total_min);
+        }
         self.add_tokens(&TokenType::ContractsTierCompleted(contract.tier.0), 1);
         self.metrics_tracker
             .record_contract_completed(contract.tier.0);
         self.adaptive_tracker.on_contract_completed();
 
-        self.add_reward_card(&contract.reward_card);
+        add_card_to_entries(
+            &mut self.cards,
+            &contract.reward_card,
+            CardLocation::Shelved,
+        );
 
         self.active_contract = None;
         self.contract_turns_played = 0;
@@ -1079,17 +1082,20 @@ impl GameState {
     /// Check all failure conditions on the active contract. Returns the first
     /// violation found (deterministic order: harmful limits by token sort order,
     /// then turn window).
-    fn check_contract_failure(&self, contract: &Contract) -> Option<ContractFailureReason> {
+    fn check_contract_failure(
+        &self,
+        contract: &Contract,
+        harmful_limits: &HashMap<TokenType, u32>,
+    ) -> Option<ContractFailureReason> {
         // Check HarmfulTokenLimit violations (sorted by TokenType for determinism)
-        let (_, harmful_limits) = Self::aggregate_requirements(&contract.requirements);
-        let mut sorted_limits: Vec<_> = harmful_limits.into_iter().collect();
-        sorted_limits.sort_by(|a, b| a.0.cmp(&b.0));
+        let mut sorted_limits: Vec<_> = harmful_limits.iter().collect();
+        sorted_limits.sort_by(|a, b| a.0.cmp(b.0));
 
-        for (token_type, max_amount) in sorted_limits {
-            let current = self.tokens.get(&token_type).copied().unwrap_or(0);
+        for (token_type, &max_amount) in sorted_limits {
+            let current = self.tokens.get(token_type).copied().unwrap_or(0);
             if current > max_amount {
                 return Some(ContractFailureReason::HarmfulTokenLimitExceeded {
-                    token_type,
+                    token_type: token_type.clone(),
                     max_amount,
                     current_amount: current,
                 });
@@ -1115,21 +1121,19 @@ impl GameState {
         None
     }
 
-    fn add_reward_card(&mut self, card: &PlayerActionCard) {
-        add_card_to_entries(&mut self.cards, card, CardLocation::Shelved);
-    }
-
-    fn all_requirements_met(&self, contract: &Contract) -> bool {
-        let (output_thresholds, harmful_limits) =
-            Self::aggregate_requirements(&contract.requirements);
-
-        for (token_type, total_min) in &output_thresholds {
+    fn all_requirements_met(
+        &self,
+        contract: &Contract,
+        output_thresholds: &HashMap<TokenType, u32>,
+        harmful_limits: &HashMap<TokenType, u32>,
+    ) -> bool {
+        for (token_type, total_min) in output_thresholds {
             if self.tokens.get(token_type).copied().unwrap_or(0) < *total_min {
                 return false;
             }
         }
 
-        for (token_type, tightest_max) in &harmful_limits {
+        for (token_type, tightest_max) in harmful_limits {
             if self.tokens.get(token_type).copied().unwrap_or(0) > *tightest_max {
                 return false;
             }
@@ -1202,13 +1206,6 @@ impl GameState {
         }
 
         (output_thresholds, harmful_limits)
-    }
-
-    fn subtract_contract_tokens(&mut self, contract: &Contract) {
-        let (output_thresholds, _) = Self::aggregate_requirements(&contract.requirements);
-        for (token_type, total_min) in &output_thresholds {
-            self.remove_tokens(token_type, *total_min);
-        }
     }
 }
 

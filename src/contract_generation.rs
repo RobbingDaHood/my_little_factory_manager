@@ -25,7 +25,61 @@ use crate::types::{
     PlayerActionCard, TokenAmount, TokenType, VariationDirection,
 };
 
-type RequirementGenerator = Box<dyn Fn(&mut Pcg64) -> ContractRequirementKind>;
+/// A lightweight descriptor of a requirement that can be generated at a given tier.
+///
+/// Replaces a previous `Box<dyn Fn>`-based dispatch so that listing the
+/// generators for a tier costs no heap allocations and only borrows from
+/// the cached config.
+enum RequirementGenerator<'a> {
+    BeneficialMin {
+        token: TokenType,
+        formula: &'a TierScalingFormula,
+        tier: u32,
+    },
+    HarmfulMax {
+        token: TokenType,
+        formula: &'a TierScalingFormula,
+        tier: u32,
+    },
+    TurnWindow {
+        config: &'a TurnWindowFormulaConfig,
+        tier: u32,
+    },
+    CardTagConstraint {
+        config: &'a CardTagConstraintFormulaConfig,
+        tags: &'a [CardTag],
+        tier: u32,
+    },
+}
+
+impl RequirementGenerator<'_> {
+    fn generate(&self, rng: &mut Pcg64) -> ContractRequirementKind {
+        match self {
+            Self::BeneficialMin {
+                token,
+                formula,
+                tier,
+            } => ContractRequirementKind::TokenRequirement {
+                token_type: token.clone(),
+                min: Some(roll_from_formula(*tier, formula, rng)),
+                max: None,
+            },
+            Self::HarmfulMax {
+                token,
+                formula,
+                tier,
+            } => ContractRequirementKind::TokenRequirement {
+                token_type: token.clone(),
+                min: None,
+                max: Some(roll_from_formula(*tier, formula, rng)),
+            },
+            Self::TurnWindow { config, tier } => generate_turn_window(*tier, config, rng),
+            Self::CardTagConstraint { config, tags, tier } => {
+                generate_card_tag_constraint(*tier, config, tags, rng)
+            }
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Core formula helpers
@@ -376,69 +430,60 @@ fn unlocked_card_tags(tier: u32, effect_types: &[CardEffectTypeConfig]) -> Vec<C
 /// Harmful-token maximum requirements use the full current-tier unlock set
 /// because the player can only exceed them by actively playing cards that
 /// produce the harmful token, which are also only unlocked progressively.
-fn available_requirement_generators(
+fn available_requirement_generators<'a>(
     tier: u32,
-    formulas: &ContractFormulasConfig,
-    cached_config: &CachedConfig,
-) -> Vec<RequirementGenerator> {
-    let mut generators: Vec<RequirementGenerator> = Vec::new();
+    formulas: &'a ContractFormulasConfig,
+    cached_config: &'a CachedConfig,
+) -> Vec<RequirementGenerator<'a>> {
+    let mut generators: Vec<RequirementGenerator<'a>> = Vec::new();
 
     // Beneficial min requirements: two tiers prior. Requirements are generated at
     // req_tier which can be up to contract_tier + 1, so we need to subtract 2 to
     // guarantee the token's producer was unlocked a full tier before the contract
     // tier. `0.saturating_sub(2) == 0` keeps ProductionUnit (unlock tier 0) in
     // the tier-0 pool.
-    let beneficial_min_tokens = cached_config.unlocked_tokens_at(tier.saturating_sub(2));
-    for token in beneficial_min_tokens {
+    for token in cached_config.unlocked_tokens_at(tier.saturating_sub(2)) {
         if token.is_beneficial() {
-            let t = token.clone();
-            let formula = formulas.output_threshold.clone();
-            generators.push(Box::new(move |rng: &mut Pcg64| {
-                ContractRequirementKind::TokenRequirement {
-                    token_type: t.clone(),
-                    min: Some(roll_from_formula(tier, &formula, rng)),
-                    max: None,
-                }
-            }));
+            generators.push(RequirementGenerator::BeneficialMin {
+                token: token.clone(),
+                formula: &formulas.output_threshold,
+                tier,
+            });
         }
     }
 
     // Harmful max requirements: full current-tier set — safe because the player
     // only accumulates harmful tokens by playing cards that produce them.
-    let harmful_max_tokens = cached_config.unlocked_tokens_at(tier);
-    for token in harmful_max_tokens {
+    for token in cached_config.unlocked_tokens_at(tier) {
         if token.is_harmful() {
-            let t = token.clone();
-            let formula = formulas.harmful_token_limit.clone();
-            generators.push(Box::new(move |rng: &mut Pcg64| {
-                ContractRequirementKind::TokenRequirement {
-                    token_type: t.clone(),
-                    min: None,
-                    max: Some(roll_from_formula(tier, &formula, rng)),
-                }
-            }));
+            generators.push(RequirementGenerator::HarmfulMax {
+                token: token.clone(),
+                formula: &formulas.harmful_token_limit,
+                tier,
+            });
         }
     }
 
     // TurnWindow generator — unlocks in the Energy→Waste gap
     if let Some(tw_config) = formulas.turn_window.as_ref() {
         if tier >= tw_config.unlock_tier_only_max {
-            let tw = tw_config.clone();
-            generators.push(Box::new(move |rng: &mut Pcg64| {
-                generate_turn_window(tier, &tw, rng)
-            }));
+            generators.push(RequirementGenerator::TurnWindow {
+                config: tw_config,
+                tier,
+            });
         }
     }
 
     // CardTagConstraint generator — unlocks in the Waste→QP gap
     if let Some(ctc_config) = formulas.card_tag_constraint.as_ref() {
         if tier >= ctc_config.unlock_tier_only_max {
-            let available_tags = cached_config.unlocked_tags_at(tier).to_vec();
-            if !available_tags.is_empty() {
-                let ctc = ctc_config.clone();
-                generators.push(Box::new(move |rng: &mut Pcg64| {
-                    generate_card_tag_constraint(tier, &ctc, &available_tags, rng)
-                }));
+            let tags = cached_config.unlocked_tags_at(tier);
+            if !tags.is_empty() {
+                generators.push(RequirementGenerator::CardTagConstraint {
+                    config: ctc_config,
+                    tags,
+                    tier,
+                });
             }
         }
     }
@@ -627,7 +672,7 @@ pub fn generate_contract_with_types(
             continue;
         }
         let gen_idx = rng.next_u32() as usize % generators.len();
-        requirements.push(generators[gen_idx](rng));
+        requirements.push(generators[gen_idx].generate(rng));
     }
 
     // Apply adaptive balance overlay after base requirements are rolled

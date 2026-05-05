@@ -14,12 +14,13 @@ jobs:
     permissions:
       contents: write
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             artifact_suffix: linux-x86_64
-          - os: macos-latest
+          - os: macos-13
             target: x86_64-apple-darwin
             artifact_suffix: macos-x86_64
           - os: macos-latest
@@ -30,6 +31,12 @@ jobs:
             artifact_suffix: windows-x86_64.exe
 
     runs-on: ${{ matrix.os }}
+
+    env:
+      # Override rust-toolchain.toml (which pins nightly + rust-src) so release
+      # builds use stable. The crate compiles fine on stable and we avoid
+      # nightly components occasionally being unavailable for some platforms.
+      RUSTUP_TOOLCHAIN: stable
 
     steps:
       - name: Determine release tag
@@ -43,29 +50,37 @@ jobs:
             TAG="${{ github.event.inputs.release_tag }}"
             if [ -z "$TAG" ]; then
               echo "Fetching latest release tag..."
-              TAG=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest | jq -r '.tag_name' 2>/dev/null || echo "")
-              if [ -z "$TAG" ]; then
+              TAG=$(curl -sSL -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+                "https://api.github.com/repos/${{ github.repository }}/releases/latest" \
+                | jq -r '.tag_name')
+              if [ -z "$TAG" ] || [ "$TAG" = "null" ]; then
                 echo "::error::Could not determine release tag"
                 exit 1
               fi
             fi
           fi
-          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "Building for tag: $TAG"
 
       - uses: actions/checkout@v4
         with:
           ref: ${{ steps.tag.outputs.tag }}
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@nightly
+      - name: Remove rust-toolchain.toml for release build
+        shell: bash
+        run: rm -f rust-toolchain.toml
+
+      - name: Install Rust (stable) with target
+        uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
-      - name: Build
-        run: cargo build --release --target ${{ matrix.target }} -vv
+      - name: Cargo build
+        shell: bash
+        run: cargo build --release --locked --target ${{ matrix.target }}
 
       - name: Prepare artifact
+        id: artifact
         shell: bash
         run: |
           set -e
@@ -79,23 +94,19 @@ jobs:
 
           if [ ! -f "$SOURCE_FILE" ]; then
             echo "::error::Binary not found at $SOURCE_FILE"
-            ls -la target/${{ matrix.target }}/release/ || echo "Release directory not found"
+            ls -la "target/${{ matrix.target }}/release/" || echo "Release directory not found"
             exit 1
           fi
 
-          cp "$SOURCE_FILE" "artifacts/my-little-factory-manager-${{ matrix.artifact_suffix }}"
-          echo "Created artifact: artifacts/my-little-factory-manager-${{ matrix.artifact_suffix }}"
+          DEST_FILE="artifacts/my-little-factory-manager-${{ matrix.artifact_suffix }}"
+          cp "$SOURCE_FILE" "$DEST_FILE"
+          echo "asset_path=$DEST_FILE" >> "$GITHUB_OUTPUT"
+          echo "Created artifact: $DEST_FILE"
           ls -lh artifacts/
 
       - name: Upload to release
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ steps.tag.outputs.tag }}
-        run: |
-          set -e
-          ASSET_FILE=$(ls artifacts/my-little-factory-manager-*)
-          ASSET_NAME=$(basename "$ASSET_FILE")
-
-          echo "Uploading $ASSET_NAME to release $TAG..."
-          gh release upload "$TAG" "$ASSET_FILE" --repo ${{ github.repository }} --clobber
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          files: ${{ steps.artifact.outputs.asset_path }}
+          fail_on_unmatched_files: true

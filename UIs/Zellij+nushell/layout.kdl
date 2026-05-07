@@ -1,0 +1,43 @@
+// Zellij layout for the My Little Factory Manager nushell UI.
+//
+// Panes (relative to this directory):
+//   ┌───────────┬──────────────┬─────────────┐
+//   │ tokens    │ hand         │             │
+//   ├───────────┼──────────────┤   library   │
+//   │ actions   │ contract     │             │
+//   ├───────────┴──────────────┴─────────────┤
+//   │ play (thin command pane)               │
+//   └────────────────────────────────────────┘
+
+layout {
+    // Top region: three columns of dashboards.
+    pane split_direction="vertical" {
+        // Column 1: tokens (top) / actions (bottom)
+        pane split_direction="horizontal" size="28%" {
+            pane name="tokens" command="nu" {
+                args "panes/tokens.nu"
+            }
+            pane name="actions" command="nu" {
+                args "panes/actions.nu"
+            }
+        }
+        // Column 2: hand (top) / contract (bottom)
+        pane split_direction="horizontal" size="40%" {
+            pane name="hand" command="nu" {
+                args "panes/hand.nu"
+            }
+            pane name="contract" command="nu" {
+                args "panes/contract.nu"
+            }
+        }
+        // Column 3: library (full height)
+        pane name="library" command="nu" {
+            args "panes/library.nu"
+        }
+    }
+
+    // Bottom thin command pane — interactive nu with the play module loaded.
+    pane size=3 name="play" command="nu" {
+        args "--config" "./config.nu" "--env-config" "./env.nu"
+    }
+}

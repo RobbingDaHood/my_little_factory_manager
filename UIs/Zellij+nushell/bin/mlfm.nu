@@ -18,13 +18,16 @@ def show-result [r: any] {
         err "no response (server down?)"
         return
     }
-    if (($r | describe | str starts-with "record") and ($r | get -i error) != null) {
+    if (($r | describe | str starts-with "record") and ($r | get -o error) != null) {
         err $r.error
         return
     }
-    let kind = ($r.result_type? | default "?")
-    print $"→ ($kind)"
-    $r | reject result_type? | to nuon | print
+    let outcome = ($r.outcome? | default "?")
+    let kind = ($r.detail?.result_type? | default ($r.detail?.error_type? | default ($r.result_type? | default "?")))
+    print $"→ ($outcome) · ($kind)"
+    let extra = ($r.detail? | default $r)
+    let trimmed = ($extra | reject -o result_type error_type)
+    if (($trimmed | columns | length) > 0) { $trimmed | to nuon | print }
 }
 
 # --- Player actions -----------------------------------------------------

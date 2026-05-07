@@ -38,6 +38,6 @@ layout {
 
     // Bottom thin command pane — interactive nu with the play module loaded.
     pane size=3 name="play" command="nu" {
-        args "--config" "./config.nu" "--env-config" "./env.nu"
+        args "-i" "--config" "./config.nu" "--env-config" "./env.nu"
     }
 }

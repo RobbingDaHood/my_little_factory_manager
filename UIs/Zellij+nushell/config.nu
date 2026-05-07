@@ -16,7 +16,7 @@ $env.PROMPT_INDICATOR_VI_INSERT = ""
 $env.PROMPT_INDICATOR_VI_NORMAL = ""
 $env.PROMPT_MULTILINE_INDICATOR = ""
 
-use ./bin/play.nu *
+use ./bin/mlfm.nu *
 
 print "My Little Factory Manager — command pane ready."
 print "Type `help-mlfm` for the command list, or just `new-game`."

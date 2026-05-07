@@ -16,18 +16,18 @@ def render [] {
     print $"HAND  (date now | format date '%H:%M:%S')"
     print "─────────────────────────────────────────"
 
-    let in-hand = (
+    let in_hand = (
         $st.cards
         | enumerate
         | where { |row| ($row.item.counts.hand? | default 0) > 0 }
     )
 
-    if (($in-hand | length) == 0) {
+    if (($in_hand | length) == 0) {
         print "(empty)"
         return
     }
 
-    $in-hand | each {|row|
+    $in_hand | each {|row|
         let idx = $row.index
         let cnt = $row.item.counts.hand
         let line = (fmt-card $row.item.card)

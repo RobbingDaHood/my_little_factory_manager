@@ -4,6 +4,8 @@ A terminal UI for *My Little Factory Manager*. The game server is unchanged —
 this directory is a thin client that hits the existing HTTP API and lays the
 results out in a Zellij session driven by nushell scripts.
 
+![Screenshot of the Zellij + nushell UI showing tokens, hand, library, possible actions, an active contract, and the bottom command pane after `mlfm> play 2`](docs/screenshot.png)
+
 ## Layout
 
 ```

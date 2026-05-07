@@ -25,21 +25,21 @@ export def load [] {
     }
 }
 
-export def save [s: record] {
+export def store [s: record] {
     let f = (state-file)
     mkdir ($f | path dirname)
-    $s | to json | save -f $f
+    $s | to json | save --force $f
 }
 
 # Update one field and persist. `field` is a string like "library_filter".
 export def set-field [field: string, value: any] {
     let cur = (load)
     let merged = ($cur | upsert $field $value)
-    save $merged
+    store $merged
     $merged
 }
 
 export def reset [] {
-    save (default-state)
+    store (default-state)
     default-state
 }
